@@ -8,6 +8,7 @@ import type {
   Message,
   ToolDefinition,
 } from "./types.js";
+import type { ModelCapabilities } from "./capabilities.js";
 
 export interface OpenAIProviderConfig {
   apiKey: string;
@@ -171,5 +172,26 @@ export class OpenAIProvider implements LLMClient {
     }
 
     yield { done: true };
+  }
+
+  async getCapabilities(model: string): Promise<ModelCapabilities> {
+    const modelContextWindow: Record<string, number> = {
+      "gpt-4o": 128000,
+      "gpt-4o-mini": 128000,
+      "gpt-4-turbo": 128000,
+      "gpt-4": 8192,
+      "gpt-3.5-turbo": 16385,
+    };
+
+    return {
+      modelName: model,
+      supportsTools: true,
+      supportsStreaming: true,
+      supportsSystemPrompt: true,
+      supportsToolStreaming: true,
+      supportsThinking: false,
+      contextWindow: modelContextWindow[model] ?? 16385,
+      maxOutputTokens: 4096,
+    };
   }
 }

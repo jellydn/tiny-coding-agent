@@ -8,6 +8,7 @@ import { ToolRegistry } from "../tools/registry.js";
 import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
 import { McpManager } from "../mcp/manager.js";
+import type { ModelCapabilities } from "../providers/capabilities.js";
 
 interface CliOptions {
   model?: string;
@@ -292,6 +293,79 @@ async function handleRun(
   }
 }
 
+async function handleStatus(
+  config: ReturnType<typeof loadConfig>,
+  options: CliOptions,
+): Promise<void> {
+  const llmClient = await createLLMClient(config, options);
+  const toolRegistry = await setupTools(config);
+  const model = options.model || config.defaultModel;
+
+  console.log("\n🤖 Tiny Agent Status");
+  console.log("===================\n");
+
+  console.log("Configuration:");
+  console.log(`  Model: ${model}`);
+
+  const providerName = (() => {
+    if (llmClient instanceof OllamaProvider) {
+      const baseUrl = config.providers.ollama?.baseUrl ?? "http://localhost:11434";
+      return `Ollama (${baseUrl})`;
+    }
+    if (llmClient instanceof AnthropicProvider) {
+      return "Anthropic";
+    }
+    if (llmClient instanceof OpenAIProvider) {
+      const baseUrl = config.providers.openai?.baseUrl;
+      return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
+    }
+    return "Unknown";
+  })();
+  console.log(`  Provider: ${providerName}\n`);
+
+  const capabilities: ModelCapabilities = await llmClient.getCapabilities(model);
+
+  console.log("Model Capabilities:");
+  const capabilityCheck = (name: string, supported: boolean): string => {
+    return supported ? "  ✓" : "  ✗";
+  };
+
+  console.log(`${capabilityCheck("Tools", capabilities.supportsTools)} Tools`);
+  console.log(`${capabilityCheck("Streaming", capabilities.supportsStreaming)} Streaming`);
+  console.log(
+    `${capabilityCheck("System Prompts", capabilities.supportsSystemPrompt)} System Prompts`,
+  );
+  console.log(
+    `${capabilityCheck("Tool Streaming", capabilities.supportsToolStreaming)} Tool Streaming`,
+  );
+  console.log(`${capabilityCheck("Thinking", capabilities.supportsThinking)} Thinking`);
+
+  if (capabilities.contextWindow) {
+    console.log(`  Context Window: ${(capabilities.contextWindow / 1000).toFixed(0)}k tokens`);
+  }
+  if (capabilities.maxOutputTokens) {
+    console.log(`  Max Output: ${capabilities.maxOutputTokens} tokens`);
+  }
+
+  console.log("\nTool Registry:");
+  const tools = toolRegistry.list();
+  console.log(`  ${tools.length} tools registered`);
+  if (tools.length > 0) {
+    const toolNames = tools.map((t) => t.name).sort();
+    console.log(`  ${toolNames.join(", ")}`);
+  }
+
+  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+    console.log("\nMCP Servers:");
+    for (const [name] of Object.entries(config.mcpServers)) {
+      console.log(`  - ${name}`);
+    }
+  }
+
+  console.log();
+  process.exit(0);
+}
+
 function showHelp(): void {
   console.log(`
     ╔════════════════════════════════════════════════╗
@@ -313,6 +387,7 @@ USAGE:
     tiny-agent chat                    Interactive chat mode (default)
     tiny-agent run <prompt>            Run a single prompt
     tiny-agent config                  Show current configuration
+    tiny-agent status                  Show provider and model capabilities
 
 OPTIONS:
     --model <model>                    Override default model
@@ -327,6 +402,7 @@ EXAMPLES:
     tiny-agent run "Fix this bug"      Run a single prompt
     tiny-agent run --model claude-3-5-sonnet "Help me"  Use specific model
     tiny-agent config                  Show current configuration
+    tiny-agent status                  Show provider and model capabilities
     tiny-agent --help                  Show this help message
 
 CONFIG:
@@ -383,9 +459,11 @@ export async function main(): Promise<void> {
       await handleRun(config, args, options);
     } else if (command === "config") {
       await handleConfig(config);
+    } else if (command === "status") {
+      await handleStatus(config, options);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error("Available commands: chat, run <prompt>, config");
+      console.error("Available commands: chat, run <prompt>, config, status");
       console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --help");
       process.exit(1);
     }

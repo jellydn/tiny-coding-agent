@@ -61,6 +61,7 @@ tools:
 - `tiny-agent chat` - Start interactive chat session
 - `tiny-agent run "prompt"` - Run single prompt and exit
 - `tiny-agent config` - Show current configuration
+- `tiny-agent status` - Show current status (LLM provider, MCP servers, tools)
 
 ## Project Structure
 

@@ -80,8 +80,8 @@ function parseSearchResults(html: string, maxResults: number): SearchResult[] {
   const resultPattern =
     /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>/gi;
 
-  let match;
-  while ((match = resultPattern.exec(html)) !== null && results.length < maxResults) {
+  let match: RegExpExecArray | null = resultPattern.exec(html);
+  while (match !== null && results.length < maxResults) {
     const url = decodeURIComponent((match[1] ?? "").replace(/.*uddg=([^&]+).*/, "$1"));
     const title = stripHtmlTags(match[2] ?? "").trim();
     const snippet = stripHtmlTags(match[3] ?? "").trim();
@@ -89,13 +89,16 @@ function parseSearchResults(html: string, maxResults: number): SearchResult[] {
     if (url && title && !url.includes("duckduckgo.com")) {
       results.push({ title, url, snippet });
     }
+
+    match = resultPattern.exec(html);
   }
 
   if (results.length === 0) {
     const altPattern =
       /<div[^>]+class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]*)"[^>]*>([^<]+)<\/a>[\s\S]*?<div[^>]+class="[^"]*snippet[^"]*"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/div>/gi;
 
-    while ((match = altPattern.exec(html)) !== null && results.length < maxResults) {
+    match = altPattern.exec(html);
+    while (match !== null && results.length < maxResults) {
       const url = match[1] ?? "";
       const title = stripHtmlTags(match[2] ?? "").trim();
       const snippet = stripHtmlTags(match[3] ?? "").trim();
@@ -103,6 +106,8 @@ function parseSearchResults(html: string, maxResults: number): SearchResult[] {
       if (url && title && !url.includes("duckduckgo.com")) {
         results.push({ title, url, snippet });
       }
+
+      match = altPattern.exec(html);
     }
   }
 

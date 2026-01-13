@@ -45,7 +45,10 @@ export interface StreamChunk {
   done: boolean;
 }
 
+import type { ModelCapabilities } from "./capabilities.js";
+
 export interface LLMClient {
   chat(options: ChatOptions): Promise<ChatResponse>;
   stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>;
+  getCapabilities(model: string): Promise<ModelCapabilities>;
 }

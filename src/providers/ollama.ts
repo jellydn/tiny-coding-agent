@@ -1,22 +1,75 @@
 import { Ollama } from "ollama";
-import type { LLMClient, ChatOptions, ChatResponse, StreamChunk, Message } from "./types.js";
+import type {
+  LLMClient,
+  ChatOptions,
+  ChatResponse,
+  StreamChunk,
+  Message,
+  ToolDefinition,
+  ToolCall,
+} from "./types.js";
+import type { ModelCapabilities } from "./capabilities.js";
 
 export interface OllamaProviderConfig {
   baseUrl?: string;
 }
 
 type OllamaMessage = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_name?: string;
 };
 
+type OllamaTool = {
+  type: string;
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+type OllamaToolCall = {
+  function: {
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+};
+
+function convertTools(tools: ToolDefinition[]): OllamaTool[] {
+  return tools.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }));
+}
+
+function parseToolCalls(toolCalls?: OllamaToolCall[]): ToolCall[] | undefined {
+  if (!toolCalls?.length) return undefined;
+  return toolCalls.map((tc) => ({
+    id: crypto.randomUUID(),
+    name: tc.function.name,
+    arguments: tc.function.arguments,
+  }));
+}
+
 function convertMessages(messages: Message[]): OllamaMessage[] {
-  return messages
-    .filter((msg) => msg.role !== "tool")
-    .map((msg) => ({
+  return messages.map((msg) => {
+    if (msg.role === "tool") {
+      return {
+        role: "tool",
+        content: msg.content,
+        tool_name: msg.toolCallId,
+      };
+    }
+    return {
       role: msg.role as "system" | "user" | "assistant",
       content: msg.content,
-    }));
+    };
+  });
 }
 
 function mapFinishReason(doneReason: string | undefined): ChatResponse["finishReason"] {
@@ -32,10 +85,12 @@ function mapFinishReason(doneReason: string | undefined): ChatResponse["finishRe
 
 export class OllamaProvider implements LLMClient {
   private _client: Ollama;
+  private _baseUrl: string;
 
   constructor(config: OllamaProviderConfig = {}) {
+    this._baseUrl = config.baseUrl ?? "http://localhost:11434";
     this._client = new Ollama({
-      host: config.baseUrl ?? "http://localhost:11434",
+      host: this._baseUrl,
     });
   }
 
@@ -43,6 +98,7 @@ export class OllamaProvider implements LLMClient {
     const response = await this._client.chat({
       model: options.model,
       messages: convertMessages(options.messages),
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
       options: {
         temperature: options.temperature,
         num_predict: options.maxTokens,
@@ -51,6 +107,7 @@ export class OllamaProvider implements LLMClient {
 
     return {
       content: response.message.content,
+      toolCalls: parseToolCalls(response.message.tool_calls),
       finishReason: mapFinishReason(response.done_reason),
     };
   }
@@ -59,6 +116,7 @@ export class OllamaProvider implements LLMClient {
     const stream = await this._client.chat({
       model: options.model,
       messages: convertMessages(options.messages),
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
       options: {
         temperature: options.temperature,
         num_predict: options.maxTokens,
@@ -66,20 +124,93 @@ export class OllamaProvider implements LLMClient {
       stream: true,
     });
 
+    const toolCallsBuffer: Map<number, { name: string; arguments: string }> = new Map();
+
     for await (const chunk of stream) {
-      if (chunk.done) {
+      if (chunk.message?.tool_calls) {
+        for (const tc of chunk.message.tool_calls) {
+          const existing = toolCallsBuffer.get(0) ?? { name: "", arguments: "" };
+          if (tc.function?.name) existing.name = tc.function.name;
+          if (tc.function?.arguments) {
+            existing.arguments += JSON.stringify(tc.function.arguments);
+          }
+          toolCallsBuffer.set(0, existing);
+        }
+      }
+
+      if (chunk.message?.content) {
         yield {
+          content: chunk.message.content,
+          done: false,
+        };
+      }
+
+      if (chunk.done) {
+        const toolCalls: ToolCall[] | undefined =
+          toolCallsBuffer.size > 0
+            ? Array.from(toolCallsBuffer.values()).map((tc) => ({
+                id: crypto.randomUUID(),
+                name: tc.name,
+                arguments: JSON.parse(tc.arguments || "{}"),
+              }))
+            : undefined;
+
+        yield {
+          toolCalls,
           done: true,
         };
         return;
       }
-
-      yield {
-        content: chunk.message.content,
-        done: false,
-      };
     }
 
     yield { done: true };
+  }
+
+  async getCapabilities(model: string): Promise<ModelCapabilities> {
+    try {
+      const showResponse = await fetch(`${this._baseUrl}/api/show`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: model }),
+      });
+
+      if (showResponse.ok) {
+        const modelInfo = (await showResponse.json()) as {
+          details?: {
+            supports_function_calling?: boolean;
+            supports_thinking?: boolean;
+            context_length?: number;
+            num_ctx?: number;
+          };
+        };
+        const details = modelInfo.details ?? {};
+
+        return {
+          modelName: model,
+          supportsTools: details?.supports_function_calling ?? true,
+          supportsStreaming: true,
+          supportsSystemPrompt: true,
+          supportsToolStreaming: false,
+          supportsThinking: details?.supports_thinking ?? false,
+          contextWindow: details?.context_length ?? 128000,
+          maxOutputTokens: details?.num_ctx ?? 4096,
+        };
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch model details for ${model}: ${err}`);
+    }
+
+    return {
+      modelName: model,
+      supportsTools: true,
+      supportsStreaming: true,
+      supportsSystemPrompt: true,
+      supportsToolStreaming: false,
+      supportsThinking: false,
+      contextWindow: 128000,
+      maxOutputTokens: 4096,
+    };
   }
 }

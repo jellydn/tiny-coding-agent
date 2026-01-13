@@ -8,6 +8,7 @@ import type {
   Message,
   ToolDefinition,
 } from "./types.js";
+import type { ModelCapabilities } from "./capabilities.js";
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -210,5 +211,26 @@ export class AnthropicProvider implements LLMClient {
     }
 
     yield { done: true };
+  }
+
+  async getCapabilities(model: string): Promise<ModelCapabilities> {
+    const modelContextWindow: Record<string, number> = {
+      "claude-3-5-sonnet-20241022": 200000,
+      "claude-3-5-haiku-20241022": 200000,
+      "claude-3-opus-20240229": 200000,
+      "claude-3-sonnet-20240229": 200000,
+      "claude-3-haiku-20240307": 200000,
+    };
+
+    return {
+      modelName: model,
+      supportsTools: true,
+      supportsStreaming: true,
+      supportsSystemPrompt: true,
+      supportsToolStreaming: true,
+      supportsThinking: true,
+      contextWindow: modelContextWindow[model] ?? 200000,
+      maxOutputTokens: 8192,
+    };
   }
 }
