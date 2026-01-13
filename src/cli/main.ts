@@ -1,0 +1,293 @@
+import * as readline from "node:readline";
+import { loadConfig } from "../config/loader.js";
+import { OpenAIProvider } from "../providers/openai.js";
+import { AnthropicProvider } from "../providers/anthropic.js";
+import { OllamaProvider } from "../providers/ollama.js";
+import type { LLMClient } from "../providers/types.js";
+import { ToolRegistry } from "../tools/registry.js";
+import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
+import { Agent } from "../core/agent.js";
+import { McpManager } from "../mcp/manager.js";
+
+interface CliOptions {
+  model?: string;
+  provider?: string;
+  verbose?: boolean;
+  save?: boolean;
+}
+
+function parseArgs(): {
+  command: string;
+  args: string[];
+  options: CliOptions;
+} {
+  const args = process.argv.slice(2);
+  const options: CliOptions = {};
+  const positionalArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === undefined) {
+      continue;
+    }
+    if (arg === "--model" && i + 1 < args.length) {
+      const nextArg = args[i + 1];
+      if (nextArg !== undefined) {
+        options.model = nextArg;
+        i++;
+      }
+    } else if (arg === "--provider" && i + 1 < args.length) {
+      const nextArg = args[i + 1];
+      if (nextArg !== undefined) {
+        options.provider = nextArg;
+        i++;
+      }
+    } else if (arg === "-v" || arg === "--verbose") {
+      options.verbose = true;
+    } else if (arg === "--save") {
+      options.save = true;
+    } else if (!arg.startsWith("-")) {
+      positionalArgs.push(arg);
+    }
+  }
+
+  const command = positionalArgs[0] || "chat";
+  const commandArgs = positionalArgs.slice(1);
+
+  return { command, args: commandArgs, options };
+}
+
+async function createLLMClient(
+  config: ReturnType<typeof loadConfig>,
+  options: CliOptions,
+): Promise<LLMClient> {
+  // Determine model and provider
+  const model = options.model || config.defaultModel;
+  let provider: LLMClient;
+
+  // If provider is explicitly set, use that
+  if (options.provider) {
+    const providerName = options.provider.toLowerCase();
+    if (providerName === "openai" || providerName.startsWith("openai-")) {
+      const apiKey = config.providers.openai?.apiKey;
+      if (!apiKey) {
+        throw new Error(
+          "OpenAI API key not configured. Set it in config or OPENAI_API_KEY env var",
+        );
+      }
+      provider = new OpenAIProvider({
+        apiKey,
+        baseUrl: config.providers.openai?.baseUrl,
+      });
+    } else if (providerName === "anthropic") {
+      const apiKey = config.providers.anthropic?.apiKey;
+      if (!apiKey) {
+        throw new Error(
+          "Anthropic API key not configured. Set it in config or ANTHROPIC_API_KEY env var",
+        );
+      }
+      provider = new AnthropicProvider({ apiKey });
+    } else if (providerName === "ollama") {
+      provider = new OllamaProvider({
+        baseUrl: config.providers.ollama?.baseUrl,
+      });
+    } else {
+      throw new Error(`Unknown provider: ${providerName}`);
+    }
+  } else {
+    // Auto-detect provider from model name
+    if (model.includes("gpt") || model.includes("o1")) {
+      const apiKey = config.providers.openai?.apiKey;
+      if (!apiKey) {
+        throw new Error(
+          "OpenAI API key not configured for GPT models. Set it in config or OPENAI_API_KEY env var",
+        );
+      }
+      provider = new OpenAIProvider({
+        apiKey,
+        baseUrl: config.providers.openai?.baseUrl,
+      });
+    } else if (model.includes("claude")) {
+      const apiKey = config.providers.anthropic?.apiKey;
+      if (!apiKey) {
+        throw new Error(
+          "Anthropic API key not configured for Claude models. Set it in config or ANTHROPIC_API_KEY env var",
+        );
+      }
+      provider = new AnthropicProvider({ apiKey });
+    } else {
+      // Default to Ollama for local models
+      provider = new OllamaProvider({
+        baseUrl: config.providers.ollama?.baseUrl,
+      });
+    }
+  }
+
+  return provider;
+}
+
+async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
+  const registry = new ToolRegistry();
+
+  // Register built-in tools
+  registry.registerMany(fileTools);
+  registry.register(bashTool);
+  registry.registerMany(searchTools);
+  registry.register(webSearchTool);
+
+  // Load and register plugins
+  try {
+    const plugins = await loadPlugins();
+    registry.registerMany(plugins);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Warning: Failed to load plugins: ${message}`);
+  }
+
+  // Initialize and register MCP tools if configured
+  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+    const mcpManager = new McpManager();
+    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+      await mcpManager.addServer(serverName, serverConfig);
+    }
+    mcpManager.registerToolsWithRegistry(registry);
+  }
+
+  return registry;
+}
+
+async function handleChat(
+  config: ReturnType<typeof loadConfig>,
+  options: CliOptions,
+): Promise<void> {
+  const llmClient = await createLLMClient(config, options);
+  const toolRegistry = await setupTools(config);
+  const model = options.model || config.defaultModel;
+
+  const agent = new Agent(llmClient, toolRegistry, {
+    verbose: options.verbose,
+    systemPrompt: config.systemPrompt,
+    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+    maxContextTokens: config.maxContextTokens,
+  });
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  console.log(`Tiny Coding Agent (model: ${model})`);
+  console.log('Type "exit" to quit\n');
+
+  const askQuestion = (): void => {
+    rl.question("You: ", async (userInput: string) => {
+      if (userInput.toLowerCase() === "exit") {
+        rl.close();
+        console.log("Goodbye!");
+        return;
+      }
+
+      if (!userInput.trim()) {
+        askQuestion();
+        return;
+      }
+
+      try {
+        const response = await agent.run(userInput, model);
+        console.log(`\nAgent: ${response.content}\n`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`Error: ${message}\n`);
+      }
+
+      askQuestion();
+    });
+  };
+
+  askQuestion();
+}
+
+async function handleRun(
+  config: ReturnType<typeof loadConfig>,
+  args: string[],
+  options: CliOptions,
+): Promise<void> {
+  const prompt = args.join(" ");
+  if (!prompt) {
+    console.error("Error: run command requires a prompt");
+    process.exit(1);
+  }
+
+  const llmClient = await createLLMClient(config, options);
+  const toolRegistry = await setupTools(config);
+  const model = options.model || config.defaultModel;
+
+  const agent = new Agent(llmClient, toolRegistry, {
+    verbose: options.verbose,
+    systemPrompt: config.systemPrompt,
+    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+    maxContextTokens: config.maxContextTokens,
+  });
+
+  try {
+    const response = await agent.run(prompt, model);
+    console.log(response.content);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: ${message}`);
+    process.exit(1);
+  }
+}
+
+async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void> {
+  console.log("Current Configuration:");
+  console.log(`  Default Model: ${config.defaultModel}`);
+
+  if (config.systemPrompt) {
+    console.log(`  System Prompt: ${config.systemPrompt}`);
+  }
+
+  if (config.conversationFile) {
+    console.log(`  Conversation File: ${config.conversationFile}`);
+  }
+
+  if (config.maxContextTokens) {
+    console.log(`  Max Context Tokens: ${config.maxContextTokens}`);
+  }
+
+  console.log("\n  Providers:");
+  console.log(`    OpenAI: ${config.providers.openai ? "configured" : "not configured"}`);
+  console.log(`    Anthropic: ${config.providers.anthropic ? "configured" : "not configured"}`);
+  console.log(`    Ollama: ${config.providers.ollama ? "configured" : "not configured"}`);
+
+  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+    console.log("\n  MCP Servers:");
+    for (const [name] of Object.entries(config.mcpServers)) {
+      console.log(`    - ${name}`);
+    }
+  }
+}
+
+export async function main(): Promise<void> {
+  try {
+    const { command, args, options } = parseArgs();
+    const config = loadConfig();
+
+    if (command === "chat") {
+      await handleChat(config, options);
+    } else if (command === "run") {
+      await handleRun(config, args, options);
+    } else if (command === "config") {
+      await handleConfig(config);
+    } else {
+      console.error(`Unknown command: ${command}`);
+      console.error("Available commands: chat, run <prompt>, config");
+      console.error("Options: --model <model>, --provider <provider>, --verbose, --save");
+      process.exit(1);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: ${message}`);
+    process.exit(1);
+  }
+}

@@ -1,0 +1,238 @@
+# Ralph Progress Log
+Started: Tue Jan 13 10:09:34 +08 2026
+
+## Codebase Patterns
+- Use `.js` extensions in TypeScript imports for NodeNext module resolution
+- Use `import type` for type-only imports (verbatimModuleSyntax enabled)
+- Config types in schema.ts, loading logic in loader.ts, exports in index.ts
+- LLM providers implement LLMClient interface with chat() and stream() methods
+- Filter OpenAI tool calls by `tc.type === 'function'` to handle CustomToolCall types
+- Anthropic uses content blocks: 'text' and 'tool_use' types; tool results go in user role with tool_result type
+- Anthropic system messages are separate from messages array (passed as `system` param)
+- Anthropic streaming: content_block_start for tool_use has id/name, input_json_delta accumulates input
+- Ollama uses `host` config option; `num_predict` for maxTokens; doesn't support tool calling
+- Token counting utility in src/core/tokens.ts (4 chars per token approximation)
+- Context window management: truncateMessages removes oldest messages when exceeding limit
+
+---
+
+## 2026-01-13 - US-002
+Thread: https://ampcode.com/threads/T-019bb550-8854-72a0-9040-1f73bb581aa0
+- Implemented configuration loader with YAML/JSON support
+- Files created: src/config/schema.ts, src/config/loader.ts
+- Files modified: src/config/index.ts, package.json (added yaml dependency)
+- **Learnings for future iterations:**
+  - Must use `.js` extensions in imports due to NodeNext module resolution
+  - Must use `import type` for type-only imports due to verbatimModuleSyntax
+  - Config loads from ~/.tiny-agent/config.yaml with fallback to config.json
+  - Env var interpolation uses ${VAR_NAME} syntax
+  - TINY_AGENT_MODEL env var overrides defaultModel
+---
+
+## 2026-01-13 - US-003a
+Thread: https://ampcode.com/threads/T-019bb552-f72e-72d7-a675-46bcd127ef81
+- Defined LLMClient interface and base types for multi-provider support
+- Files created: src/providers/types.ts
+- Files modified: src/providers/index.ts (exports all types)
+- **Learnings for future iterations:**
+  - LLMClient interface has chat() and stream() methods
+  - Message includes role, content, optional toolCallId and toolCalls
+  - ToolCall has id, name, arguments - ToolResult has toolCallId, content, isError
+  - ChatOptions bundles model, messages, tools, temperature, maxTokens
+  - Use `export type` in index.ts when re-exporting types
+---
+
+## 2026-01-13 - US-003b
+Thread: https://ampcode.com/threads/T-019bb554-7fcb-75d3-b90d-80f3e627e81c
+- Implemented OpenAI-compatible provider with chat() and stream() methods
+- Files created: src/providers/openai.ts
+- Files modified: src/providers/index.ts (exports OpenAIProvider and OpenAIProviderConfig)
+- Package added: openai@6.16.0
+- **Learnings for future iterations:**
+  - OpenAI SDK types have ChatCompletionMessageCustomToolCall which needs filtering (tc.type === 'function')
+  - Stream tool calls come in chunks across multiple delta messages - need to buffer by index
+  - OpenAIProviderConfig accepts apiKey (required) and baseUrl (optional for OpenAI-compatible services)
+  - convertMessages() handles message role mapping, tool result messages, and assistant messages with toolCalls
+---
+
+## 2026-01-13 - US-003c
+Thread: https://ampcode.com/threads/T-019bb556-9480-7577-b4d4-8860ae1f7659
+- Implemented Anthropic provider with chat() and stream() methods
+- Files created: src/providers/anthropic.ts
+- Files modified: src/providers/index.ts (exports AnthropicProvider and AnthropicProviderConfig)
+- Package added: @anthropic-ai/sdk@0.71.2
+- **Learnings for future iterations:**
+  - Anthropic system message is a separate param, not in the messages array
+  - Tool use in Anthropic: content blocks with type 'tool_use', input as object
+  - Tool results must go in 'user' role with content array containing tool_result blocks
+  - Streaming uses content_block_start/delta events; input_json_delta for tool inputs
+  - Multiple tool results for same assistant can be grouped in one user message
+---
+
+## 2026-01-13 - US-003d
+Thread: https://ampcode.com/threads/T-019bb560-843a-716c-bf62-98bec24af28c
+- Implemented Ollama provider with chat() and stream() methods
+- Files created: src/providers/ollama.ts
+- Files modified: src/providers/index.ts (exports OllamaProvider and OllamaProviderConfig)
+- Package added: ollama@0.6.3
+- **Learnings for future iterations:**
+  - Ollama uses `host` not `baseUrl` in its constructor
+  - Ollama options use `num_predict` for max tokens, `temperature` for temperature
+  - Ollama chat response has `done_reason` for stop reasons
+  - Ollama does not support tool calling natively - messages with tool role are filtered out
+  - Stream response has `done: boolean` to detect end of stream
+---
+
+## 2026-01-13 - US-004
+Thread: https://ampcode.com/threads/T-019bb561-e31a-779f-a8f9-7faf1822dc59
+- Implemented Tool System Architecture
+- Files created:
+  - src/tools/types.ts - Tool, ToolResult, ToolParameters, OpenAIFunctionDef, AnthropicToolDef
+  - src/tools/registry.ts - ToolRegistry class with register/execute/convert methods
+  - src/tools/index.ts - Exports
+- **Learnings for future iterations:**
+  - ToolRegistry.execute() catches errors and returns structured error response
+  - Use toOpenAIFormat() for OpenAI/compatible providers, toAnthropicFormat() for Claude
+  - ToolParameters enforces type: "object" for JSON Schema compatibility
+---
+
+## 2026-01-13 - US-005
+Thread: https://ampcode.com/threads/T-019bb564-5e56-7208-b598-c2ac9ca83595
+- Implemented Core File Operation Tools
+- Files created:
+  - src/tools/file-tools.ts - read_file, write_file, edit_file, list_directory tools
+- Files modified:
+  - src/tools/index.ts - Added exports for file tools
+- **Learnings for future iterations:**
+  - Use `NodeJS.ErrnoException` type for fs error handling
+  - Error codes: ENOENT (not found), EACCES (permission denied), ENOTDIR (not a directory)
+  - Export individual tools AND an array (`fileTools`) for easy batch registration
+  - `fs.mkdir(dir, { recursive: true })` ensures parent directories exist
+---
+
+## 2026-01-13 - US-006
+Thread: https://ampcode.com/threads/T-019bb565-ed65-73af-93e1-e7a35ded4272
+- Implemented Core Bash Execution Tool
+- Files created:
+  - src/tools/bash-tool.ts - bash tool with command execution, timeout, and cwd support
+- Files modified:
+  - src/tools/index.ts - Added exports for bash tool
+- **Learnings for future iterations:**
+  - Use `spawn` with `shell: true` for command execution
+  - Buffer stdout/stderr chunks and concatenate at the end for proper encoding
+  - Use SIGTERM first, then SIGKILL after 1s for graceful timeout handling
+  - Format output with labeled sections (stdout:, stderr:, exit_code:) for clarity
+---
+
+## 2026-01-13 - US-007
+Thread: https://ampcode.com/threads/T-019bb567-16fb-7697-b3e1-1b13e6593678
+- Implemented Core Search Tools (grep and glob)
+- Files created:
+  - src/tools/search-tools.ts - grep, glob tools with regex and glob pattern support
+- Files modified:
+  - src/tools/index.ts - Added exports for search tools
+- **Learnings for future iterations:**
+  - Limit results with MAX_RESULTS constant to prevent token explosion
+  - Truncate long lines with MAX_LINE_LENGTH to keep output manageable
+  - Skip hidden files (starting with .) and node_modules by default
+  - Use simple glob-to-regex conversion for pattern matching
+  - Export tool arrays (e.g., `searchTools`) for batch registration
+---
+
+## 2026-01-13 - US-008
+Thread: https://ampcode.com/threads/T-019bb569-a748-755d-a3f5-988721a6af56
+- Implemented Core Web Search Tool
+- Files created:
+  - src/tools/web-search-tool.ts - web_search tool using DuckDuckGo HTML scraping
+- Files modified:
+  - src/tools/index.ts - Added exports for web search tool
+- **Learnings for future iterations:**
+  - DuckDuckGo HTML endpoint (html.duckduckgo.com/html/) works without API keys
+  - HTML parsing requires multiple regex patterns as fallback for different result formats
+  - URLs in DuckDuckGo results are encoded with `uddg=` parameter, need to decode
+  - Use stripHtmlTags helper to clean result text from HTML entities
+  - Export tool arrays (e.g., `webSearchTools`) for consistency with other tool modules
+---
+
+## 2026-01-13 - US-009
+- Implemented MCP Client Integration following Model Context Protocol spec
+- Files modified:
+   - src/mcp/client.ts - Fixed type error for result.isError boolean conversion
+- **Learnings for future iterations:**
+   - MCP integration is fully implemented with retry logic and error handling
+   - McpManager handles server lifecycle (connect/restart/disconnect) with max 3 retry attempts
+   - Tools from MCP servers are prefixed with `mcp_${serverName}_` to avoid naming conflicts
+   - McpManager.registerToolsWithRegistry() integrates MCP tools with built-in tools
+   - Type safety: MCP SDK returns `unknown` for some fields, need explicit type casting
+   - The implementation handles stdio transport, tool discovery, and tool execution per MCP spec
+---
+
+## 2026-01-13 - US-010
+Thread: https://ampcode.com/threads/T-019bb5fa-e89f-770a-b9ab-2a761a2b89e3
+- Implemented Agent Loop with ReAct-style iterative problem solving
+- Files created:
+   - src/core/agent.ts - Agent class with run() method
+- Files modified:
+   - src/core/index.ts - Added Agent exports
+- **Learnings for future iterations:**
+   - Agent.run(userPrompt, model) takes a user prompt and LLM model name
+   - Automatically creates system prompt suggesting tool usage
+   - Maintains message history: system → user → assistant → tool → repeat
+   - Stops when LLM returns no toolCalls (finish_reason: stop)
+   - Throws error if max iterations (default 20) reached without completion
+   - Verbose mode logs each iteration for debugging tool calls and results
+   - Tool results go to role: "tool" messages with toolCallId for tracking
+   - Type casting needed: ToolParameters → Record<string, unknown> for LLM compat
+---
+
+## 2026-01-13 - US-011
+Thread: https://ampcode.com/threads/T-019bb5fa-e89f-770a-b9ab-2a761a2b89e3
+- Implemented CLI Interface with subcommands
+- Files created:
+   - src/cli/main.ts - CLI implementation with chat, run, config commands
+   - index.ts - Entry point at project root
+- Files modified:
+   - src/cli/index.ts - Export main function
+- **Learnings for future iterations:**
+   - parseArgs() returns {command, args, options} with --model, --provider, -v flags
+   - createLLMClient() auto-detects provider from model name (gpt → OpenAI, claude → Anthropic, else Ollama)
+   - setupTools() registers file, bash, search, web-search tools and optionally MCP tools
+   - chat: Interactive readline prompt, loops until user types "exit"
+   - run: Single prompt execution, prints response to stdout
+   - config: Displays loaded config (model, providers, MCP servers)
+   - McpManager() constructed empty, then addServer(name, config) called for each server
+   - Config file: ~/.tiny-agent/config.yaml or config.json (error if missing)
+---
+
+## 2026-01-13 - US-012
+Thread: https://ampcode.com/threads/T-019bb5fa-e89f-770a-b9ab-2a761a2b89e3
+- Implemented Plugin System for Custom Tools
+- Files created:
+   - src/tools/plugin-loader.ts - Plugin discovery and loading from ~/.tiny-agent/plugins/
+- Files modified:
+   - src/tools/index.ts - Export loadPlugins function
+   - src/cli/main.ts - Call loadPlugins() in setupTools(), wrap in try/catch for graceful error handling
+- **Learnings for future iterations:**
+   - loadPlugins() reads all files from ~/.tiny-agent/plugins/ directory
+   - loadPluginFile() uses dynamic import with file:// URL to load JS/TS/MJS files
+   - Each plugin file must export default: Tool | Tool[] | undefined
+   - isTool() type guard validates Tool interface (name, description, parameters, execute)
+   - Plugins are loaded silently, console.error() only on load failure
+   - Tool naming: plugins can use any name, but MCP tools prefix with "mcp_{serverName}_"
+    - CLI automatically merges plugins with built-in tools in setupTools()
+ ---
+
+## 2026-01-13 - US-013
+- Implemented token counting and context window management
+- Files created: src/core/tokens.ts (countTokens, countMessagesTokens, truncateMessages)
+- Files modified:
+  - src/config/schema.ts (added maxContextTokens config option)
+  - src/config/loader.ts (added TINY_AGENT_MAX_CONTEXT_TOKENS env var override)
+  - src/core/agent.ts (integrated token counting and context management)
+  - src/cli/main.ts (passes maxContextTokens to Agent, displays in config output)
+- **Learnings for future iterations:**
+  - Token counting uses simple approximation: 4 characters per token
+  - truncateMessages removes oldest messages when exceeding context limit
+  - Reserve 1000 tokens for response when calculating available context
+  - Config options: `maxContextTokens` in config, `TINY_AGENT_MAX_CONTEXT_TOKENS` env var
+ ---

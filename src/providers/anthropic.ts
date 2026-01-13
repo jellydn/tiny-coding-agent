@@ -1,0 +1,214 @@
+import Anthropic from "@anthropic-ai/sdk";
+import type {
+  LLMClient,
+  ChatOptions,
+  ChatResponse,
+  StreamChunk,
+  ToolCall,
+  Message,
+  ToolDefinition,
+} from "./types.js";
+
+export interface AnthropicProviderConfig {
+  apiKey: string;
+}
+
+type AnthropicMessage = Anthropic.Messages.MessageParam;
+type AnthropicTool = Anthropic.Messages.Tool;
+type ContentBlock = Anthropic.Messages.ContentBlock;
+type ContentBlockDelta = Anthropic.Messages.ContentBlockDeltaEvent;
+
+function convertMessages(messages: Message[]): { system?: string; messages: AnthropicMessage[] } {
+  let system: string | undefined;
+  const converted: AnthropicMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === "system") {
+      system = msg.content;
+      continue;
+    }
+
+    if (msg.role === "user") {
+      converted.push({
+        role: "user",
+        content: msg.content,
+      });
+    } else if (msg.role === "assistant") {
+      if (msg.toolCalls?.length) {
+        const content: Anthropic.Messages.ContentBlockParam[] = [];
+        if (msg.content) {
+          content.push({ type: "text", text: msg.content });
+        }
+        for (const tc of msg.toolCalls) {
+          content.push({
+            type: "tool_use",
+            id: tc.id,
+            name: tc.name,
+            input: tc.arguments,
+          });
+        }
+        converted.push({ role: "assistant", content });
+      } else {
+        converted.push({
+          role: "assistant",
+          content: msg.content,
+        });
+      }
+    } else if (msg.role === "tool") {
+      const lastMsg = converted[converted.length - 1];
+      if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+        (lastMsg.content as Anthropic.Messages.ToolResultBlockParam[]).push({
+          type: "tool_result",
+          tool_use_id: msg.toolCallId ?? "",
+          content: msg.content,
+        });
+      } else {
+        converted.push({
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: msg.toolCallId ?? "",
+              content: msg.content,
+            },
+          ],
+        });
+      }
+    }
+  }
+
+  return { system, messages: converted };
+}
+
+function convertTools(tools: ToolDefinition[]): AnthropicTool[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: tool.parameters as Anthropic.Messages.Tool.InputSchema,
+  }));
+}
+
+function parseContentBlocks(content: ContentBlock[]): { text: string; toolCalls?: ToolCall[] } {
+  let text = "";
+  const toolCalls: ToolCall[] = [];
+
+  for (const block of content) {
+    if (block.type === "text") {
+      text += block.text;
+    } else if (block.type === "tool_use") {
+      toolCalls.push({
+        id: block.id,
+        name: block.name,
+        arguments: block.input as Record<string, unknown>,
+      });
+    }
+  }
+
+  return {
+    text,
+    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+  };
+}
+
+function mapStopReason(reason: string | null): ChatResponse["finishReason"] {
+  switch (reason) {
+    case "end_turn":
+      return "stop";
+    case "tool_use":
+      return "tool_calls";
+    case "max_tokens":
+      return "length";
+    default:
+      return "stop";
+  }
+}
+
+export class AnthropicProvider implements LLMClient {
+  private _client: Anthropic;
+
+  constructor(config: AnthropicProviderConfig) {
+    this._client = new Anthropic({
+      apiKey: config.apiKey,
+    });
+  }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const { system, messages } = convertMessages(options.messages);
+
+    const response = await this._client.messages.create({
+      model: options.model,
+      max_tokens: options.maxTokens ?? 4096,
+      system,
+      messages,
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
+      temperature: options.temperature,
+    });
+
+    const { text, toolCalls } = parseContentBlocks(response.content);
+
+    return {
+      content: text,
+      toolCalls,
+      finishReason: mapStopReason(response.stop_reason),
+    };
+  }
+
+  async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    const { system, messages } = convertMessages(options.messages);
+
+    const stream = this._client.messages.stream({
+      model: options.model,
+      max_tokens: options.maxTokens ?? 4096,
+      system,
+      messages,
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
+      temperature: options.temperature,
+    });
+
+    const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
+    let currentBlockIndex = -1;
+
+    for await (const event of stream) {
+      if (event.type === "content_block_start") {
+        currentBlockIndex = event.index;
+        if (event.content_block.type === "tool_use") {
+          toolCallsBuffer.set(currentBlockIndex, {
+            id: event.content_block.id,
+            name: event.content_block.name,
+            input: "",
+          });
+        }
+      } else if (event.type === "content_block_delta") {
+        const delta = event as ContentBlockDelta;
+        if (delta.delta.type === "text_delta") {
+          yield {
+            content: delta.delta.text,
+            done: false,
+          };
+        } else if (delta.delta.type === "input_json_delta") {
+          const existing = toolCallsBuffer.get(delta.index);
+          if (existing) {
+            existing.input += delta.delta.partial_json;
+          }
+        }
+      } else if (event.type === "message_stop") {
+        const toolCalls: ToolCall[] | undefined =
+          toolCallsBuffer.size > 0
+            ? Array.from(toolCallsBuffer.values()).map((tc) => ({
+                id: tc.id,
+                name: tc.name,
+                arguments: JSON.parse(tc.input || "{}"),
+              }))
+            : undefined;
+
+        yield {
+          toolCalls,
+          done: true,
+        };
+        return;
+      }
+    }
+
+    yield { done: true };
+  }
+}
