@@ -23,6 +23,7 @@ bun run test <file>       # Run single test file
 
 - ES modules with TypeScript 5+ and strict mode
 - Compiler options: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
+- Always use `.js` extension for internal imports: `import type { Tool } from "./types.js"`
 
 ### Imports
 
@@ -38,12 +39,32 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 - **Variables/functions**: camelCase
 - **Constants**: SCREAMING_SNAKE_CASE
 - **Classes/Interfaces**: PascalCase
-- **Private members**: prefix with `_client`
+- **Private members**: prefix with `_client`, `_tools`, etc.
+- **Private methods**: prefix with `_loadConversation`, `_saveConversation`
 
 ### Strings & Variables
 
 Use double quotes: `"text"` not `'text'`
 Use `const` by default, `let` only when reassigning
+Use `??` for defaults: `(args.timeout as number | undefined) ?? 60000`
+
+### Type Assertions & Guards
+
+Prefer type narrowing with `instanceof`:
+
+```typescript
+catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`Error: ${message}`);
+}
+```
+
+Use `as` sparingly, only for external data or known types:
+
+```typescript
+const command = args.command as string;
+const timeout = (args.timeout as number | undefined) ?? 60000;
+```
 
 ### Error Handling
 
@@ -62,6 +83,7 @@ try {
 ```
 
 **Never throw errors for expected failures** - return ToolResult instead.
+Use specific error codes: ENOENT (not found), EACCES (permission), EISDIR (is directory).
 
 ### Code Structure
 
@@ -70,15 +92,56 @@ try {
 - Extract complex conditions into well-named variables
 - Use Map-based registry pattern: register, unregister, get, list, clear
 
+```typescript
+// Guard clause pattern
+if (!tool) {
+  return { success: false, error: `Tool not found` };
+}
+
+// Helper variable pattern
+const hasActivePremiumSubscription =
+  user.subscription.plan.tier === "premium" && user.subscription.status === "active";
+```
+
+### Registry Pattern
+
+Use Map for collections with CRUD operations:
+
+```typescript
+class ToolRegistry {
+  private _tools: Map<string, Tool> = new Map();
+
+  register(tool: Tool): void {
+    /* ... */
+  }
+  unregister(name: string): boolean {
+    /* ... */
+  }
+  get(name: string): Tool | undefined {
+    /* ... */
+  }
+  list(): Tool[] {
+    return Array.from(this._tools.values());
+  }
+  clear(): void {
+    /* ... */
+  }
+}
+```
+
 ### Tool Implementation
 
 ```typescript
 export const bashTool: Tool = {
   name: "bash",
-  description: "Execute a shell command",
+  description:
+    "Execute a shell command and return stdout, stderr, and exit code. Use for running builds, tests, scripts, and system commands.",
   parameters: {
     type: "object",
-    properties: { command: { type: "string" } },
+    properties: {
+      command: { type: "string", description: "The shell command to execute" },
+      timeout: { type: "number", description: "Timeout in milliseconds" },
+    },
     required: ["command"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
@@ -106,6 +169,26 @@ async *runStream(...): AsyncGenerator<StreamChunk, void, unknown> {
 // CLI: print chunks immediately
 for await (const chunk of agent.runStream(...)) {
   if (chunk.content) process.stdout.write(chunk.content);
+}
+```
+
+### Helper Functions
+
+Extract conversion logic into helper functions:
+
+```typescript
+function convertMessages(messages: Message[]): { system?: string; messages: AnthropicMessage[] } {
+  let system: string | undefined;
+  const converted: AnthropicMessage[] = [];
+  // ...
+  return { system, messages: converted };
+}
+
+function parseContentBlocks(content: ContentBlock[]): { text: string; toolCalls?: ToolCall[] } {
+  let text = "";
+  const toolCalls: ToolCall[] = [];
+  // ...
+  return { text, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
 }
 ```
 

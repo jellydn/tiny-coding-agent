@@ -63,6 +63,115 @@ tools:
 - `tiny-agent config` - Show current configuration
 - `tiny-agent status` - Show current status (LLM provider, MCP servers, tools)
 
+## Custom Plugins
+
+Extend the agent with custom tools by creating JavaScript files in `~/.tiny-agent/plugins/`:
+
+### Example: Timezone Plugin
+
+Create `~/.tiny-agent/plugins/timezone-tool.js`:
+
+```javascript
+const timezoneAlias = {
+  vietnam: "Asia/Ho_Chi_Minh",
+  hanoi: "Asia/Ho_Chi_Minh",
+};
+
+const timezoneTool = {
+  name: "get_timezone_time",
+  description:
+    "Get current time in a specific timezone. Use this when user asks for time in a specific city or country.",
+  parameters: {
+    type: "object",
+    properties: {
+      timezone: {
+        type: "string",
+        description:
+          "Timezone string (e.g., 'America/New_York', 'Europe/London'). Country aliases: 'vietnam' → Asia/Ho_Chi_Minh",
+      },
+      format: {
+        type: "string",
+        description: "Date format (default: '%Y-%m-%d %H:%M:%S %Z %z')",
+      },
+    },
+    required: ["timezone"],
+  },
+  async execute(args) {
+    const requestedTimezone = args.timezone;
+    const format = args.format ?? "%Y-%m-%d %H:%M:%S %Z %z";
+
+    const timezone = timezoneAlias[requestedTimezone.toLowerCase()] ?? requestedTimezone;
+
+    try {
+      const { spawn } = await import("node:child_process");
+      const command = `date -z "${timezone}" +"${format}"`;
+
+      return new Promise((resolve) => {
+        const stdout = [];
+        const stderr = [];
+
+        const child = spawn(command, [], { shell: true });
+
+        child.stdout.on("data", (data) => stdout.push(data));
+        child.stderr.on("data", (data) => stderr.push(data));
+
+        child.on("close", (exitCode) => {
+          const stdoutStr = Buffer.concat(stdout).toString("utf-8").trim();
+          const stderrStr = Buffer.concat(stderr).toString("utf-8").trim();
+
+          if (exitCode !== 0) {
+            resolve({ success: false, error: `Command failed: ${stderrStr}` });
+            return;
+          }
+
+          resolve({ success: true, output: stdoutStr });
+        });
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Failed to get timezone time: ${message}` };
+    }
+  },
+};
+
+export default timezoneTool;
+```
+
+**After saving, restart the agent:**
+
+```bash
+bun run index.ts run "what time in Vietnam now?"
+# Output: The current time in Vietnam is 10:00 PM (Local Time).
+```
+
+**Plugin structure:**
+
+- `name`: Unique tool identifier (kebab-case)
+- `description`: Clear description that helps the LLM understand when to use the tool
+- `parameters`: JSON Schema defining expected inputs (properties, required)
+- `execute`: Async function that:
+  - Receives `args` object with user-provided values
+  - Returns `{ success: true, output: "..." }` on success
+  - Returns `{ success: false, error: "..." }` on failure
+
+**Enable/disable tools in config:**
+
+```yaml
+tools:
+  get_timezone_time:
+    enabled: true # Enable plugin tool
+  web_search:
+    enabled: false # Disable built-in tool
+```
+
+**Plugin tips:**
+
+- Use JavaScript (not TypeScript) for plugins to avoid type dependency issues
+- Provide helpful descriptions - LLM uses them to decide which tool to call
+- Handle errors gracefully and return structured results
+- Use async/await for any async operations
+- Plugin files are auto-loaded on agent startup
+
 ## Project Structure
 
 ```
