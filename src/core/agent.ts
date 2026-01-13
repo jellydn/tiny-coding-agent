@@ -12,11 +12,18 @@ export interface AgentOptions {
   maxContextTokens?: number;
 }
 
+export interface ToolExecution {
+  name: string;
+  status: "running" | "complete" | "error";
+  summary?: string;
+}
+
 export interface AgentStreamChunk {
   content: string;
   iterations: number;
   done: boolean;
   toolCalls?: string[];
+  toolExecutions?: ToolExecution[];
 }
 
 export interface AgentResponse {
@@ -159,8 +166,19 @@ export class Agent {
         return;
       }
 
-      // Execute tool calls
-      for (const toolCall of assistantToolCalls) {
+      // Signal tool execution starting
+      yield {
+        content: "",
+        iterations: iteration + 1,
+        done: false,
+        toolExecutions: assistantToolCalls.map((tc) => ({
+          name: tc.name,
+          status: "running" as const,
+        })),
+      };
+
+      // Execute all tool calls in parallel
+      const toolExecutionPromises = assistantToolCalls.map(async (toolCall) => {
         if (this._verbose) {
           console.log(`\nExecuting tool: ${toolCall.name} with args:`, toolCall.arguments);
         }
@@ -171,6 +189,28 @@ export class Agent {
           console.log(`Tool result: ${result.error || result.output || "(no output)"}`);
         }
 
+        return {
+          toolCall,
+          result,
+        };
+      });
+
+      const toolExecutionResults = await Promise.all(toolExecutionPromises);
+
+      // Signal tool execution completion
+      yield {
+        content: "",
+        iterations: iteration + 1,
+        done: false,
+        toolExecutions: toolExecutionResults.map(({ toolCall, result }) => ({
+          name: toolCall.name,
+          status: result.success ? "complete" : "error",
+          summary: result.error ? "Failed" : undefined,
+        })),
+      };
+
+      // Add tool results to messages
+      for (const { toolCall, result } of toolExecutionResults) {
         messages.push({
           role: "tool",
           content: result.error || result.output || "(no output)",

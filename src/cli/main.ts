@@ -240,6 +240,20 @@ async function handleChat(
           if (chunk.content) {
             process.stdout.write(chunk.content);
           }
+
+          if (chunk.toolExecutions) {
+            for (const te of chunk.toolExecutions) {
+              if (te.status === "running") {
+                process.stdout.write(`\n[${te.name}...]`);
+              } else if (te.status === "complete") {
+                process.stdout.write(`\r[${te.name}✓]`);
+              } else if (te.status === "error") {
+                process.stdout.write(`\r[${te.name}✗]`);
+              }
+            }
+            process.stdout.write("\nAgent: ");
+          }
+
           if (chunk.done) {
             process.stdout.write("\n\n");
           }
@@ -282,6 +296,18 @@ async function handleRun(
     for await (const chunk of agent.runStream(prompt, model)) {
       if (chunk.content) {
         process.stdout.write(chunk.content);
+      }
+
+      if (chunk.toolExecutions) {
+        for (const te of chunk.toolExecutions) {
+          if (te.status === "running") {
+            process.stdout.write(`\n[${te.name}...]`);
+          } else if (te.status === "complete") {
+            process.stdout.write(`\r[${te.name}✓]`);
+          } else if (te.status === "error") {
+            process.stdout.write(`\r[${te.name}✗]`);
+          }
+        }
       }
     }
     process.stdout.write("\n");

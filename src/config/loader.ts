@@ -9,10 +9,12 @@ const CONFIG_DIR = join(homedir(), ".tiny-agent");
 const YAML_PATH = join(CONFIG_DIR, "config.yaml");
 const JSON_PATH = join(CONFIG_DIR, "config.json");
 
+const SYSTEMS_PROMPT =
+  "You are a helpful AI assistant with access to tools. Use available tools to help the user. When you have enough information to answer, provide your final response.";
 function getDefaultConfig(): Config {
   return {
     defaultModel: "llama3.2",
-    systemPrompt: "You are a helpful coding assistant. Be concise.",
+    systemPrompt: SYSTEMS_PROMPT,
     providers: {
       ollama: {
         baseUrl: "http://localhost:11434",
@@ -114,7 +116,7 @@ export function loadConfig(): Config {
   const maxContextTokensOverride = process.env.TINY_AGENT_MAX_CONTEXT_TOKENS;
   if (maxContextTokensOverride) {
     const parsed = parseInt(maxContextTokensOverride, 10);
-    if (!isNaN(parsed) && parsed > 0) {
+    if (!Number.isNaN(parsed) && parsed > 0) {
       config = { ...config, maxContextTokens: parsed };
     }
   }
