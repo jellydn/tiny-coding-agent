@@ -235,6 +235,7 @@ async function handleRun(
   try {
     const response = await agent.run(prompt, model);
     console.log(response.content);
+    process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`Error: ${message}`);
@@ -313,6 +314,7 @@ async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void
       console.log(`    - ${name}`);
     }
   }
+  process.exit(0);
 }
 
 export async function main(): Promise<void> {
