@@ -14,6 +14,7 @@ interface CliOptions {
   provider?: string;
   verbose?: boolean;
   save?: boolean;
+  help?: boolean;
 }
 
 function parseArgs(): {
@@ -30,7 +31,9 @@ function parseArgs(): {
     if (arg === undefined) {
       continue;
     }
-    if (arg === "--model" && i + 1 < args.length) {
+    if (arg === "--help" || arg === "-h") {
+      options.help = true;
+    } else if (arg === "--model" && i + 1 < args.length) {
       const nextArg = args[i + 1];
       if (nextArg !== undefined) {
         options.model = nextArg;
@@ -239,6 +242,50 @@ async function handleRun(
   }
 }
 
+function showHelp(): void {
+  console.log(`
+    ╔════════════════════════════════════════════════╗
+    ║                                                ║
+    ║            ◯                                   ║
+    ║            │                                   ║
+    ║     ┌──────┴──────┐                            ║
+    ║     │  <      />  │   TINY CODING AGENT        ║
+    ║     │             │                            ║
+    ║     │     ___     │                            ║
+    ║     └──────┴──────┘                            ║
+    ║                                                ║
+    ╚════════════════════════════════════════════════╝
+
+A lightweight, extensible coding agent built in TypeScript.
+
+USAGE:
+    tiny-agent [command] [args...]     Run a command
+    tiny-agent chat                    Interactive chat mode (default)
+    tiny-agent run <prompt>            Run a single prompt
+    tiny-agent config                  Show current configuration
+
+OPTIONS:
+    --model <model>                    Override default model
+    --provider <provider>              Override provider (openai|anthropic|ollama)
+    --verbose, -v                      Enable verbose logging
+    --save                             Save conversation to file
+    --help, -h                         Show this help message
+
+EXAMPLES:
+    tiny-agent                         Start interactive chat
+    tiny-agent chat                    Start interactive chat explicitly
+    tiny-agent run "Fix this bug"      Run a single prompt
+    tiny-agent run --model claude-3-5-sonnet "Help me"  Use specific model
+    tiny-agent config                  Show current configuration
+    tiny-agent --help                  Show this help message
+
+CONFIG:
+    ~/.tiny-agent/config.yaml          Configuration file
+
+For more information, visit: https://github.com/anomalyco/tiny-agent
+  `);
+}
+
 async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void> {
   console.log("Current Configuration:");
   console.log(`  Default Model: ${config.defaultModel}`);
@@ -271,6 +318,12 @@ async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void
 export async function main(): Promise<void> {
   try {
     const { command, args, options } = parseArgs();
+
+    if (options.help) {
+      showHelp();
+      process.exit(0);
+    }
+
     const config = loadConfig();
 
     if (command === "chat") {
@@ -282,7 +335,7 @@ export async function main(): Promise<void> {
     } else {
       console.error(`Unknown command: ${command}`);
       console.error("Available commands: chat, run <prompt>, config");
-      console.error("Options: --model <model>, --provider <provider>, --verbose, --save");
+      console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --help");
       process.exit(1);
     }
   } catch (err) {
