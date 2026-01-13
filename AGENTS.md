@@ -28,7 +28,7 @@ bun run lint:fix      # Auto-fix issues
 bun run format
 bun run format:check  # Check without modifying
 
-# Run tests (when implemented)
+# Run tests (Vitest - not yet implemented)
 bun test
 bun test --filter <pattern>    # Run single test file
 ```
@@ -42,6 +42,8 @@ bun test --filter <pattern>    # Run single test file
 - Use explicit types for function parameters and return types
 - Prefer interfaces over type aliases for object shapes
 - Use `satisfies` operator for type assertions when appropriate
+- Use `as const` for literal types when needed
+- Use type guards with type predicates for runtime type narrowing
 - Use path aliases: `@/*` maps to `src/*`
 
 ### Imports
@@ -69,6 +71,8 @@ bun test --filter <pattern>    # Run single test file
 - Aggregate validation errors into arrays with field paths
 - Never throw errors for expected failures in tool execution
 - Log errors with context but continue execution where possible
+- Use `NodeJS.ErrnoException` type assertions for file system errors
+- Check specific error codes: `ENOENT` (not found), `EACCES` (permission denied), `ENOTDIR` (not a directory)
 - Use custom error types for specific failure modes
 
 ### Code Structure
@@ -78,6 +82,8 @@ bun test --filter <pattern>    # Run single test file
 - Extract complex conditions into well-named variables
 - Separate pure logic from side effects
 - Use type guards with type predicates for runtime type narrowing
+- Use Map-based registry pattern: register, unregister, get, list, clear methods
+- Handle duplicate registrations with descriptive error messages
 
 ### Tool Interface
 
@@ -109,6 +115,13 @@ src/
   cli/          # Command-line interface
   config/       # Configuration loading
 ```
+
+### File I/O Patterns
+
+- Use `node:fs/promises` for async file operations
+- Use `recursive: true` when creating directories with mkdir
+- Use Buffer for collecting child process output streams
+- Always handle ENOENT, EACCES, and ENOTDIR error codes
 
 ### Configuration
 

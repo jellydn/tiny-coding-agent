@@ -11,7 +11,8 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "prepare": "husky"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -22,10 +23,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "eslint": "^9.39.2",
+    "husky": "^9.1.7",
     "oxfmt": "^0.24.0",
     "oxlint": "^1.39.0",
-    "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

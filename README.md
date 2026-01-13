@@ -1,5 +1,9 @@
 # Tiny Coding Agent
 
+<p align="center">
+  <img src="docs/logo.svg" alt="Tiny Coding Agent Logo" width="120" height="120">
+</p>
+
 A lightweight, extensible coding agent built in TypeScript that helps developers with coding tasks across TypeScript, React, JavaScript, Node.js, Bash, and markdown/JSON.
 
 ## Features
