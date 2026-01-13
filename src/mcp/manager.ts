@@ -144,7 +144,7 @@ export class McpManager {
   registerToolsWithRegistry(registry: ToolRegistry): void {
     for (const [serverName, client] of this._clients) {
       for (const toolDef of client.tools) {
-        const tool = this._createToolFromMcp(serverName, toolDef);
+        const tool = this.createToolFromMcp(serverName, toolDef);
         try {
           registry.register(tool);
         } catch {
@@ -156,7 +156,7 @@ export class McpManager {
     }
   }
 
-  private _createToolFromMcp(serverName: string, toolDef: McpToolDefinition): Tool {
+  createToolFromMcp(serverName: string, toolDef: McpToolDefinition): Tool {
     const prefixedName = `mcp_${serverName}_${toolDef.name}`;
 
     return {

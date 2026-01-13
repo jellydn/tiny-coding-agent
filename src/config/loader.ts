@@ -1,13 +1,42 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
 const CONFIG_DIR = join(homedir(), ".tiny-agent");
 const YAML_PATH = join(CONFIG_DIR, "config.yaml");
 const JSON_PATH = join(CONFIG_DIR, "config.json");
+
+function getDefaultConfig(): Config {
+  return {
+    defaultModel: "llama3.2",
+    systemPrompt: "You are a helpful coding assistant. Be concise.",
+    providers: {
+      ollama: {
+        baseUrl: "http://localhost:11434",
+      },
+    },
+    mcpServers: {
+      context7: {
+        command: "npx",
+        args: ["-y", "@upstash/context7-mcp"],
+      },
+    },
+    tools: {},
+  };
+}
+
+function createDefaultConfig(): void {
+  if (!existsSync(CONFIG_DIR)) {
+    mkdirSync(CONFIG_DIR, { recursive: true });
+  }
+
+  const defaultConfig = getDefaultConfig();
+  const configContent = stringifyYaml(defaultConfig);
+  writeFileSync(YAML_PATH, configContent, "utf-8");
+}
 
 function interpolateEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, envVar: string) => {
@@ -49,7 +78,10 @@ export function loadConfig(): Config {
     const content = readFileSync(JSON_PATH, "utf-8");
     rawConfig = JSON.parse(content);
   } else {
-    throw new Error(`Config file not found. Create ${YAML_PATH} or ${JSON_PATH}`);
+    createDefaultConfig();
+    const content = readFileSync(YAML_PATH, "utf-8");
+    rawConfig = parseYaml(content);
+    configPath = YAML_PATH;
   }
 
   const interpolatedConfig = interpolateObject(rawConfig);

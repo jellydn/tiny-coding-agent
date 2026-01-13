@@ -1,155 +1,145 @@
 # Tiny Coding Agent - Development Guide
 
-## Overview
-
-A lightweight, extensible coding agent built in TypeScript. Supports multiple LLM providers (OpenAI, Anthropic, Ollama), MCP client integration, and a plugin system for custom tools.
-
 ## Build Commands
 
 ```bash
-# Run the agent
-bun run index.ts
-
-# Development mode with watch
-bun run dev
-
-# Compile to standalone binary
-bun run build
-
-# Type check (Tsc)
-npx tsc --noEmit
-bun run typecheck
-
-# Linting with oxlint
-bun run lint
-bun run lint:fix      # Auto-fix issues
-
-# Formatting with oxfmt
-bun run format
-bun run format:check  # Check without modifying
-
-# Run tests (Vitest - not yet implemented)
-bun test
-bun test --filter <pattern>    # Run single test file
+bun run index.ts           # Run agent
+bun run dev               # Watch mode
+bun run build             # Compile to binary
+bun run typecheck         # Type check
+bun run lint              # Lint
+bun run lint:fix          # Auto-fix lint issues
+bun run format            # Format code
+bun run format:check      # Check formatting
 ```
+
+**IMPORTANT**: After code changes, always run `bun run typecheck && bun run lint`.
 
 ## Code Style Guidelines
 
 ### TypeScript
 
-- Use ES modules with TypeScript 5+
-- Enable strict mode in tsconfig.json
-- Use explicit types for function parameters and return types
-- Prefer interfaces over type aliases for object shapes
-- Use `satisfies` operator for type assertions when appropriate
-- Use `as const` for literal types when needed
-- Use type guards with type predicates for runtime type narrowing
-- Use path aliases: `@/*` maps to `src/*`
+- ES modules with TypeScript 5+ and strict mode
+- Compiler options: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
 
 ### Imports
 
-- Use path imports for internal modules: `import { Tool } from './tools/base.js'`
-- Include `.js` extension for relative imports
-- Group imports: external → internal → relative
-- Avoid default exports for better refactoring support
+```typescript
+import * as fs from "node:fs/promises"; // Node built-ins with node: prefix
+import OpenAI from "openai"; // External deps
+import type { Tool } from "./types.js"; // Internal: .js extension
+import { ToolRegistry } from "./registry.js"; // Order: External → internal
+```
 
 ### Naming Conventions
 
-- **Files**: kebab-case for utilities, PascalCase for classes/components
+- **Files**: kebab-case, PascalCase for classes
 - **Variables/functions**: camelCase
 - **Constants**: SCREAMING_SNAKE_CASE
 - **Classes/Interfaces**: PascalCase
-- **Private members**: prefix with underscore `_client`
+- **Private members**: prefix with `_client`
 
-### String Quotes
+### Strings
 
-- Use double quotes for all strings: `"text"` not `'text'`
+Use double quotes: `"text"` not `'text'`
 
 ### Error Handling
 
-- Use structured error responses: `{ success: boolean; output?: string; error?: string }`
-- Aggregate validation errors into arrays with field paths
-- Never throw errors for expected failures in tool execution
-- Log errors with context but continue execution where possible
-- Use `NodeJS.ErrnoException` type assertions for file system errors
-- Check specific error codes: `ENOENT` (not found), `EACCES` (permission denied), `ENOTDIR` (not a directory)
-- Use custom error types for specific failure modes
+Tools must return structured results:
+
+```typescript
+interface ToolResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+}
+
+try {
+  await fs.readFile(filePath, "utf-8");
+} catch (err) {
+  const error = err as NodeJS.ErrnoException;
+  if (error.code === "ENOENT") {
+    return { success: false, error: `File not found: ${filePath}` };
+  }
+  return { success: false, error: error.message };
+}
+```
+
+**Never throw errors for expected failures** - return ToolResult instead.
 
 ### Code Structure
 
-- Keep functions small and single-purpose (ideally <50 lines)
-- Use guard clauses to reduce nesting: check for errors early and return
+- Keep functions small (<50 lines)
+- Use guard clauses: check for errors early and return
 - Extract complex conditions into well-named variables
-- Separate pure logic from side effects
-- Use type guards with type predicates for runtime type narrowing
-- Use Map-based registry pattern: register, unregister, get, list, clear methods
-- Handle duplicate registrations with descriptive error messages
+- Use Map-based registry pattern: register, unregister, get, list, clear
 
-### Tool Interface
-
-All tools must implement:
+### Tool Implementation
 
 ```typescript
 interface Tool {
   name: string;
   description: string;
-  parameters: Record<string, unknown>; // JSON Schema
+  parameters: Record<string, unknown>;
   execute(args: Record<string, unknown>): Promise<ToolResult>;
+}
+
+export const bashTool: Tool = {
+  name: "bash",
+  description: "Execute a shell command",
+  parameters: {
+    type: "object",
+    properties: { command: { type: "string" } },
+    required: ["command"],
+  },
+  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+    const command = args.command as string;
+    return { success: true, output: "result" };
+  },
+};
+```
+
+### Type Guards
+
+```typescript
+function isTool(obj: unknown): obj is Tool {
+  if (!obj || typeof obj !== "object") return false;
+  const tool = obj as Record<string, unknown>;
+  return (
+    typeof tool.name === "string" &&
+    typeof tool.description === "string" &&
+    typeof tool.execute === "function"
+  );
 }
 ```
 
-### Async Patterns
+### File I/O Patterns
 
-- Use async generators for streaming responses
-- Use `for await...of` for iterating over async streams
-- Buffer partial results when processing streaming data
+```typescript
+await fs.readFile(path, "utf-8");
+await fs.mkdir(dirPath, { recursive: true });
+
+const stdout: Buffer[] = [];
+child.stdout.on("data", (data: Buffer) => stdout.push(data));
+const output = Buffer.concat(stdout).toString("utf-8");
+```
 
 ### Project Structure
 
 ```
 src/
   core/         # Agent loop, context management
-  tools/        # Built-in tools (file, bash, grep, etc.)
-  providers/    # LLM provider implementations
+  tools/        # Built-in tools (file, bash, grep, glob, web search)
+  providers/    # LLM providers (OpenAI, Anthropic, Ollama)
   mcp/          # MCP client integration
   cli/          # Command-line interface
   config/       # Configuration loading
 ```
 
-### File I/O Patterns
+### Dependencies
 
-- Use `node:fs/promises` for async file operations
-- Use `recursive: true` when creating directories with mkdir
-- Use Buffer for collecting child process output streams
-- Always handle ENOENT, EACCES, and ENOTDIR error codes
-
-### Configuration
-
-- Load from `~/.tiny-agent/config.yaml` (fallback to `config.json`)
-- Support environment variable overrides (e.g., `TINY_AGENT_MODEL`)
-- Validate schema on load with helpful errors
-- Support `${ENV_VAR}` interpolation in config values
-
-### Key Dependencies
-
-- `@anthropic-ai/sdk` for Claude
-- `openai` for OpenAI-compatible APIs
-- `yaml` for config parsing
-
-### TypeScript Configuration
-
-```json
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "paths": { "@/*": ["src/*"] }
-  }
-}
-```
+- `@anthropic-ai/sdk` - Claude provider
+- `openai` - OpenAI-compatible APIs (Groq, Together, OpenRouter)
+- `ollama` - Local model provider
+- `@modelcontextprotocol/sdk` - MCP client
+- `yaml` - Config parsing

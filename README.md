@@ -26,7 +26,13 @@ bun run index.ts
 
 ## Configuration
 
-Create `~/.tiny-agent/config.yaml`:
+A default config is automatically created on first run with:
+
+- **Local LLM**: Ollama with llama3.2 model
+- **Context7 MCP**: Up-to-date library documentation (no API key needed)
+- **All Tools**: Enabled by default (can be disabled in config)
+
+To customize, create `~/.tiny-agent/config.yaml`:
 
 ```yaml
 defaultModel: gpt-4o
@@ -37,13 +43,17 @@ providers:
     apiKey: ${ANTHROPIC_API_KEY}
   ollama:
     baseUrl: http://localhost:11434
+mcpServers:
+  context7:
+    command: npx
+    args: ["-y", "@upstash/context7-mcp"]
 tools:
-  - read_file
-  - write_file
-  - bash
-  - grep
-  - glob
-  - web_search
+  read_file:
+    enabled: true
+  bash:
+    enabled: true
+  web_search:
+    enabled: false # Disable specific tools
 ```
 
 ## CLI Commands

@@ -132,16 +132,40 @@ async function createLLMClient(
 async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
   const registry = new ToolRegistry();
 
-  // Register built-in tools
-  registry.registerMany(fileTools);
-  registry.register(bashTool);
-  registry.registerMany(searchTools);
-  registry.register(webSearchTool);
+  const isToolEnabled = (name: string): boolean => {
+    if (config.tools === undefined) {
+      return true;
+    }
+    const toolConfig = config.tools[name];
+    return toolConfig === undefined || toolConfig.enabled === true;
+  };
+
+  // Register built-in tools if enabled
+  for (const tool of fileTools) {
+    if (isToolEnabled(tool.name)) {
+      registry.register(tool);
+    }
+  }
+  if (isToolEnabled(bashTool.name)) {
+    registry.register(bashTool);
+  }
+  for (const tool of searchTools) {
+    if (isToolEnabled(tool.name)) {
+      registry.register(tool);
+    }
+  }
+  if (isToolEnabled(webSearchTool.name)) {
+    registry.register(webSearchTool);
+  }
 
   // Load and register plugins
   try {
     const plugins = await loadPlugins();
-    registry.registerMany(plugins);
+    for (const tool of plugins) {
+      if (isToolEnabled(tool.name)) {
+        registry.register(tool);
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`Warning: Failed to load plugins: ${message}`);
@@ -153,7 +177,20 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
     for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
       await mcpManager.addServer(serverName, serverConfig);
     }
-    mcpManager.registerToolsWithRegistry(registry);
+    const allMcpTools = mcpManager.getAllTools();
+    for (const [serverName, toolDefs] of allMcpTools) {
+      for (const toolDef of toolDefs) {
+        const tool = mcpManager.createToolFromMcp(serverName, toolDef);
+        if (isToolEnabled(tool.name)) {
+          try {
+            registry.register(tool);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Warning: Failed to register MCP tool: ${message}`);
+          }
+        }
+      }
+    }
   }
 
   return registry;
