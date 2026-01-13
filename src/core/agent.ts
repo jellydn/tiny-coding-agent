@@ -12,6 +12,13 @@ export interface AgentOptions {
   maxContextTokens?: number;
 }
 
+export interface AgentStreamChunk {
+  content: string;
+  iterations: number;
+  done: boolean;
+  toolCalls?: string[];
+}
+
 export interface AgentResponse {
   content: string;
   iterations: number;
@@ -39,7 +46,10 @@ export class Agent {
     this._maxContextTokens = options.maxContextTokens;
   }
 
-  async run(userPrompt: string, model: string): Promise<AgentResponse> {
+  async *runStream(
+    userPrompt: string,
+    model: string,
+  ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     // Load previous conversation if file is configured and exists
     let messages = this._conversationFile ? this._loadConversation() : [];
 
@@ -79,8 +89,8 @@ export class Agent {
         console.log(`\n[Iteration ${iteration + 1}]`);
       }
 
-      // Call LLM
-      const response = await this._llmClient.chat({
+      // Call LLM with streaming
+      const stream = this._llmClient.stream({
         model,
         messages: [
           {
@@ -92,44 +102,65 @@ export class Agent {
         tools: tools.length > 0 ? tools : undefined,
       });
 
+      let fullContent = "";
+      let responseToolCalls: string[] = [];
+      const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] =
+        [];
+
+      for await (const chunk of stream) {
+        if (chunk.content) {
+          fullContent += chunk.content;
+          yield {
+            content: chunk.content,
+            iterations: iteration + 1,
+            done: false,
+          };
+        }
+
+        if (chunk.toolCalls) {
+          assistantToolCalls.push(...chunk.toolCalls);
+          responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
+        }
+      }
+
       if (this._verbose) {
-        console.log(`LLM Response: ${response.content}`);
-        if (response.toolCalls) {
-          console.log(`Tool Calls: ${response.toolCalls.map((tc) => tc.name).join(", ")}`);
+        console.log(`LLM Response: ${fullContent}`);
+        if (responseToolCalls.length > 0) {
+          console.log(`Tool Calls: ${responseToolCalls.join(", ")}`);
         }
       }
 
       // Add assistant's response to messages
       const assistantMessage: Message = {
         role: "assistant",
-        content: response.content,
+        content: fullContent,
       };
 
-      if (response.toolCalls && response.toolCalls.length > 0) {
-        assistantMessage.toolCalls = response.toolCalls;
+      if (assistantToolCalls.length > 0) {
+        assistantMessage.toolCalls = assistantToolCalls;
       }
 
       messages.push(assistantMessage);
 
       // If no tool calls or stop finish reason, we're done
-      if (!response.toolCalls || response.toolCalls.length === 0) {
+      if (assistantToolCalls.length === 0) {
         if (this._verbose) {
           console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
         }
-        const agentResponse: AgentResponse = {
-          content: response.content,
-          iterations: iteration + 1,
-          messages,
-        };
 
         // Save conversation if file is configured
         this._saveConversation(messages);
 
-        return agentResponse;
+        yield {
+          content: "",
+          iterations: iteration + 1,
+          done: true,
+        };
+        return;
       }
 
       // Execute tool calls
-      for (const toolCall of response.toolCalls) {
+      for (const toolCall of assistantToolCalls) {
         if (this._verbose) {
           console.log(`\nExecuting tool: ${toolCall.name} with args:`, toolCall.arguments);
         }
@@ -150,6 +181,25 @@ export class Agent {
 
     // Max iterations reached
     throw new Error(`Agent reached max iterations (${this._maxIterations}) without finishing`);
+  }
+
+  async run(userPrompt: string, model: string): Promise<AgentResponse> {
+    const messages: Message[] = [];
+    let fullContent = "";
+    let iterations = 0;
+
+    for await (const chunk of this.runStream(userPrompt, model)) {
+      if (!chunk.done) {
+        fullContent += chunk.content;
+      }
+      iterations = chunk.iterations;
+    }
+
+    return {
+      content: fullContent,
+      iterations,
+      messages,
+    };
   }
 
   private _getToolDefinitions(): ToolDefinition[] {

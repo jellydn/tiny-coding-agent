@@ -224,6 +224,7 @@ async function handleChat(
       if (userInput.toLowerCase() === "exit") {
         rl.close();
         console.log("Goodbye!");
+        process.exit(0);
         return;
       }
 
@@ -233,11 +234,18 @@ async function handleChat(
       }
 
       try {
-        const response = await agent.run(userInput, model);
-        console.log(`\nAgent: ${response.content}\n`);
+        process.stdout.write("\nAgent: ");
+        for await (const chunk of agent.runStream(userInput, model)) {
+          if (chunk.content) {
+            process.stdout.write(chunk.content);
+          }
+          if (chunk.done) {
+            process.stdout.write("\n\n");
+          }
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`Error: ${message}\n`);
+        console.error(`\nError: ${message}\n`);
       }
 
       askQuestion();
@@ -270,12 +278,16 @@ async function handleRun(
   });
 
   try {
-    const response = await agent.run(prompt, model);
-    console.log(response.content);
+    for await (const chunk of agent.runStream(prompt, model)) {
+      if (chunk.content) {
+        process.stdout.write(chunk.content);
+      }
+    }
+    process.stdout.write("\n");
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Error: ${message}`);
+    console.error(`\nError: ${message}`);
     process.exit(1);
   }
 }

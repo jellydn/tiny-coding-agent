@@ -11,6 +11,8 @@ bun run lint              # Lint
 bun run lint:fix          # Auto-fix lint issues
 bun run format            # Format code
 bun run format:check      # Check formatting
+bun run test              # Run tests (when implemented)
+bun run test <file>       # Run single test file
 ```
 
 **IMPORTANT**: After code changes, always run `bun run typecheck && bun run lint`.
@@ -28,7 +30,6 @@ bun run format:check      # Check formatting
 import * as fs from "node:fs/promises"; // Node built-ins with node: prefix
 import OpenAI from "openai"; // External deps
 import type { Tool } from "./types.js"; // Internal: .js extension
-import { ToolRegistry } from "./registry.js"; // Order: External → internal
 ```
 
 ### Naming Conventions
@@ -39,21 +40,16 @@ import { ToolRegistry } from "./registry.js"; // Order: External → internal
 - **Classes/Interfaces**: PascalCase
 - **Private members**: prefix with `_client`
 
-### Strings
+### Strings & Variables
 
 Use double quotes: `"text"` not `'text'`
+Use `const` by default, `let` only when reassigning
 
 ### Error Handling
 
 Tools must return structured results:
 
 ```typescript
-interface ToolResult {
-  success: boolean;
-  output?: string;
-  error?: string;
-}
-
 try {
   await fs.readFile(filePath, "utf-8");
 } catch (err) {
@@ -77,13 +73,6 @@ try {
 ### Tool Implementation
 
 ```typescript
-interface Tool {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  execute(args: Record<string, unknown>): Promise<ToolResult>;
-}
-
 export const bashTool: Tool = {
   name: "bash",
   description: "Execute a shell command",
@@ -94,34 +83,49 @@ export const bashTool: Tool = {
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const command = args.command as string;
+    const timeout = (args.timeout as number | undefined) ?? 60000;
     return { success: true, output: "result" };
   },
 };
 ```
 
-### Type Guards
+**Guidelines**: Clear descriptions, `??` for defaults, specific error codes (ENOENT, EACCES)
+
+### Streaming Patterns
+
+Use `AsyncGenerator<StreamChunk>` for real-time responses:
 
 ```typescript
-function isTool(obj: unknown): obj is Tool {
-  if (!obj || typeof obj !== "object") return false;
-  const tool = obj as Record<string, unknown>;
-  return (
-    typeof tool.name === "string" &&
-    typeof tool.description === "string" &&
-    typeof tool.execute === "function"
-  );
+async *runStream(...): AsyncGenerator<StreamChunk, void, unknown> {
+  for await (const chunk of this._llmClient.stream(...)) {
+    if (chunk.content) yield { content: chunk.content, done: false };
+    if (chunk.done) { yield { done: true }; return; }
+  }
+}
+
+// CLI: print chunks immediately
+for await (const chunk of agent.runStream(...)) {
+  if (chunk.content) process.stdout.write(chunk.content);
 }
 ```
 
-### File I/O Patterns
+### Configuration
+
+Env var interpolation: `apiKey: ${OPENAI_API_KEY}`
+Override via: `TINY_AGENT_MODEL`, `TINY_AGENT_SYSTEM_PROMPT`, `TINY_AGENT_CONVERSATION_FILE`, `TINY_AGENT_MAX_CONTEXT_TOKENS`
+
+### Testing
 
 ```typescript
-await fs.readFile(path, "utf-8");
-await fs.mkdir(dirPath, { recursive: true });
+import { describe, it, expect } from "bun:test";
 
-const stdout: Buffer[] = [];
-child.stdout.on("data", (data: Buffer) => stdout.push(data));
-const output = Buffer.concat(stdout).toString("utf-8");
+describe("ToolRegistry", () => {
+  it("should register and retrieve tools", () => {
+    const registry = new ToolRegistry();
+    registry.register(bashTool);
+    expect(registry.get("bash")).toBe(bashTool);
+  });
+});
 ```
 
 ### Project Structure
