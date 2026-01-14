@@ -1,7 +1,14 @@
 import { spawn } from "node:child_process";
 import type { Tool, ToolResult } from "./types.js";
+import { z } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 60000;
+
+const bashArgsSchema = z.object({
+  command: z.string(),
+  cwd: z.string().optional(),
+  timeout: z.number().optional(),
+});
 
 export const bashTool: Tool = {
   name: "bash",
@@ -26,9 +33,13 @@ export const bashTool: Tool = {
     required: ["command"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const command = args.command as string;
-    const cwd = args.cwd as string | undefined;
-    const timeout = (args.timeout as number | undefined) ?? DEFAULT_TIMEOUT_MS;
+    const parsed = bashArgsSchema.safeParse(args);
+    if (!parsed.success) {
+      return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+    }
+
+    const { command, cwd, timeout } = parsed.data;
+    const effectiveTimeout = timeout ?? DEFAULT_TIMEOUT_MS;
 
     return new Promise((resolve) => {
       const stdout: Buffer[] = [];
@@ -49,7 +60,7 @@ export const bashTool: Tool = {
             child.kill("SIGKILL");
           }
         }, 1000);
-      }, timeout);
+      }, effectiveTimeout);
 
       child.stdout.on("data", (data: Buffer) => {
         stdout.push(data);
@@ -76,7 +87,7 @@ export const bashTool: Tool = {
         if (killed) {
           resolve({
             success: false,
-            error: `Command timed out after ${timeout}ms`,
+            error: `Command timed out after ${effectiveTimeout}ms`,
             output: formatOutput(stdoutStr, stderrStr, null),
           });
           return;

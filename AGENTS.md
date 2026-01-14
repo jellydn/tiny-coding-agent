@@ -3,19 +3,19 @@
 ## Build Commands
 
 ```bash
-bun run index.ts           # Run agent
-bun run dev               # Watch mode
-bun run build             # Compile to binary
-bun run typecheck         # Type check
-bun run lint              # Lint
-bun run lint:fix          # Auto-fix lint issues
-bun run format            # Format code
-bun run format:check      # Check formatting
-bun run test              # Run tests (when implemented)
-bun run test <file>       # Run single test file
+bun run index.ts <command>     # Run agent (chat, run, memory, config, status)
+bun run dev                    # Watch mode
+bun run build                  # Compile to binary (outputs tiny-agent)
+bun run typecheck              # Type check (tsc --noEmit)
+bun run lint                   # Lint (oxlint)
+bun run lint:fix               # Auto-fix lint issues
+bun run format                 # Format code (oxfmt)
+bun run format:check           # Check formatting
+bun test                       # Run tests (bun test)
+bun test <file>                # Run single test file
 ```
 
-**IMPORTANT**: After code changes, always run `bun run typecheck && bun run lint`.
+**After code changes, always run**: `bun run format && bun run typecheck && bun run lint`
 
 ## Code Style Guidelines
 
@@ -23,9 +23,10 @@ bun run test <file>       # Run single test file
 
 - ES modules with TypeScript 5+ and strict mode
 - Compiler options: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
-- Always use `.js` extension for internal imports: `import type { Tool } from "./types.js"`
+- Use `.js` extension for internal imports
+- Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
 
-### Imports
+### Imports (order matters)
 
 ```typescript
 import * as fs from "node:fs/promises"; // Node built-ins with node: prefix
@@ -35,40 +36,25 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 
 ### Naming Conventions
 
-- **Files**: kebab-case, PascalCase for classes
-- **Variables/functions**: camelCase
-- **Constants**: SCREAMING_SNAKE_CASE
-- **Classes/Interfaces**: PascalCase
-- **Private members**: prefix with `_client`, `_tools`, etc.
-- **Private methods**: prefix with `_loadConversation`, `_saveConversation`
+| Style                  | Usage                                 |
+| ---------------------- | ------------------------------------- |
+| `kebab-case`           | Files                                 |
+| `PascalCase`           | Classes, interfaces, types            |
+| `camelCase`            | Variables, functions                  |
+| `SCREAMING_SNAKE_CASE` | Constants                             |
+| `_prefix`              | Private members (`_client`, `_tools`) |
 
 ### Strings & Variables
 
-Use double quotes: `"text"` not `'text'`
-Use `const` by default, `let` only when reassigning
-Use `??` for defaults: `(args.timeout as number | undefined) ?? 60000`
-
-### Type Assertions & Guards
-
-Prefer type narrowing with `instanceof`:
-
 ```typescript
-catch (err) {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`Error: ${message}`);
-}
-```
-
-Use `as` sparingly, only for external data or known types:
-
-```typescript
-const command = args.command as string;
-const timeout = (args.timeout as number | undefined) ?? 60000;
+const message = "text"; // Double quotes
+let count = 0; // let only when reassigning
+const timeout = args.timeout ?? 60000; // ?? for defaults
 ```
 
 ### Error Handling
 
-Tools must return structured results:
+Return structured results, never throw for expected failures:
 
 ```typescript
 try {
@@ -82,122 +68,32 @@ try {
 }
 ```
 
-**Never throw errors for expected failures** - return ToolResult instead.
-Use specific error codes: ENOENT (not found), EACCES (permission), EISDIR (is directory).
+Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`.
 
 ### Code Structure
 
-- Keep functions small (<50 lines)
-- Use guard clauses: check for errors early and return
-- Extract complex conditions into well-named variables
-- Use Map-based registry pattern: register, unregister, get, list, clear
-
-```typescript
-// Guard clause pattern
-if (!tool) {
-  return { success: false, error: `Tool not found` };
-}
-
-// Helper variable pattern
-const hasActivePremiumSubscription =
-  user.subscription.plan.tier === "premium" && user.subscription.status === "active";
-```
+- Keep functions small (<50 lines), use guard clauses
+- Extract complex conditions into named variables
+- Classes use `_` prefix for private fields
 
 ### Registry Pattern
 
-Use Map for collections with CRUD operations:
+Use Map with CRUD: `register`, `unregister`, `get`, `list`, `clear`.
+
+### Tool Pattern
 
 ```typescript
-class ToolRegistry {
-  private _tools: Map<string, Tool> = new Map();
-
-  register(tool: Tool): void {
-    /* ... */
-  }
-  unregister(name: string): boolean {
-    /* ... */
-  }
-  get(name: string): Tool | undefined {
-    /* ... */
-  }
-  list(): Tool[] {
-    return Array.from(this._tools.values());
-  }
-  clear(): void {
-    /* ... */
-  }
-}
-```
-
-### Tool Implementation
-
-```typescript
-export const bashTool: Tool = {
-  name: "bash",
-  description:
-    "Execute a shell command and return stdout, stderr, and exit code. Use for running builds, tests, scripts, and system commands.",
-  parameters: {
-    type: "object",
-    properties: {
-      command: { type: "string", description: "The shell command to execute" },
-      timeout: { type: "number", description: "Timeout in milliseconds" },
-    },
-    required: ["command"],
-  },
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const command = args.command as string;
-    const timeout = (args.timeout as number | undefined) ?? 60000;
-    return { success: true, output: "result" };
-  },
+export const tool: Tool = {
+  name: "name",
+  description: "Does X",
+  parameters: { type: "object", properties: {...}, required: ["arg"] },
+  async execute(args) { return { success: true, output: "..." }; },
 };
 ```
 
-**Guidelines**: Clear descriptions, `??` for defaults, specific error codes (ENOENT, EACCES)
+## Testing
 
-### Streaming Patterns
-
-Use `AsyncGenerator<StreamChunk>` for real-time responses:
-
-```typescript
-async *runStream(...): AsyncGenerator<StreamChunk, void, unknown> {
-  for await (const chunk of this._llmClient.stream(...)) {
-    if (chunk.content) yield { content: chunk.content, done: false };
-    if (chunk.done) { yield { done: true }; return; }
-  }
-}
-
-// CLI: print chunks immediately
-for await (const chunk of agent.runStream(...)) {
-  if (chunk.content) process.stdout.write(chunk.content);
-}
-```
-
-### Helper Functions
-
-Extract conversion logic into helper functions:
-
-```typescript
-function convertMessages(messages: Message[]): { system?: string; messages: AnthropicMessage[] } {
-  let system: string | undefined;
-  const converted: AnthropicMessage[] = [];
-  // ...
-  return { system, messages: converted };
-}
-
-function parseContentBlocks(content: ContentBlock[]): { text: string; toolCalls?: ToolCall[] } {
-  let text = "";
-  const toolCalls: ToolCall[] = [];
-  // ...
-  return { text, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
-}
-```
-
-### Configuration
-
-Env var interpolation: `apiKey: ${OPENAI_API_KEY}`
-Override via: `TINY_AGENT_MODEL`, `TINY_AGENT_SYSTEM_PROMPT`, `TINY_AGENT_CONVERSATION_FILE`, `TINY_AGENT_MAX_CONTEXT_TOKENS`
-
-### Testing
+Use bun:test with `describe`, `it`, `expect`:
 
 ```typescript
 import { describe, it, expect } from "bun:test";
@@ -205,28 +101,56 @@ import { describe, it, expect } from "bun:test";
 describe("ToolRegistry", () => {
   it("should register and retrieve tools", () => {
     const registry = new ToolRegistry();
-    registry.register(bashTool);
-    expect(registry.get("bash")).toBe(bashTool);
+    expect(registry.get("bash")).toBeDefined();
   });
 });
 ```
 
-### Project Structure
+## Project Structure
 
 ```
 src/
-  core/         # Agent loop, context management
-  tools/        # Built-in tools (file, bash, grep, glob, web search)
-  providers/    # LLM providers (OpenAI, Anthropic, Ollama)
+  core/         # Agent loop, memory, tokens
+  tools/        # Built-in tools (file, bash, grep, glob, web)
+  providers/    # LLM clients (OpenAI, Anthropic, Ollama)
   mcp/          # MCP client integration
-  cli/          # Command-line interface
+  cli/          # CLI interface
   config/       # Configuration loading
 ```
 
-### Dependencies
+## Memory System
+
+Memory and context tracking are enabled by default. Use `--no-memory` or `--no-track-context` to disable.
+
+```bash
+tiny-agent run "help me"                   # Memory and context tracking enabled
+tiny-agent --no-memory run "help me"       # Run without memory
+tiny-agent --no-track-context run "help"  # Run without context tracking
+tiny-agent memory list                     # List memories
+tiny-agent memory add "I prefer TypeScript" # Add memory
+tiny-agent memory clear                    # Clear all memories
+```
+
+Context tracking: `total/max tokens - system: X, memory: Y, conversation: Z`
+
+## Configuration
+
+Env vars: `TINY_AGENT_MODEL`, `TINY_AGENT_SYSTEM_PROMPT`, `TINY_AGENT_CONVERSATION_FILE`, `TINY_AGENT_MAX_CONTEXT_TOKENS`, `TINY_AGENT_MEMORY_FILE`, `TINY_AGENT_MAX_MEMORY_TOKENS`.
+
+## AGENTS.md Support
+
+Tiny agent can read and follow AGENTS.md files from other projects:
+
+```bash
+tiny-agent run "fix this bug"                    # Auto-detects AGENTS.md in cwd
+tiny-agent --agents-md ./path/to/AGENTS.md run "help me"  # Explicit path
+```
+
+## Dependencies
 
 - `@anthropic-ai/sdk` - Claude provider
-- `openai` - OpenAI-compatible APIs (Groq, Together, OpenRouter)
+- `openai` - OpenAI-compatible APIs
 - `ollama` - Local model provider
 - `@modelcontextprotocol/sdk` - MCP client
 - `yaml` - Config parsing
+- `zod` - Runtime validation

@@ -9,8 +9,16 @@ const CONFIG_DIR = join(homedir(), ".tiny-agent");
 const YAML_PATH = join(CONFIG_DIR, "config.yaml");
 const JSON_PATH = join(CONFIG_DIR, "config.json");
 
-const SYSTEMS_PROMPT =
-  "You are a helpful AI assistant with access to tools. Use available tools to help the user. When you have enough information to answer, provide your final response.";
+const SYSTEMS_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
+
+IMPORTANT GUIDELINES:
+- For version queries (e.g., "latest version"), always verify from authoritative sources like npmjs.com, GitHub releases, or official documentation
+- When citing version numbers or facts, mention the source (e.g., "According to npmjs.com...")
+- If search results seem unreliable or conflicting, acknowledge the uncertainty
+- Do not conflate different technologies (e.g., Zod with Python)
+- For breaking changes, consult official changelogs or release notes
+
+When you have enough information to answer, provide your final response.`;
 function getDefaultConfig(): Config {
   return {
     defaultModel: "llama3.2",
@@ -121,5 +129,26 @@ export function loadConfig(): Config {
     }
   }
 
+  const memoryFileOverride = process.env.TINY_AGENT_MEMORY_FILE;
+  if (memoryFileOverride) {
+    config = { ...config, memoryFile: memoryFileOverride };
+  }
+
+  const maxMemoryTokensOverride = process.env.TINY_AGENT_MAX_MEMORY_TOKENS;
+  if (maxMemoryTokensOverride) {
+    const parsed = parseInt(maxMemoryTokensOverride, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      config = { ...config, maxMemoryTokens: parsed };
+    }
+  }
+
   return config;
+}
+
+export function loadAgentsMd(filePath?: string): string | null {
+  const agentsPath = filePath || join(process.cwd(), "AGENTS.md");
+  if (existsSync(agentsPath)) {
+    return readFileSync(agentsPath, "utf-8");
+  }
+  return null;
 }

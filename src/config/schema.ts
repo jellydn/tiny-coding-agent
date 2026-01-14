@@ -19,6 +19,9 @@ export interface Config {
   systemPrompt?: string;
   conversationFile?: string;
   maxContextTokens?: number;
+  memoryFile?: string;
+  maxMemoryTokens?: number;
+  trackContextUsage?: boolean;
   providers: {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;

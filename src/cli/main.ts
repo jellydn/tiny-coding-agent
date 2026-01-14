@@ -1,4 +1,6 @@
 import * as readline from "node:readline";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { loadConfig } from "../config/loader.js";
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
@@ -9,6 +11,7 @@ import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "..
 import { Agent } from "../core/agent.js";
 import { McpManager } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
+import { MemoryStore } from "../core/memory.js";
 
 interface CliOptions {
   model?: string;
@@ -16,6 +19,10 @@ interface CliOptions {
   verbose?: boolean;
   save?: boolean;
   help?: boolean;
+  noMemory?: boolean;
+  noTrackContext?: boolean;
+  memoryFile?: string;
+  agentsMd?: string;
 }
 
 function parseArgs(): {
@@ -50,6 +57,16 @@ function parseArgs(): {
       options.verbose = true;
     } else if (arg === "--save") {
       options.save = true;
+    } else if (arg === "--no-memory") {
+      options.noMemory = true;
+    } else if (arg === "--no-track-context") {
+      options.noTrackContext = true;
+    } else if (arg === "--agents-md" && i + 1 < args.length) {
+      const nextArg = args[i + 1];
+      if (nextArg !== undefined) {
+        options.agentsMd = nextArg;
+        i++;
+      }
     } else if (!arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -130,6 +147,19 @@ async function createLLMClient(
   return provider;
 }
 
+function createMemoryStore(
+  config: ReturnType<typeof loadConfig>,
+  options: CliOptions,
+): MemoryStore | undefined {
+  const memoryFile = options.memoryFile || config.memoryFile;
+  if (!memoryFile && !options.noMemory) {
+    return undefined;
+  }
+  return new MemoryStore({
+    filePath: memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`,
+  });
+}
+
 async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
   const registry = new ToolRegistry();
 
@@ -205,11 +235,24 @@ async function handleChat(
   const toolRegistry = await setupTools(config);
   const model = options.model || config.defaultModel;
 
+  const enableMemory = !options.noMemory || config.memoryFile !== undefined;
+  const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
+
+  const agentsMdPath =
+    options.agentsMd ??
+    (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
+
   const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
     systemPrompt: config.systemPrompt,
     conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-    maxContextTokens: config.maxContextTokens,
+    maxContextTokens,
+    memoryFile: enableMemory
+      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
+      : undefined,
+    maxMemoryTokens: config.maxMemoryTokens,
+    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+    agentsMdPath,
   });
 
   const rl = readline.createInterface({
@@ -218,6 +261,11 @@ async function handleChat(
   });
 
   console.log(`Tiny Coding Agent (model: ${model})`);
+
+  const toolCount = toolRegistry.list().length;
+  const memoryStatus = enableMemory ? "enabled" : "disabled";
+  const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
+  console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
   console.log('Type "exit" to quit\n');
 
   const askQuestion = (): void => {
@@ -235,27 +283,39 @@ async function handleChat(
       }
 
       try {
-        process.stdout.write("\nAgent: ");
+        process.stdout.write("\n");
+        let hasContent = false;
         for await (const chunk of agent.runStream(userInput, model)) {
           if (chunk.content) {
             process.stdout.write(chunk.content);
+            hasContent = true;
           }
 
           if (chunk.toolExecutions) {
+            process.stdout.write("\n");
             for (const te of chunk.toolExecutions) {
               if (te.status === "running") {
-                process.stdout.write(`\n[${te.name}...]`);
+                process.stdout.write(`[${te.name}...]\n`);
               } else if (te.status === "complete") {
-                process.stdout.write(`\r[${te.name}✓]`);
+                process.stdout.write(`[${te.name}✓]\n`);
               } else if (te.status === "error") {
-                process.stdout.write(`\r[${te.name}✗]`);
+                process.stdout.write(`[${te.name}✗]\n`);
               }
             }
-            process.stdout.write("\nAgent: ");
+            if (!options.noTrackContext && chunk.contextStats) {
+              const ctx = chunk.contextStats;
+              process.stdout.write(
+                `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens - ` +
+                  `system: ${ctx.systemPromptTokens}, memory: ${ctx.memoryTokens}, conversation: ${ctx.conversationTokens}]\n`,
+              );
+            }
+            if (!hasContent) {
+              process.stdout.write("Agent: ");
+            }
           }
 
           if (chunk.done) {
-            process.stdout.write("\n\n");
+            process.stdout.write("\n");
           }
         }
       } catch (err) {
@@ -285,12 +345,32 @@ async function handleRun(
   const toolRegistry = await setupTools(config);
   const model = options.model || config.defaultModel;
 
+  const enableMemory = !options.noMemory || config.memoryFile !== undefined;
+  const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
+
+  const agentsMdPath =
+    options.agentsMd ??
+    (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
+
   const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
     systemPrompt: config.systemPrompt,
     conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-    maxContextTokens: config.maxContextTokens,
+    maxContextTokens,
+    memoryFile: enableMemory
+      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
+      : undefined,
+    maxMemoryTokens: config.maxMemoryTokens,
+    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+    agentsMdPath,
   });
+
+  const toolCount = toolRegistry.list().length;
+  const memoryStatus = enableMemory ? "memory enabled" : "no memory";
+  const agentsMdStatus = agentsMdPath ? "AGENTS.md loaded" : "";
+  console.log(
+    `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
+  );
 
   try {
     for await (const chunk of agent.runStream(prompt, model)) {
@@ -299,14 +379,22 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
+        process.stdout.write("\n");
         for (const te of chunk.toolExecutions) {
           if (te.status === "running") {
-            process.stdout.write(`\n[${te.name}...]`);
+            process.stdout.write(`[${te.name}...]\n`);
           } else if (te.status === "complete") {
-            process.stdout.write(`\r[${te.name}✓]`);
+            process.stdout.write(`[${te.name}✓]\n`);
           } else if (te.status === "error") {
-            process.stdout.write(`\r[${te.name}✗]`);
+            process.stdout.write(`[${te.name}✗]\n`);
           }
+        }
+        if (!options.noTrackContext && chunk.contextStats) {
+          const ctx = chunk.contextStats;
+          process.stdout.write(
+            `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens - ` +
+              `system: ${ctx.systemPromptTokens}, memory: ${ctx.memoryTokens}, conversation: ${ctx.conversationTokens}]\n`,
+          );
         }
       }
     }
@@ -414,12 +502,22 @@ USAGE:
     tiny-agent run <prompt>            Run a single prompt
     tiny-agent config                  Show current configuration
     tiny-agent status                  Show provider and model capabilities
+    tiny-agent memory [command]        Manage memories
+
+COMMANDS:
+    memory list                        List all stored memories
+    memory add <content>               Add a new memory
+    memory clear                       Clear all memories
+    memory stats                       Show memory statistics
 
 OPTIONS:
     --model <model>                    Override default model
     --provider <provider>              Override provider (openai|anthropic|ollama)
     --verbose, -v                      Enable verbose logging
     --save                             Save conversation to file
+    --no-memory                        Disable memory (enabled by default)
+    --no-track-context                 Disable context tracking (enabled by default)
+    --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -430,6 +528,11 @@ EXAMPLES:
     tiny-agent config                  Show current configuration
     tiny-agent status                  Show provider and model capabilities
     tiny-agent --help                  Show this help message
+    tiny-agent --no-memory run "Help me"  Run without memory
+    tiny-agent --no-track-context run "Help me"  Run without context tracking
+    tiny-agent --agents-md ./AGENTS.md run "Help me"  Run with AGENTS.md
+    tiny-agent memory add "I prefer TypeScript"  Add a memory
+    tiny-agent memory list             List all memories
 
 CONFIG:
     ~/.tiny-agent/config.yaml          Configuration file
@@ -454,6 +557,18 @@ async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void
     console.log(`  Max Context Tokens: ${config.maxContextTokens}`);
   }
 
+  if (config.memoryFile) {
+    console.log(`  Memory File: ${config.memoryFile}`);
+  }
+
+  if (config.maxMemoryTokens) {
+    console.log(`  Max Memory Tokens: ${config.maxMemoryTokens}`);
+  }
+
+  if (config.trackContextUsage) {
+    console.log(`  Track Context Usage: true`);
+  }
+
   console.log("\n  Providers:");
   console.log(`    OpenAI: ${config.providers.openai ? "configured" : "not configured"}`);
   console.log(`    Anthropic: ${config.providers.anthropic ? "configured" : "not configured"}`);
@@ -465,6 +580,74 @@ async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void
       console.log(`    - ${name}`);
     }
   }
+  process.exit(0);
+}
+
+async function handleMemory(
+  config: ReturnType<typeof loadConfig>,
+  args: string[],
+  options: CliOptions,
+): Promise<void> {
+  let memoryStore = createMemoryStore(config, options);
+  const subCommand = args[0] || "list";
+
+  if (!memoryStore) {
+    const memoryFile = config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`;
+    memoryStore = new MemoryStore({ filePath: memoryFile });
+    console.log(`Using memory file: ${memoryFile}\n`);
+  }
+
+  if (subCommand === "list") {
+    const memories = memoryStore.list();
+    console.log("\nMemories");
+    console.log("========\n");
+
+    if (memories.length === 0) {
+      console.log("No memories stored.\n");
+    } else {
+      for (const memory of memories) {
+        const date = new Date(memory.createdAt).toLocaleDateString();
+        console.log(`[${memory.category}] ${date}`);
+        console.log(`  ${memory.content}`);
+        console.log(`  (accessed ${memory.accessCount} times)\n`);
+      }
+    }
+
+    const totalTokens = memoryStore.countTokens();
+    console.log(`Total: ${memories.length} memories, ~${totalTokens} tokens\n`);
+  } else if (subCommand === "add") {
+    const content = args.slice(1).join(" ");
+    if (!content) {
+      console.error('Error: Memory content required. Usage: tiny-agent memory add "your memory"');
+      process.exit(1);
+    }
+    const memory = memoryStore.add(content);
+    console.log(`Memory added: ${memory.id}\n`);
+  } else if (subCommand === "clear") {
+    const count = memoryStore.count();
+    memoryStore.clear();
+    console.log(`Cleared ${count} memories.\n`);
+  } else if (subCommand === "stats") {
+    const memories = memoryStore.list();
+    const totalTokens = memoryStore.countTokens();
+    console.log("\nMemory Statistics");
+    console.log("=================\n");
+    console.log(`  Total memories: ${memories.length}`);
+    console.log(`  Estimated tokens: ${totalTokens}`);
+    console.log(`  By category:`);
+
+    const categories = ["user", "project", "codebase"];
+    for (const cat of categories) {
+      const count = memories.filter((m) => m.category === cat).length;
+      console.log(`    ${cat}: ${count}`);
+    }
+    console.log();
+  } else {
+    console.error(`Unknown memory command: ${subCommand}`);
+    console.error("Available commands: list, add <content>, clear, stats");
+    process.exit(1);
+  }
+
   process.exit(0);
 }
 
@@ -487,10 +670,14 @@ export async function main(): Promise<void> {
       await handleConfig(config);
     } else if (command === "status") {
       await handleStatus(config, options);
+    } else if (command === "memory") {
+      await handleMemory(config, args, options);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error("Available commands: chat, run <prompt>, config, status");
-      console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --help");
+      console.error("Available commands: chat, run <prompt>, config, status, memory");
+      console.error(
+        "Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help",
+      );
       process.exit(1);
     }
   } catch (err) {

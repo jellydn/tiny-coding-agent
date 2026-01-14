@@ -1,6 +1,30 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
+import { z } from "zod";
+
+const readFileArgsSchema = z.object({
+  path: z.string(),
+  start_line: z.number().optional(),
+  end_line: z.number().optional(),
+});
+
+const writeFileArgsSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+});
+
+const editFileArgsSchema = z.object({
+  path: z.string(),
+  old_str: z.string(),
+  new_str: z.string(),
+  replace_all: z.boolean().optional(),
+});
+
+const listDirectoryArgsSchema = z.object({
+  path: z.string(),
+  recursive: z.boolean().optional(),
+});
 
 export const readFileTool: Tool = {
   name: "read_file",
@@ -25,17 +49,20 @@ export const readFileTool: Tool = {
     required: ["path"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const filePath = args.path as string;
-    const startLine = args.start_line as number | undefined;
-    const endLine = args.end_line as number | undefined;
+    const parsed = readFileArgsSchema.safeParse(args);
+    if (!parsed.success) {
+      return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+    }
+
+    const { path: filePath, start_line, end_line } = parsed.data;
 
     try {
       const content = await fs.readFile(filePath, "utf-8");
 
-      if (startLine !== undefined || endLine !== undefined) {
+      if (start_line !== undefined || end_line !== undefined) {
         const lines = content.split("\n");
-        const start = (startLine ?? 1) - 1;
-        const end = endLine ?? lines.length;
+        const start = (start_line ?? 1) - 1;
+        const end = end_line ?? lines.length;
         const selectedLines = lines.slice(start, end);
         return { success: true, output: selectedLines.join("\n") };
       }
@@ -73,8 +100,12 @@ export const writeFileTool: Tool = {
     required: ["path", "content"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const filePath = args.path as string;
-    const content = args.content as string;
+    const parsed = writeFileArgsSchema.safeParse(args);
+    if (!parsed.success) {
+      return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+    }
+
+    const { path: filePath, content } = parsed.data;
 
     try {
       const dir = path.dirname(filePath);
@@ -122,28 +153,30 @@ export const editFileTool: Tool = {
     required: ["path", "old_str", "new_str"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const filePath = args.path as string;
-    const oldStr = args.old_str as string;
-    const newStr = args.new_str as string;
-    const replaceAll = (args.replace_all as boolean) ?? false;
+    const parsed = editFileArgsSchema.safeParse(args);
+    if (!parsed.success) {
+      return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+    }
+
+    const { path: filePath, old_str, new_str, replace_all } = parsed.data;
 
     try {
       const content = await fs.readFile(filePath, "utf-8");
 
-      if (!content.includes(oldStr)) {
+      if (!content.includes(old_str)) {
         return {
           success: false,
-          error: `Text not found in file: "${oldStr.slice(0, 50)}${oldStr.length > 50 ? "..." : ""}"`,
+          error: `Text not found in file: "${old_str.slice(0, 50)}${old_str.length > 50 ? "..." : ""}"`,
         };
       }
 
-      const newContent = replaceAll
-        ? content.replaceAll(oldStr, newStr)
-        : content.replace(oldStr, newStr);
+      const newContent = replace_all
+        ? content.replaceAll(old_str, new_str)
+        : content.replace(old_str, new_str);
 
       await fs.writeFile(filePath, newContent, "utf-8");
 
-      const occurrences = replaceAll ? content.split(oldStr).length - 1 : 1;
+      const occurrences = replace_all ? content.split(old_str).length - 1 : 1;
 
       return {
         success: true,
@@ -182,11 +215,15 @@ export const listDirectoryTool: Tool = {
     required: ["path"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const dirPath = args.path as string;
-    const recursive = (args.recursive as boolean) ?? false;
+    const parsed = listDirectoryArgsSchema.safeParse(args);
+    if (!parsed.success) {
+      return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+    }
+
+    const { path: dirPath, recursive } = parsed.data;
 
     try {
-      const entries = await listDir(dirPath, recursive);
+      const entries = await listDir(dirPath, recursive ?? false);
       return { success: true, output: entries.join("\n") };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;

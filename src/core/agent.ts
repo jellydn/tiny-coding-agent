@@ -3,6 +3,14 @@ import { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { countTokens, truncateMessages } from "./tokens.js";
+import {
+  MemoryStore,
+  calculateContextBudget,
+  buildContextWithMemory,
+  type ContextStats,
+} from "./memory.js";
+import { z } from "zod";
+import { loadAgentsMd } from "../config/loader.js";
 
 export interface AgentOptions {
   maxIterations?: number;
@@ -10,6 +18,10 @@ export interface AgentOptions {
   verbose?: boolean;
   conversationFile?: string;
   maxContextTokens?: number;
+  memoryFile?: string;
+  maxMemoryTokens?: number;
+  trackContextUsage?: boolean;
+  agentsMdPath?: string;
 }
 
 export interface ToolExecution {
@@ -24,6 +36,7 @@ export interface AgentStreamChunk {
   done: boolean;
   toolCalls?: string[];
   toolExecutions?: ToolExecution[];
+  contextStats?: ContextStats;
 }
 
 export interface AgentResponse {
@@ -40,27 +53,47 @@ export class Agent {
   private _verbose: boolean;
   private _conversationFile?: string;
   private _maxContextTokens?: number;
+  private _memoryStore?: MemoryStore;
+  private _maxMemoryTokens?: number;
+  private _trackContextUsage: boolean;
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._llmClient = llmClient;
     this._toolRegistry = toolRegistry;
     this._maxIterations = options.maxIterations ?? 20;
-    this._systemPrompt =
+
+    let effectiveSystemPrompt =
       options.systemPrompt ??
       "You are a helpful AI assistant with access to tools. Use available tools to help the user. When you have enough information to answer, provide your final response.";
+
+    if (options.agentsMdPath) {
+      const agentsMdContent = loadAgentsMd(options.agentsMdPath);
+      if (agentsMdContent) {
+        effectiveSystemPrompt = `${agentsMdContent}\n\n---\n\n${effectiveSystemPrompt}`;
+        if (options.verbose) {
+          console.log(`[Loaded AGENTS.md from ${options.agentsMdPath}]`);
+        }
+      }
+    }
+
+    this._systemPrompt = effectiveSystemPrompt;
     this._verbose = options.verbose ?? false;
     this._conversationFile = options.conversationFile;
     this._maxContextTokens = options.maxContextTokens;
+    this._maxMemoryTokens = options.maxMemoryTokens;
+    this._trackContextUsage = options.trackContextUsage ?? false;
+
+    if (options.memoryFile) {
+      this._memoryStore = new MemoryStore({ filePath: options.memoryFile });
+    }
   }
 
   async *runStream(
     userPrompt: string,
     model: string,
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    // Load previous conversation if file is configured and exists
     let messages = this._conversationFile ? this._loadConversation() : [];
 
-    // If no previous conversation, start fresh with system prompt context
     if (messages.length === 0) {
       messages = [
         {
@@ -69,21 +102,70 @@ export class Agent {
         },
       ];
     } else {
-      // Add new user prompt to existing conversation
       messages.push({
         role: "user",
         content: userPrompt,
       });
     }
 
-    // Manage context window if maxContextTokens is configured
-    if (this._maxContextTokens) {
+    const updateContextStats = (
+      memoryTokens: number,
+      truncationApplied: boolean = false,
+    ): ContextStats => {
       const systemTokens = countTokens(this._systemPrompt);
-      const availableTokens = this._maxContextTokens - systemTokens - 1000; // Reserve 1000 tokens for response
+      let conversationTokens = 0;
+      for (const msg of messages) {
+        conversationTokens += countTokens(msg.content);
+      }
+      return {
+        systemPromptTokens: systemTokens,
+        memoryTokens,
+        conversationTokens,
+        totalTokens: systemTokens + memoryTokens + conversationTokens,
+        maxContextTokens: this._maxContextTokens ?? 0,
+        truncationApplied,
+        memoryCount: 0,
+      };
+    };
+
+    let contextStats: ContextStats | undefined;
+    let memoryTokensUsed = 0;
+    let truncationApplied = false;
+
+    if (this._maxContextTokens && this._memoryStore) {
+      const systemTokens = countTokens(this._systemPrompt);
+      const { memoryBudget, conversationBudget } = calculateContextBudget(
+        this._maxContextTokens,
+        systemTokens,
+        this._maxMemoryTokens,
+      );
+
+      const relevantMemories = this._memoryStore.findRelevant(userPrompt, 10);
+      const result = buildContextWithMemory(
+        this._systemPrompt,
+        relevantMemories,
+        messages,
+        memoryBudget,
+        conversationBudget,
+      );
+
+      messages = result.context as Message[];
+      contextStats = result.stats;
+      memoryTokensUsed = result.stats.memoryTokens;
+      truncationApplied = result.stats.truncationApplied;
+    } else if (this._maxContextTokens) {
+      const systemTokens = countTokens(this._systemPrompt);
+      const availableTokens = this._maxContextTokens - systemTokens - 1000;
 
       if (availableTokens > 0) {
-        messages = truncateMessages(messages, availableTokens);
+        const truncated = truncateMessages(messages, availableTokens);
+        if (truncated.length < messages.length) {
+          messages = truncated as Message[];
+          truncationApplied = true;
+        }
       }
+
+      contextStats = updateContextStats(0, truncationApplied);
     }
 
     // Get tool definitions for LLM
@@ -92,11 +174,21 @@ export class Agent {
     let iteration = 0;
 
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
-      if (this._verbose) {
-        console.log(`\n[Iteration ${iteration + 1}]`);
+      if (!contextStats) {
+        contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
       }
 
-      // Call LLM with streaming
+      if (this._verbose) {
+        console.log(`\n[Iteration ${iteration + 1}]`);
+        if (this._trackContextUsage) {
+          console.log(
+            `[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} tokens - ` +
+              `system: ${contextStats.systemPromptTokens}, memory: ${contextStats.memoryTokens}, ` +
+              `conversation: ${contextStats.conversationTokens}]`,
+          );
+        }
+      }
+
       const stream = this._llmClient.stream({
         model,
         messages: [
@@ -114,14 +206,31 @@ export class Agent {
       const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] =
         [];
 
+      const toolCallSchema = z.object({
+        name: z.string(),
+        parameters: z.record(z.unknown()).optional(),
+      });
+
+      const isValidToolCall = (text: string): boolean => {
+        try {
+          const parsed = JSON.parse(text);
+          return toolCallSchema.safeParse(parsed).success;
+        } catch {
+          return false;
+        }
+      };
+
       for await (const chunk of stream) {
         if (chunk.content) {
-          fullContent += chunk.content;
-          yield {
-            content: chunk.content,
-            iterations: iteration + 1,
-            done: false,
-          };
+          if (!isValidToolCall(chunk.content)) {
+            fullContent += chunk.content;
+            yield {
+              content: chunk.content,
+              iterations: iteration + 1,
+              done: false,
+              contextStats,
+            };
+          }
         }
 
         if (chunk.toolCalls) {
@@ -162,6 +271,7 @@ export class Agent {
           content: "",
           iterations: iteration + 1,
           done: true,
+          contextStats,
         };
         return;
       }
@@ -175,6 +285,7 @@ export class Agent {
           name: tc.name,
           status: "running" as const,
         })),
+        contextStats,
       };
 
       // Execute all tool calls in parallel
@@ -207,6 +318,7 @@ export class Agent {
           status: result.success ? "complete" : "error",
           summary: result.error ? "Failed" : undefined,
         })),
+        contextStats,
       };
 
       // Add tool results to messages
@@ -217,6 +329,8 @@ export class Agent {
           toolCallId: toolCall.id,
         });
       }
+
+      contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
     }
 
     // Max iterations reached
