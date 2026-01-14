@@ -1,7 +1,8 @@
 import * as readline from "node:readline";
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { loadConfig } from "../config/loader.js";
+import { loadConfig, getConfigPath } from "../config/loader.js";
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
 import { OllamaProvider } from "../providers/ollama.js";
@@ -480,6 +481,34 @@ async function handleStatus(
   process.exit(0);
 }
 
+function openEditor(): void {
+  const configPath = getConfigPath();
+
+  const editor = process.env.EDITOR || process.env.VISUAL || "code";
+  const editorArgs: string[] = [];
+
+  if (editor === "code") {
+    editorArgs.push("--wait");
+  }
+
+  editorArgs.push(configPath);
+
+  const proc = spawn(editor, editorArgs, {
+    stdio: "inherit",
+    shell: true,
+  });
+
+  proc.on("error", (err) => {
+    console.error(`Failed to open editor: ${err.message}`);
+    console.error(`Config file: ${configPath}`);
+    process.exit(1);
+  });
+
+  proc.on("close", (code) => {
+    process.exit(code);
+  });
+}
+
 function showHelp(): void {
   console.log(`
     ╔════════════════════════════════════════════════╗
@@ -501,6 +530,7 @@ USAGE:
     tiny-agent chat                    Interactive chat mode (default)
     tiny-agent run <prompt>            Run a single prompt
     tiny-agent config                  Show current configuration
+    tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
     tiny-agent memory [command]        Manage memories
 
@@ -526,6 +556,7 @@ EXAMPLES:
     tiny-agent run "Fix this bug"      Run a single prompt
     tiny-agent run --model claude-3-5-sonnet "Help me"  Use specific model
     tiny-agent config                  Show current configuration
+    tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
     tiny-agent --help                  Show this help message
     tiny-agent --no-memory run "Help me"  Run without memory
@@ -536,12 +567,20 @@ EXAMPLES:
 
 CONFIG:
     ~/.tiny-agent/config.yaml          Configuration file
+    tiny-agent config open             Open config in editor
 
 For more information, visit: https://github.com/anomalyco/tiny-agent
   `);
 }
 
-async function handleConfig(config: ReturnType<typeof loadConfig>): Promise<void> {
+async function handleConfig(config: ReturnType<typeof loadConfig>, args: string[]): Promise<void> {
+  const subCommand = args[0];
+
+  if (subCommand === "open") {
+    openEditor();
+    return;
+  }
+
   console.log("Current Configuration:");
   console.log(`  Default Model: ${config.defaultModel}`);
 
@@ -667,7 +706,7 @@ export async function main(): Promise<void> {
     } else if (command === "run") {
       await handleRun(config, args, options);
     } else if (command === "config") {
-      await handleConfig(config);
+      await handleConfig(config, args);
     } else if (command === "status") {
       await handleStatus(config, options);
     } else if (command === "memory") {

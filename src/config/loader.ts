@@ -5,9 +5,19 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
-const CONFIG_DIR = join(homedir(), ".tiny-agent");
-const YAML_PATH = join(CONFIG_DIR, "config.yaml");
-const JSON_PATH = join(CONFIG_DIR, "config.json");
+export const CONFIG_DIR = join(homedir(), ".tiny-agent");
+export const YAML_PATH = join(CONFIG_DIR, "config.yaml");
+export const JSON_PATH = join(CONFIG_DIR, "config.json");
+
+export function getConfigPath(): string {
+  if (existsSync(YAML_PATH)) {
+    return YAML_PATH;
+  }
+  if (existsSync(JSON_PATH)) {
+    return JSON_PATH;
+  }
+  return YAML_PATH;
+}
 
 const SYSTEMS_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
 
