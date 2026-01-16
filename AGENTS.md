@@ -3,7 +3,6 @@
 ## Build Commands
 
 ```bash
-bun run index.ts <command>     # Run agent (chat, run, memory, config, status)
 bun run dev                    # Watch mode
 bun run build                  # Compile to binary (outputs tiny-agent)
 bun run typecheck              # Type check (tsc --noEmit)
@@ -11,15 +10,20 @@ bun run lint                   # Lint (oxlint)
 bun run lint:fix               # Auto-fix lint issues
 bun run format                 # Format code (oxfmt)
 bun run format:check           # Check formatting
-bun test                       # Run tests (bun test)
-bun test <file>                # Run single test file
+bun test                       # Run all tests
+bun test <file>                # Run single test (e.g., src/core/memory.test.ts)
 ```
 
-**After code changes, always run**: `bun run format && bun run typecheck && bun run lint`
+**After changes**: `bun run format && bun run typecheck && bun run lint`
 
-## Code Style Guidelines
+## Core Principles
 
-### TypeScript
+- **Small, Safe Steps**: Make big changes through small, reversible steps
+- **Human Relationships**: Code is communication between humans
+- **Eliminate Problems**: Remove complexity rather than managing it
+- **Build for the Next Developer**: Consider maintainability
+
+## TypeScript Guidelines
 
 - ES modules with TypeScript 5+ and strict mode
 - Compiler options: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
@@ -68,7 +72,14 @@ try {
 }
 ```
 
-Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`.
+Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
+
+### Tidying Practices
+
+- **Guard Clauses**: Move preconditions to the top and return early
+- **Helper Variables**: Extract complex expressions into named variables
+- **Dead Code**: Delete code that isn't executed
+- **Normalize Symmetries**: Use consistent patterns throughout
 
 ### Code Structure
 
@@ -106,6 +117,8 @@ describe("ToolRegistry", () => {
 });
 ```
 
+**Write Tests That Give Confidence**: Test behavior, not implementation details; focus on user-facing functionality.
+
 ## Project Structure
 
 ```
@@ -118,33 +131,21 @@ src/
   config/       # Configuration loading
 ```
 
-## Memory System
-
-Memory and context tracking are enabled by default. Use `--no-memory` or `--no-track-context` to disable.
+## CLI Usage
 
 ```bash
-tiny-agent run "help me"                   # Memory and context tracking enabled
-tiny-agent --no-memory run "help me"       # Run without memory
-tiny-agent --no-track-context run "help"  # Run without context tracking
-tiny-agent memory list                     # List memories
-tiny-agent memory add "I prefer TypeScript" # Add memory
-tiny-agent memory clear                    # Clear all memories
+tiny-agent                         # Interactive chat
+tiny-agent run "fix this bug"      # Run single prompt
+tiny-agent --model claude-3-5-sonnet "help"  # Specify model
+tiny-agent --provider ollama run "help"      # Specify provider
+tiny-agent --no-memory run "help"   # Disable memory
+tiny-agent memory list              # List memories
+tiny-agent memory add "I prefer TS" # Add memory
+tiny-agent config                   # Show config
+tiny-agent status                   # Show capabilities
 ```
 
-Context tracking: `total/max tokens - system: X, memory: Y, conversation: Z`
-
-## Configuration
-
-Env vars: `TINY_AGENT_MODEL`, `TINY_AGENT_SYSTEM_PROMPT`, `TINY_AGENT_CONVERSATION_FILE`, `TINY_AGENT_MAX_CONTEXT_TOKENS`, `TINY_AGENT_MEMORY_FILE`, `TINY_AGENT_MAX_MEMORY_TOKENS`.
-
-## AGENTS.md Support
-
-Tiny agent can read and follow AGENTS.md files from other projects:
-
-```bash
-tiny-agent run "fix this bug"                    # Auto-detects AGENTS.md in cwd
-tiny-agent --agents-md ./path/to/AGENTS.md run "help me"  # Explicit path
-```
+Options: `--model`, `--provider`, `--verbose`, `--save`, `--no-memory`, `--no-track-context`, `--agents-md <path>`, `--help`.
 
 ## Dependencies
 
