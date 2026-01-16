@@ -11,6 +11,7 @@ import {
 } from "./memory.js";
 import { z } from "zod";
 import { loadAgentsMd } from "../config/loader.js";
+import type { ThinkingConfig } from "../config/schema.js";
 
 export interface AgentOptions {
   maxIterations?: number;
@@ -22,6 +23,7 @@ export interface AgentOptions {
   maxMemoryTokens?: number;
   trackContextUsage?: boolean;
   agentsMdPath?: string;
+  thinking?: ThinkingConfig;
 }
 
 export interface ToolExecution {
@@ -56,6 +58,7 @@ export class Agent {
   private _memoryStore?: MemoryStore;
   private _maxMemoryTokens?: number;
   private _trackContextUsage: boolean;
+  private _thinking?: ThinkingConfig;
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._llmClient = llmClient;
@@ -82,6 +85,7 @@ export class Agent {
     this._maxContextTokens = options.maxContextTokens;
     this._maxMemoryTokens = options.maxMemoryTokens;
     this._trackContextUsage = options.trackContextUsage ?? false;
+    this._thinking = options.thinking;
 
     if (options.memoryFile) {
       this._memoryStore = new MemoryStore({ filePath: options.memoryFile });
@@ -202,6 +206,7 @@ export class Agent {
           ...messages,
         ],
         tools: tools.length > 0 ? tools : undefined,
+        thinking: this._thinking,
       });
 
       let fullContent = "";
@@ -374,6 +379,7 @@ export class Agent {
           ...messages,
         ],
         tools: undefined, // No more tools
+        thinking: this._thinking,
       });
 
       for await (const chunk of stream) {

@@ -3,6 +3,12 @@ export interface ProviderConfig {
   baseUrl?: string;
 }
 
+export interface ThinkingConfig {
+  enabled?: boolean;
+  effort?: "none" | "low" | "medium" | "high";
+  budgetTokens?: number;
+}
+
 export interface McpServerConfig {
   command: string;
   args?: string[];
@@ -22,6 +28,7 @@ export interface Config {
   memoryFile?: string;
   maxMemoryTokens?: number;
   trackContextUsage?: boolean;
+  thinking?: ThinkingConfig;
   providers: {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;

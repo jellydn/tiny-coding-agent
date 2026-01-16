@@ -136,6 +136,13 @@ export class AnthropicProvider implements LLMClient {
   async chat(options: ChatOptions): Promise<ChatResponse> {
     const { system, messages } = convertMessages(options.messages);
 
+    const thinking = options.thinking?.enabled
+      ? {
+          type: "enabled" as const,
+          budget_tokens: options.thinking.budgetTokens ?? 2000,
+        }
+      : undefined;
+
     const response = await this._client.messages.create({
       model: options.model,
       max_tokens: options.maxTokens ?? 4096,
@@ -143,6 +150,8 @@ export class AnthropicProvider implements LLMClient {
       messages,
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
       temperature: options.temperature,
+      // @ts-ignore - thinking is supported for claude-3.5 and newer
+      thinking,
     });
 
     const { text, toolCalls } = parseContentBlocks(response.content);
@@ -157,6 +166,13 @@ export class AnthropicProvider implements LLMClient {
   async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
     const { system, messages } = convertMessages(options.messages);
 
+    const thinking = options.thinking?.enabled
+      ? {
+          type: "enabled" as const,
+          budget_tokens: options.thinking.budgetTokens ?? 2000,
+        }
+      : undefined;
+
     const stream = this._client.messages.stream({
       model: options.model,
       max_tokens: options.maxTokens ?? 4096,
@@ -164,6 +180,8 @@ export class AnthropicProvider implements LLMClient {
       messages,
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
       temperature: options.temperature,
+      // @ts-ignore - thinking is supported for claude-3.5 and newer
+      thinking,
     });
 
     const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
@@ -222,13 +240,16 @@ export class AnthropicProvider implements LLMClient {
       "claude-3-haiku-20240307": 200000,
     };
 
+    // Detect thinking-enabled models (claude-3.5 and newer)
+    const supportsThinking = model.includes("claude-3-5") || model.includes("claude-4");
+
     return {
       modelName: model,
       supportsTools: true,
       supportsStreaming: true,
       supportsSystemPrompt: true,
       supportsToolStreaming: true,
-      supportsThinking: true,
+      supportsThinking,
       contextWindow: modelContextWindow[model] ?? 200000,
       maxOutputTokens: 8192,
     };

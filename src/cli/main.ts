@@ -261,6 +261,7 @@ async function handleChat(
     maxMemoryTokens: config.maxMemoryTokens,
     trackContextUsage: !options.noTrackContext || config.trackContextUsage,
     agentsMdPath,
+    thinking: config.thinking,
   });
 
   const rl = readline.createInterface({
@@ -371,6 +372,7 @@ async function handleRun(
     maxMemoryTokens: config.maxMemoryTokens,
     trackContextUsage: !options.noTrackContext || config.trackContextUsage,
     agentsMdPath,
+    thinking: config.thinking,
   });
 
   const toolCount = toolRegistry.list().length;
