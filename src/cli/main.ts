@@ -217,6 +217,8 @@ async function handleChat(
   console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
   console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")\n');
 
+  agent.startChatSession();
+
   // Session state for runtime model/mode switching
   const sessionState: SessionState = {
     model: initialModel,

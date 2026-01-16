@@ -64,6 +64,7 @@ export class Agent {
   private _maxMemoryTokens?: number;
   private _trackContextUsage: boolean;
   private _thinking?: ThinkingConfig;
+  private _conversationHistory: Message[] = [];
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._llmClient = llmClient;
@@ -97,6 +98,15 @@ export class Agent {
     }
   }
 
+  startChatSession(): void {
+    this._conversationHistory = [];
+  }
+
+  _updateConversationHistory(messages: Message[]): void {
+    this._saveConversation(messages);
+    this._conversationHistory = messages;
+  }
+
   async *runStream(
     userPrompt: string,
     model: string,
@@ -104,26 +114,22 @@ export class Agent {
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
-    let messages = this._conversationFile ? this._loadConversation() : [];
 
-    if (messages.length === 0) {
-      messages = [
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ];
+    let messages: Message[];
+
+    if (this._conversationFile) {
+      messages = this._loadConversation();
     } else {
-      messages.push({
-        role: "user",
-        content: userPrompt,
-      });
+      messages = this._conversationHistory;
     }
 
-    const updateContextStats = (
-      memoryTokens: number,
-      truncationApplied: boolean = false,
-    ): ContextStats => {
+    if (messages.length === 0) {
+      messages = [{ role: "user", content: userPrompt }];
+    } else {
+      messages.push({ role: "user", content: userPrompt });
+    }
+
+    const updateContextStats = (memoryTokens: number, truncationApplied: boolean): ContextStats => {
       const systemTokens = countTokens(this._systemPrompt);
       let conversationTokens = 0;
       for (const msg of messages) {
@@ -277,7 +283,7 @@ export class Agent {
           console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
         }
 
-        this._saveConversation(messages);
+        this._updateConversationHistory(messages);
 
         yield {
           content: "",
@@ -341,6 +347,24 @@ export class Agent {
         });
       }
 
+      // Check for "not found" errors - these are fatal and should stop the loop
+      const notFoundErrors = toolExecutionResults.filter(
+        ({ result }) => !result.success && result.error?.includes("not found"),
+      );
+
+      if (notFoundErrors.length > 0) {
+        const missingTools = notFoundErrors.map(({ toolCall }) => toolCall.name).join(", ");
+        messages.push({
+          role: "system",
+          content: `ERROR: The following tool(s) are not available: ${missingTools}. Please stop and provide your final answer based on the information you have gathered, or ask the user for alternative approaches.`,
+        });
+        if (this._verbose) {
+          console.log(`\n[WARNING] Tool(s) not found: ${missingTools}, breaking loop`);
+        }
+        loopDetected = true;
+        break;
+      }
+
       if (recentToolCalls.length >= 3) {
         const lastThree = recentToolCalls.slice(-3);
         if (lastThree.every((call) => call === lastThree[0])) {
@@ -389,7 +413,7 @@ export class Agent {
         }
       }
 
-      this._saveConversation(messages);
+      this._updateConversationHistory(messages);
       yield {
         content: "",
         iterations: iteration + 1,
