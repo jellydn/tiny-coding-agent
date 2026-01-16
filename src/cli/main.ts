@@ -112,13 +112,20 @@ async function createLLMClient(
     } else if (providerName === "ollama") {
       provider = new OllamaProvider({
         baseUrl: config.providers.ollama?.baseUrl,
+        apiKey: config.providers.ollama?.apiKey,
       });
     } else {
       throw new Error(`Unknown provider: ${providerName}`);
     }
   } else {
     // Auto-detect provider from model name
-    if (model.includes("gpt") || model.includes("o1")) {
+    // Check for Ollama Cloud models first (suffix -oss indicates Ollama Cloud)
+    if (model.includes("-oss") || config.providers.ollama?.apiKey) {
+      provider = new OllamaProvider({
+        baseUrl: config.providers.ollama?.baseUrl,
+        apiKey: config.providers.ollama?.apiKey,
+      });
+    } else if (model.includes("gpt") || model.includes("o1")) {
       const apiKey = config.providers.openai?.apiKey;
       if (!apiKey) {
         throw new Error(
@@ -306,8 +313,8 @@ async function handleChat(
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
               process.stdout.write(
-                `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens - ` +
-                  `system: ${ctx.systemPromptTokens}, memory: ${ctx.memoryTokens}, conversation: ${ctx.conversationTokens}]\n`,
+                `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} - ` +
+                  `sys: ${ctx.systemPromptTokens}t, mem: ${ctx.memoryTokens}t, conv: ${ctx.conversationTokens}t]\n`,
               );
             }
             if (!hasContent) {
@@ -393,8 +400,8 @@ async function handleRun(
         if (!options.noTrackContext && chunk.contextStats) {
           const ctx = chunk.contextStats;
           process.stdout.write(
-            `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens - ` +
-              `system: ${ctx.systemPromptTokens}, memory: ${ctx.memoryTokens}, conversation: ${ctx.conversationTokens}]\n`,
+            `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} - ` +
+              `sys: ${ctx.systemPromptTokens}t, mem: ${ctx.memoryTokens}t, conv: ${ctx.conversationTokens}t]\n`,
           );
         }
       }

@@ -108,6 +108,8 @@ export class OpenAIProvider implements LLMClient {
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
       temperature: options.temperature,
       max_tokens: options.maxTokens,
+      // @ts-ignore - reasoning_effort is supported for o1/o3 models
+      reasoning_effort: options.thinking?.effort,
     });
 
     const choice = response.choices[0];
@@ -128,6 +130,8 @@ export class OpenAIProvider implements LLMClient {
       temperature: options.temperature,
       max_tokens: options.maxTokens,
       stream: true,
+      // @ts-ignore - reasoning_effort is supported for o1/o3 models
+      reasoning_effort: options.thinking?.effort,
     });
 
     const toolCallsBuffer: Map<number, { id: string; name: string; args: string }> = new Map();
@@ -181,17 +185,25 @@ export class OpenAIProvider implements LLMClient {
       "gpt-4-turbo": 128000,
       "gpt-4": 8192,
       "gpt-3.5-turbo": 16385,
+      // Thinking models
+      o1: 200000,
+      "o1-mini": 128000,
+      "o1-preview": 128000,
+      "o3-mini": 200000,
     };
+
+    // Detect thinking models (o1, o3 series)
+    const isThinkingModel = /^o[13]/.test(model);
 
     return {
       modelName: model,
-      supportsTools: true,
+      supportsTools: !isThinkingModel, // o1/o3 don't support tools yet
       supportsStreaming: true,
-      supportsSystemPrompt: true,
-      supportsToolStreaming: true,
-      supportsThinking: false,
+      supportsSystemPrompt: !isThinkingModel, // o1/o3 don't use system prompts
+      supportsToolStreaming: !isThinkingModel,
+      supportsThinking: isThinkingModel,
       contextWindow: modelContextWindow[model] ?? 16385,
-      maxOutputTokens: 4096,
+      maxOutputTokens: isThinkingModel ? 100000 : 4096,
     };
   }
 }

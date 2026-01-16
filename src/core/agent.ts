@@ -172,6 +172,9 @@ export class Agent {
     const tools = this._getToolDefinitions();
 
     let iteration = 0;
+    // Track recent tool calls to detect loops
+    const recentToolCalls: string[] = [];
+    let loopDetected = false;
 
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
       if (!contextStats) {
@@ -182,9 +185,9 @@ export class Agent {
         console.log(`\n[Iteration ${iteration + 1}]`);
         if (this._trackContextUsage) {
           console.log(
-            `[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} tokens - ` +
-              `system: ${contextStats.systemPromptTokens}, memory: ${contextStats.memoryTokens}, ` +
-              `conversation: ${contextStats.conversationTokens}]`,
+            `[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} - ` +
+              `sys: ${contextStats.systemPromptTokens}t, mem: ${contextStats.memoryTokens}t, ` +
+              `conv: ${contextStats.conversationTokens}t]`,
           );
         }
       }
@@ -323,6 +326,10 @@ export class Agent {
 
       // Add tool results to messages
       for (const { toolCall, result } of toolExecutionResults) {
+        // Track tool call for loop detection
+        const toolCallSignature = `${toolCall.name}:${JSON.stringify(toolCall.arguments)}`;
+        recentToolCalls.push(toolCallSignature);
+
         messages.push({
           role: "tool",
           content: result.error || result.output || "(no output)",
@@ -330,7 +337,65 @@ export class Agent {
         });
       }
 
+      // Detect repeated tool calls (possible loop)
+      if (recentToolCalls.length >= 3) {
+        const lastThree = recentToolCalls.slice(-3);
+        if (lastThree.every((call) => call === lastThree[0])) {
+          // Same tool called 3 times in a row with same args
+          const toolName = assistantToolCalls[0]?.name ?? "unknown";
+          messages.push({
+            role: "system",
+            content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
+          });
+          if (this._verbose) {
+            console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
+          }
+          loopDetected = true;
+          break;
+        }
+      }
+
       contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
+    }
+
+    // Handle loop detection - try one more LLM call to get final answer
+    if (loopDetected) {
+      if (this._verbose) {
+        console.log(`\n[Loop detected - requesting final answer from LLM]`);
+      }
+
+      const stream = this._llmClient.stream({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: this._systemPrompt,
+          },
+          ...messages,
+        ],
+        tools: undefined, // No more tools
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.content) {
+          yield {
+            content: chunk.content,
+            iterations: iteration + 1,
+            done: false,
+            contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+          };
+        }
+      }
+
+      // Save and exit
+      this._saveConversation(messages);
+      yield {
+        content: "",
+        iterations: iteration + 1,
+        done: true,
+        contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+      };
+      return;
     }
 
     // Max iterations reached

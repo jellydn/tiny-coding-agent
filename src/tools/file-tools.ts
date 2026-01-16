@@ -198,7 +198,7 @@ export const editFileTool: Tool = {
 export const listDirectoryTool: Tool = {
   name: "list_directory",
   description:
-    "List files and folders in a directory. Shows file type indicators (/ for directories).",
+    "List files and folders in a directory. Use this ONCE per directory to see what's available. Shows file type indicators (/ for directories). After listing, use read_file to examine specific files - do NOT list the same directory multiple times.",
   parameters: {
     type: "object",
     properties: {

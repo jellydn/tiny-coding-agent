@@ -31,6 +31,11 @@ export interface ChatOptions {
   tools?: ToolDefinition[];
   temperature?: number;
   maxTokens?: number;
+  thinking?: {
+    enabled?: boolean;
+    effort?: "none" | "low" | "medium" | "high";
+    budgetTokens?: number;
+  };
 }
 
 export interface ChatResponse {

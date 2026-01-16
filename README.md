@@ -34,26 +34,104 @@ A default config is automatically created on first run with:
 
 To customize, create `~/.tiny-agent/config.yaml`:
 
+### Full Configuration Example
+
 ```yaml
-defaultModel: gpt-4o
+# Default model to use
+defaultModel: qwen2.5-coder:7b
+
+# System prompt (optional, overrides default)
+systemPrompt: "You are a helpful coding assistant."
+
+# Provider configurations
 providers:
+  # OpenAI (GPT models)
   openai:
     apiKey: ${OPENAI_API_KEY}
+    baseUrl: https://api.openai.com/v1 # Optional: custom base URL
+
+  # Anthropic (Claude models)
   anthropic:
     apiKey: ${ANTHROPIC_API_KEY}
+
+  # Ollama (local or cloud)
   ollama:
-    baseUrl: http://localhost:11434
+    baseUrl: http://localhost:11434 # Local Ollama
+    # For Ollama Cloud, use:
+    # baseUrl: https://ollama.com
+    # apiKey: ${OLLAMA_API_KEY}
+
+# MCP servers for extended capabilities
 mcpServers:
   context7:
     command: npx
     args: ["-y", "@upstash/context7-mcp"]
+
+# Tool configurations
 tools:
   read_file:
     enabled: true
+  write_file:
+    enabled: true
+  edit_file:
+    enabled: true
+  list_directory:
+    enabled: true
   bash:
     enabled: true
+  grep:
+    enabled: true
+  glob:
+    enabled: true
   web_search:
-    enabled: false # Disable specific tools
+    enabled: false
+
+# Memory settings (optional)
+memoryFile: ~/.tiny-agent/memories.json
+maxMemoryTokens: 2000
+
+# Context tracking (optional)
+maxContextTokens: 16000
+trackContextUsage: true
+```
+
+### Ollama Cloud Setup
+
+For access to larger cloud-hosted models via [Ollama Cloud](https://ollama.com/cloud):
+
+```yaml
+defaultModel: gpt-oss:120b
+providers:
+  ollama:
+    baseUrl: https://ollama.com
+    apiKey: ${OLLAMA_API_KEY}
+```
+
+Set your API key:
+
+```bash
+export OLLAMA_API_KEY=sk-xxx
+```
+
+**Available Ollama Cloud models:**
+
+- `gpt-oss:120b` - 120B parameter model
+- `llama-3.1-405b` - 405B parameter model
+- And more - see [Ollama Cloud](https://ollama.com/cloud) for full list
+
+**Switching between local and cloud:**
+
+```yaml
+# Local Ollama (default, no API key needed)
+providers:
+  ollama:
+    baseUrl: http://localhost:11434
+
+# Ollama Cloud (requires API key)
+providers:
+  ollama:
+    baseUrl: https://ollama.com
+    apiKey: ${OLLAMA_API_KEY}
 ```
 
 ## CLI Commands
