@@ -33,6 +33,8 @@ export interface Config {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;
     ollama?: ProviderConfig;
+    openrouter?: ProviderConfig;
+    opencode?: ProviderConfig;
   };
   mcpServers?: Record<string, McpServerConfig>;
   tools?: Record<string, ToolConfig>;

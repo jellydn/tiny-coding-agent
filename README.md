@@ -8,7 +8,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 ## Features
 
-- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, and local Ollama models
+- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, and OpenCode
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
 - **Plugin System**: Extend the agent with custom tools
@@ -127,11 +127,20 @@ providers:
   ollama:
     baseUrl: http://localhost:11434
 
-# Ollama Cloud (requires API key)
-providers:
+  # Ollama Cloud (requires API key)
   ollama:
     baseUrl: https://ollama.com
     apiKey: ${OLLAMA_API_KEY}
+
+  # OpenRouter - aggregates models from multiple providers
+  openrouter:
+    apiKey: ${OPENROUTER_API_KEY}
+    baseUrl: https://openrouter.ai/api/v1 # Optional: custom base URL
+
+  # OpenCode Zen - curated coding models
+  opencode:
+    apiKey: ${OPENCODE_API_KEY}
+    baseUrl: https://opencode.ai/zen/v1 # Optional: custom base URL
 ```
 
 ## CLI Commands
@@ -140,6 +149,18 @@ providers:
 - `tiny-agent run "prompt"` - Run single prompt and exit
 - `tiny-agent config` - Show current configuration
 - `tiny-agent status` - Show current status (LLM provider, MCP servers, tools)
+
+### Chat Commands
+
+During interactive chat, use these commands to change settings on the fly:
+
+| Command                     | Description                  | Example                    |
+| --------------------------- | ---------------------------- | -------------------------- |
+| `/model <name>`             | Switch to a different model  | `/model claude-3-5-sonnet` |
+| `/thinking on\|off`         | Enable/disable thinking mode | `/thinking on`             |
+| `/effort low\|medium\|high` | Set thinking effort level    | `/effort high`             |
+
+Fuzzy matching is enabled - `/m` → `/model`, `/t` → `/thinking`, etc.
 
 ## Custom Plugins
 
@@ -272,6 +293,15 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 004: Context Management (Handoff)
 - 005: Tool System Design
 - 006: Plugin System
+
+## Development
+
+See [AGENTS.md](AGENTS.md) for development guidelines including:
+
+- Build commands: `bun run dev`, `bun run build`, `bun test`, `bun test:watch`
+- Code style and TypeScript conventions
+- Testing patterns with bun:test
+- Project structure overview
 
 ## License
 

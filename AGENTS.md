@@ -12,6 +12,7 @@ bun run format                 # Format code (oxfmt)
 bun run format:check           # Check formatting
 bun test                       # Run all tests
 bun test <file>                # Run single test (e.g., src/core/memory.test.ts)
+bun test:watch                 # Watch mode for TDD
 ```
 
 **After changes**: `bun run format && bun run typecheck && bun run lint`
@@ -21,7 +22,6 @@ bun test <file>                # Run single test (e.g., src/core/memory.test.ts)
 - **Small, Safe Steps**: Make big changes through small, reversible steps
 - **Human Relationships**: Code is communication between humans
 - **Eliminate Problems**: Remove complexity rather than managing it
-- **Build for the Next Developer**: Consider maintainability
 
 ## TypeScript Guidelines
 
@@ -86,6 +86,7 @@ Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 - Keep functions small (<50 lines), use guard clauses
 - Extract complex conditions into named variables
 - Classes use `_` prefix for private fields
+- Use `satisfies` for type narrowing with validation
 
 ### Registry Pattern
 
@@ -104,15 +105,37 @@ export const tool: Tool = {
 
 ## Testing
 
-Use bun:test with `describe`, `it`, `expect`:
+Use bun:test with `describe`, `it`, `expect`. Clean up resources with `beforeEach`/`afterEach`:
 
 ```typescript
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-describe("ToolRegistry", () => {
-  it("should register and retrieve tools", () => {
-    const registry = new ToolRegistry();
-    expect(registry.get("bash")).toBeDefined();
+describe("MemoryStore", () => {
+  const tempFile = "/tmp/test-memory.json";
+
+  beforeEach(() => {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  afterEach(() => {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("should evict oldest memories when over max limit", () => {
+    const store = new MemoryStore({ filePath: tempFile, maxMemories: 3 });
+    store.add("1");
+    store.add("2");
+    store.add("3");
+    store.add("4");
+    expect(store.count()).toBe(3);
   });
 });
 ```

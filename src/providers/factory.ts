@@ -3,14 +3,19 @@ import type { LLMClient } from "./types.js";
 import { OpenAIProvider, type OpenAIProviderConfig } from "./openai.js";
 import { AnthropicProvider, type AnthropicProviderConfig } from "./anthropic.js";
 import { OllamaProvider, type OllamaProviderConfig } from "./ollama.js";
+import { OpenRouterProvider } from "./openrouter.js";
+import { OpenCodeProvider } from "./opencode.js";
+import { detectProvider, type ProviderType } from "./model-registry.js";
 
 export interface CreateProviderOptions {
   model: string;
-  provider?: "openai" | "anthropic" | "ollama";
+  provider?: ProviderType;
   providers: {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;
     ollama?: ProviderConfig;
+    openrouter?: ProviderConfig;
+    opencode?: ProviderConfig;
   };
 }
 
@@ -45,7 +50,30 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
       const config = providers.ollama ?? {};
       return new OllamaProvider({
         baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
       } satisfies OllamaProviderConfig);
+    }
+
+    case "openrouter": {
+      const config = providers.openrouter;
+      if (!config?.apiKey) {
+        throw new Error("OpenRouter provider requires apiKey in config");
+      }
+      return new OpenRouterProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+      });
+    }
+
+    case "opencode": {
+      const config = providers.opencode;
+      if (!config?.apiKey) {
+        throw new Error("OpenCode provider requires apiKey in config");
+      }
+      return new OpenCodeProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+      });
     }
 
     default:
@@ -53,16 +81,5 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
   }
 }
 
-function detectProvider(model: string): "openai" | "anthropic" | "ollama" {
-  const modelLower = model.toLowerCase();
-
-  if (modelLower.startsWith("gpt-")) {
-    return "openai";
-  }
-
-  if (modelLower.startsWith("claude-")) {
-    return "anthropic";
-  }
-
-  return "ollama";
-}
+// Re-export detectProvider for backwards compatibility
+export { detectProvider, type ProviderType };

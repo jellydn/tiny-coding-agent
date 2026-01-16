@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import type { ModelCapabilities } from "./capabilities.js";
+import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
 
 export interface OpenAIProviderConfig {
   apiKey: string;
@@ -192,8 +193,9 @@ export class OpenAIProvider implements LLMClient {
       "o3-mini": 200000,
     };
 
-    // Detect thinking models (o1, o3 series)
-    const isThinkingModel = /^o[13]/.test(model);
+    // Use model registry for thinking detection (centralized source of truth)
+    const hasThinking = modelRegistrySupportsThinking(model);
+    const isThinkingModel = hasThinking;
 
     return {
       modelName: model,

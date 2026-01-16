@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import type { ModelCapabilities } from "./capabilities.js";
+import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
 
 export interface AnthropicProviderConfig {
   apiKey: string;
@@ -243,7 +244,8 @@ export class AnthropicProvider implements LLMClient {
       "claude-3-haiku-20240307": 200000,
     };
 
-    const supportsThinking = model.includes("claude-3-5") || model.includes("claude-4");
+    // Use model registry for thinking detection (centralized source of truth)
+    const hasThinking = modelRegistrySupportsThinking(model);
 
     return {
       modelName: model,
@@ -251,7 +253,7 @@ export class AnthropicProvider implements LLMClient {
       supportsStreaming: true,
       supportsSystemPrompt: true,
       supportsToolStreaming: true,
-      supportsThinking,
+      supportsThinking: hasThinking,
       contextWindow: modelContextWindow[model] ?? 200000,
       maxOutputTokens: 8192,
     };

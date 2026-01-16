@@ -26,6 +26,17 @@ export interface AgentOptions {
   thinking?: ThinkingConfig;
 }
 
+/**
+ * Runtime configuration for per-request overrides
+ * Allows changing model or thinking mode mid-conversation
+ */
+export interface RuntimeConfig {
+  /** Override the model for this request */
+  model?: string;
+  /** Override the thinking config for this request */
+  thinking?: ThinkingConfig;
+}
+
 export interface ToolExecution {
   name: string;
   status: "running" | "complete" | "error";
@@ -95,7 +106,11 @@ export class Agent {
   async *runStream(
     userPrompt: string,
     model: string,
+    runtimeConfig?: RuntimeConfig,
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
+    // Apply runtime overrides
+    const effectiveModel = runtimeConfig?.model ?? model;
+    const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     let messages = this._conversationFile ? this._loadConversation() : [];
 
     if (messages.length === 0) {
@@ -197,7 +212,7 @@ export class Agent {
       }
 
       const stream = this._llmClient.stream({
-        model,
+        model: effectiveModel,
         messages: [
           {
             role: "system",
@@ -206,7 +221,7 @@ export class Agent {
           ...messages,
         ],
         tools: tools.length > 0 ? tools : undefined,
-        thinking: this._thinking,
+        thinking: effectiveThinking,
       });
 
       let fullContent = "";
@@ -370,7 +385,7 @@ export class Agent {
       }
 
       const stream = this._llmClient.stream({
-        model,
+        model: effectiveModel,
         messages: [
           {
             role: "system",
@@ -379,7 +394,7 @@ export class Agent {
           ...messages,
         ],
         tools: undefined, // No more tools
-        thinking: this._thinking,
+        thinking: effectiveThinking,
       });
 
       for await (const chunk of stream) {
