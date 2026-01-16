@@ -174,9 +174,8 @@ export class MemoryStore {
     try {
       const content = readFileSync(this._filePath, "utf-8");
       const data = JSON.parse(content);
-      const memories = data.memories as
-        | Array<Omit<Memory, "lastAccessedAt" | "accessCount">>
-        | undefined;
+      const memories: Array<Omit<Memory, "lastAccessedAt" | "accessCount">> | undefined =
+        data.memories;
 
       if (memories && Array.isArray(memories)) {
         for (const m of memories) {
@@ -216,16 +215,10 @@ export class MemoryStore {
 
   private _evictIfNeeded(): void {
     while (this._memories.size > this._maxMemories) {
-      let oldest: Memory | undefined;
-      let oldestId: string | undefined;
-
-      for (const [id, memory] of this._memories.entries()) {
-        if (!oldest || new Date(memory.lastAccessedAt) < new Date(oldest.lastAccessedAt)) {
-          oldest = memory;
-          oldestId = id;
-        }
-      }
-
+      const oldestId = Array.from(this._memories.entries()).sort(
+        ([, a], [, b]) =>
+          new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
+      )[0]?.[0];
       if (oldestId) {
         this._memories.delete(oldestId);
       }

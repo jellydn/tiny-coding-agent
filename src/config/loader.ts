@@ -19,7 +19,7 @@ export function getConfigPath(): string {
   return YAML_PATH;
 }
 
-const SYSTEMS_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
+const SYSTEM_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
 
 IMPORTANT GUIDELINES:
 - For version queries (e.g., "latest version"), always verify from authoritative sources like npmjs.com, GitHub releases, or official documentation
@@ -32,7 +32,7 @@ When you have enough information to answer, provide your final response.`;
 function getDefaultConfig(): Config {
   return {
     defaultModel: "llama3.2",
-    systemPrompt: SYSTEMS_PROMPT,
+    systemPrompt: SYSTEM_PROMPT,
     providers: {
       ollama: {
         baseUrl: "http://localhost:11434",
@@ -61,7 +61,7 @@ function createDefaultConfig(): void {
 function interpolateEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, envVar: string) => {
     const envValue = process.env[envVar];
-    if (envValue === undefined) {
+    if (!envValue) {
       throw new Error(`Environment variable ${envVar} is not set`);
     }
     return envValue;
@@ -86,69 +86,61 @@ function interpolateObject(obj: unknown): unknown {
 }
 
 export function loadConfig(): Config {
-  let configPath: string | null = null;
   let rawConfig: unknown;
+  let configSource = "default config";
 
   if (existsSync(YAML_PATH)) {
-    configPath = YAML_PATH;
+    configSource = YAML_PATH;
     const content = readFileSync(YAML_PATH, "utf-8");
     rawConfig = parseYaml(content);
   } else if (existsSync(JSON_PATH)) {
-    configPath = JSON_PATH;
+    configSource = JSON_PATH;
     const content = readFileSync(JSON_PATH, "utf-8");
     rawConfig = JSON.parse(content);
   } else {
     createDefaultConfig();
     const content = readFileSync(YAML_PATH, "utf-8");
     rawConfig = parseYaml(content);
-    configPath = YAML_PATH;
   }
 
   const interpolatedConfig = interpolateObject(rawConfig);
 
   const errors = validateConfig(interpolatedConfig);
   if (errors.length > 0) {
-    const errorMessages = errors
-      .map((e: { field: string; message: string }) => `  - ${e.field}: ${e.message}`)
-      .join("\n");
-    throw new Error(`Invalid config at ${configPath}:\n${errorMessages}`);
+    const errorMessages = errors.map((e) => `  - ${e.field}: ${e.message}`).join("\n");
+    throw new Error(`Invalid config at ${configSource}:\n${errorMessages}`);
   }
 
   let config = interpolatedConfig as Config;
 
-  const modelOverride = process.env.TINY_AGENT_MODEL;
-  if (modelOverride) {
-    config = { ...config, defaultModel: modelOverride };
-  }
+  const overrides: Array<{ key: string; envVar: string; parse?: (v: string) => number }> = [
+    { key: "defaultModel", envVar: "TINY_AGENT_MODEL" },
+    { key: "systemPrompt", envVar: "TINY_AGENT_SYSTEM_PROMPT" },
+    { key: "conversationFile", envVar: "TINY_AGENT_CONVERSATION_FILE" },
+    { key: "memoryFile", envVar: "TINY_AGENT_MEMORY_FILE" },
+    {
+      key: "maxContextTokens",
+      envVar: "TINY_AGENT_MAX_CONTEXT_TOKENS",
+      parse: (v) => parseInt(v, 10),
+    },
+    {
+      key: "maxMemoryTokens",
+      envVar: "TINY_AGENT_MAX_MEMORY_TOKENS",
+      parse: (v) => parseInt(v, 10),
+    },
+  ];
 
-  const systemPromptOverride = process.env.TINY_AGENT_SYSTEM_PROMPT;
-  if (systemPromptOverride) {
-    config = { ...config, systemPrompt: systemPromptOverride };
-  }
-
-  const conversationFileOverride = process.env.TINY_AGENT_CONVERSATION_FILE;
-  if (conversationFileOverride) {
-    config = { ...config, conversationFile: conversationFileOverride };
-  }
-
-  const maxContextTokensOverride = process.env.TINY_AGENT_MAX_CONTEXT_TOKENS;
-  if (maxContextTokensOverride) {
-    const parsed = parseInt(maxContextTokensOverride, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      config = { ...config, maxContextTokens: parsed };
-    }
-  }
-
-  const memoryFileOverride = process.env.TINY_AGENT_MEMORY_FILE;
-  if (memoryFileOverride) {
-    config = { ...config, memoryFile: memoryFileOverride };
-  }
-
-  const maxMemoryTokensOverride = process.env.TINY_AGENT_MAX_MEMORY_TOKENS;
-  if (maxMemoryTokensOverride) {
-    const parsed = parseInt(maxMemoryTokensOverride, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      config = { ...config, maxMemoryTokens: parsed };
+  for (const override of overrides) {
+    const envValue = process.env[override.envVar];
+    if (envValue) {
+      if (override.parse) {
+        const parsed = override.parse(envValue);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          config = { ...config, [override.key]: parsed };
+        }
+      } else {
+        config = { ...config, [override.key]: envValue };
+      }
     }
   }
 

@@ -216,7 +216,7 @@ export class Agent {
 
       const toolCallSchema = z.object({
         name: z.string(),
-        parameters: z.record(z.unknown()).optional(),
+        parameters: z.record(z.string(), z.unknown()).optional(),
       });
 
       const isValidToolCall = (text: string): boolean => {

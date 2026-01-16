@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "bun --watch index.ts",
     "build": "bun build index.ts --compile --outfile=tiny-agent",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "typecheck": "bun run tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

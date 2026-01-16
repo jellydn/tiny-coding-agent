@@ -3,6 +3,17 @@ import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
 import { z } from "zod";
 
+export function handleFileError(filePath: string, err: unknown, context: string): ToolResult {
+  const error = err as NodeJS.ErrnoException;
+  if (error.code === "ENOENT") {
+    return { success: false, error: `File not found: ${filePath}` };
+  }
+  if (error.code === "EACCES") {
+    return { success: false, error: `Permission denied: ${filePath}` };
+  }
+  return { success: false, error: `${context}: ${error.message}` };
+}
+
 const readFileArgsSchema = z.object({
   path: z.string(),
   start_line: z.number().optional(),
@@ -69,14 +80,7 @@ export const readFileTool: Tool = {
 
       return { success: true, output: content };
     } catch (err) {
-      const error = err as NodeJS.ErrnoException;
-      if (error.code === "ENOENT") {
-        return { success: false, error: `File not found: ${filePath}` };
-      }
-      if (error.code === "EACCES") {
-        return { success: false, error: `Permission denied: ${filePath}` };
-      }
-      return { success: false, error: `Failed to read file: ${error.message}` };
+      return handleFileError(filePath, err, "Failed to read file");
     }
   },
 };
@@ -113,14 +117,7 @@ export const writeFileTool: Tool = {
       await fs.writeFile(filePath, content, "utf-8");
       return { success: true, output: `Successfully wrote to ${filePath}` };
     } catch (err) {
-      const error = err as NodeJS.ErrnoException;
-      if (error.code === "EACCES") {
-        return { success: false, error: `Permission denied: ${filePath}` };
-      }
-      return {
-        success: false,
-        error: `Failed to write file: ${error.message}`,
-      };
+      return handleFileError(filePath, err, "Failed to write file");
     }
   },
 };
@@ -164,9 +161,10 @@ export const editFileTool: Tool = {
       const content = await fs.readFile(filePath, "utf-8");
 
       if (!content.includes(old_str)) {
+        const preview = old_str.length > 50 ? `${old_str.slice(0, 50)}...` : old_str;
         return {
           success: false,
-          error: `Text not found in file: "${old_str.slice(0, 50)}${old_str.length > 50 ? "..." : ""}"`,
+          error: `Text not found in file: "${preview}"`,
         };
       }
 
@@ -183,14 +181,7 @@ export const editFileTool: Tool = {
         output: `Successfully replaced ${occurrences} occurrence(s) in ${filePath}`,
       };
     } catch (err) {
-      const error = err as NodeJS.ErrnoException;
-      if (error.code === "ENOENT") {
-        return { success: false, error: `File not found: ${filePath}` };
-      }
-      if (error.code === "EACCES") {
-        return { success: false, error: `Permission denied: ${filePath}` };
-      }
-      return { success: false, error: `Failed to edit file: ${error.message}` };
+      return handleFileError(filePath, err, "Failed to edit file");
     }
   },
 };
@@ -226,23 +217,24 @@ export const listDirectoryTool: Tool = {
       const entries = await listDir(dirPath, recursive ?? false);
       return { success: true, output: entries.join("\n") };
     } catch (err) {
-      const error = err as NodeJS.ErrnoException;
-      if (error.code === "ENOENT") {
-        return { success: false, error: `Directory not found: ${dirPath}` };
-      }
-      if (error.code === "EACCES") {
-        return { success: false, error: `Permission denied: ${dirPath}` };
-      }
-      if (error.code === "ENOTDIR") {
-        return { success: false, error: `Not a directory: ${dirPath}` };
-      }
-      return {
-        success: false,
-        error: `Failed to list directory: ${error.message}`,
-      };
+      return handleDirError(dirPath, err);
     }
   },
 };
+
+export function handleDirError(dirPath: string, err: unknown): ToolResult {
+  const error = err as NodeJS.ErrnoException;
+  if (error.code === "ENOENT") {
+    return { success: false, error: `Directory not found: ${dirPath}` };
+  }
+  if (error.code === "EACCES") {
+    return { success: false, error: `Permission denied: ${dirPath}` };
+  }
+  if (error.code === "ENOTDIR") {
+    return { success: false, error: `Not a directory: ${dirPath}` };
+  }
+  return { success: false, error: `Failed to list directory: ${error.message}` };
+}
 
 async function listDir(dirPath: string, recursive: boolean, prefix = ""): Promise<string[]> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });

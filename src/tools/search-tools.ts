@@ -32,17 +32,24 @@ export const grepTool: Tool = {
     required: ["pattern"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const pattern = args.pattern as string;
-    const searchPath = (args.path as string) ?? ".";
-    const caseSensitive = (args.case_sensitive as boolean) ?? true;
-    const includePattern = args.include as string | undefined;
+    const {
+      pattern,
+      path: searchPath,
+      case_sensitive,
+      include,
+    } = args as {
+      pattern: string;
+      path?: string;
+      case_sensitive?: boolean;
+      include?: string;
+    };
 
     try {
-      const flags = caseSensitive ? "g" : "gi";
+      const flags = case_sensitive ? "g" : "gi";
       const regex = new RegExp(pattern, flags);
 
       const results: string[] = [];
-      await searchFiles(searchPath, regex, includePattern, results);
+      await searchFiles(searchPath ?? ".", regex, include, results);
 
       if (results.length === 0) {
         return { success: true, output: "No matches found." };
@@ -124,7 +131,7 @@ async function searchInFile(filePath: string, regex: RegExp, results: string[]):
       }
     }
   } catch {
-    // Skip files that can't be read (binary files, permission issues, etc.)
+    // Skip files that can't be read
   }
 }
 
@@ -152,12 +159,14 @@ export const globTool: Tool = {
     required: ["pattern"],
   },
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const pattern = args.pattern as string;
-    const searchPath = (args.path as string) ?? ".";
+    const { pattern, path: searchPath } = args as {
+      pattern: string;
+      path?: string;
+    };
 
     try {
       const results: string[] = [];
-      await globFiles(searchPath, pattern, "", results);
+      await globFiles(searchPath ?? ".", pattern, "", results);
 
       if (results.length === 0) {
         return { success: true, output: "No matching files found." };

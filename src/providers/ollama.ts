@@ -30,6 +30,10 @@ type OllamaTool = {
   };
 };
 
+export function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 type OllamaToolCall = {
   function: {
     name: string;
@@ -92,13 +96,13 @@ export class OllamaProvider implements LLMClient {
   constructor(config: OllamaProviderConfig = {}) {
     this._baseUrl = config.baseUrl ?? "http://localhost:11434";
     this._apiKey = config.apiKey;
+    const headers: Record<string, string> = {};
+    if (config.apiKey) {
+      headers.Authorization = `Bearer ${config.apiKey}`;
+    }
     this._client = new Ollama({
       host: this._baseUrl,
-      headers: config.apiKey
-        ? {
-            Authorization: `Bearer ${config.apiKey}`,
-          }
-        : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
     });
   }
 
@@ -134,14 +138,22 @@ export class OllamaProvider implements LLMClient {
         stream: true,
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      throw new Error(`Ollama API error: ${errorMessage}`);
+      throw new Error(`Ollama API error: ${toErrorMessage(err)}`);
     }
 
     const toolCallsBuffer: Map<number, { name: string; arguments: string }> = new Map();
 
     try {
-      for await (const chunk of stream) {
+      for await (const rawChunk of stream) {
+        const chunk = rawChunk as {
+          message?: {
+            tool_calls?: Array<{
+              function?: { name?: string; arguments?: Record<string, unknown> };
+            }>;
+            content?: string;
+          };
+          done?: boolean;
+        };
         if (chunk.message?.tool_calls) {
           for (const tc of chunk.message.tool_calls) {
             const existing = toolCallsBuffer.get(0) ?? { name: "", arguments: "" };
@@ -178,8 +190,7 @@ export class OllamaProvider implements LLMClient {
         }
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      throw new Error(`Ollama stream error: ${errorMessage}`);
+      throw new Error(`Ollama stream error: ${toErrorMessage(err)}`);
     }
 
     yield { done: true };
@@ -213,13 +224,13 @@ export class OllamaProvider implements LLMClient {
 
         return {
           modelName: model,
-          supportsTools: details?.supports_function_calling ?? true,
+          supportsTools: details.supports_function_calling ?? true,
           supportsStreaming: true,
           supportsSystemPrompt: true,
           supportsToolStreaming: false,
-          supportsThinking: details?.supports_thinking ?? false,
-          contextWindow: details?.context_length ?? 128000,
-          maxOutputTokens: details?.num_ctx ?? 4096,
+          supportsThinking: details.supports_thinking ?? false,
+          contextWindow: details.context_length ?? 128000,
+          maxOutputTokens: details.num_ctx ?? 4096,
         };
       }
     } catch (err) {

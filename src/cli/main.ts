@@ -36,24 +36,15 @@ function parseArgs(): {
   const positionalArgs: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === undefined) {
-      continue;
-    }
+    const arg = args[i] ?? "";
     if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg === "--model" && i + 1 < args.length) {
-      const nextArg = args[i + 1];
-      if (nextArg !== undefined) {
-        options.model = nextArg;
-        i++;
-      }
+      options.model = args[i + 1];
+      i++;
     } else if (arg === "--provider" && i + 1 < args.length) {
-      const nextArg = args[i + 1];
-      if (nextArg !== undefined) {
-        options.provider = nextArg;
-        i++;
-      }
+      options.provider = args[i + 1];
+      i++;
     } else if (arg === "-v" || arg === "--verbose") {
       options.verbose = true;
     } else if (arg === "--save") {
@@ -63,12 +54,9 @@ function parseArgs(): {
     } else if (arg === "--no-track-context") {
       options.noTrackContext = true;
     } else if (arg === "--agents-md" && i + 1 < args.length) {
-      const nextArg = args[i + 1];
-      if (nextArg !== undefined) {
-        options.agentsMd = nextArg;
-        i++;
-      }
-    } else if (!arg.startsWith("-")) {
+      options.agentsMd = args[i + 1];
+      i++;
+    } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
   }
@@ -283,7 +271,6 @@ async function handleChat(
         rl.close();
         console.log("Goodbye!");
         process.exit(0);
-        return;
       }
 
       if (!userInput.trim()) {
