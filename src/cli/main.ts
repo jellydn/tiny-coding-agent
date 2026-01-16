@@ -201,13 +201,19 @@ async function handleChat(
     output: process.stdout,
   });
 
+  // Handle Ctrl+D (EOF) for graceful exit
+  rl.on("close", () => {
+    console.log("\nGoodbye!");
+    process.exit(0);
+  });
+
   console.log(`Tiny Coding Agent (model: ${initialModel})`);
 
   const toolCount = toolRegistry.list().length;
   const memoryStatus = enableMemory ? "enabled" : "disabled";
   const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
   console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
-  console.log('Type "exit" to quit');
+  console.log("Use Ctrl+D or /bye to exit");
   console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
   console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")\n');
 
@@ -219,23 +225,25 @@ async function handleChat(
 
   const askQuestion = (): void => {
     rl.question("You: ", async (userInput: string) => {
-      if (userInput.toLowerCase() === "exit") {
-        rl.close();
-        console.log("Goodbye!");
-        process.exit(0);
-      }
-
       if (!userInput.trim()) {
         askQuestion();
         return;
       }
 
       // Check for chat commands
-      const { isCommand, newState, matchedCommand, error } = parseChatCommand(userInput);
+      const { isCommand, newState, matchedCommand, error, shouldExit } =
+        parseChatCommand(userInput);
 
       if (isCommand) {
         const originalCmd = userInput.split(/\s+/)[0];
         const actualCmd = matchedCommand || originalCmd;
+
+        if (shouldExit) {
+          console.log(`[Command: ${originalCmd} → ${actualCmd}]`);
+          rl.close();
+          console.log("Goodbye!");
+          process.exit(0);
+        }
 
         if (error) {
           console.log(`[Command Error: ${error}]`);

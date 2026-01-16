@@ -159,8 +159,11 @@ During interactive chat, use these commands to change settings on the fly:
 | `/model <name>`             | Switch to a different model  | `/model claude-3-5-sonnet` |
 | `/thinking on\|off`         | Enable/disable thinking mode | `/thinking on`             |
 | `/effort low\|medium\|high` | Set thinking effort level    | `/effort high`             |
+| `/bye`                      | Exit the chat session        | `/bye`                     |
 
-Fuzzy matching is enabled - `/m` → `/model`, `/t` → `/thinking`, etc.
+Fuzzy matching is enabled - `/m` → `/model`, `/t` → `/thinking`, `/b` → `/bye`, etc.
+
+**To exit the chat session**, press `Ctrl+D` or type `/bye`.
 
 ## Custom Plugins
 

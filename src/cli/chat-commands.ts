@@ -9,6 +9,7 @@ export const COMMANDS = {
   MODEL: "/model",
   THINKING: "/thinking",
   EFFORT: "/effort",
+  BYE: "/bye",
 } as const;
 
 export interface ParsedCommand {
@@ -16,6 +17,7 @@ export interface ParsedCommand {
   newState?: Partial<SessionState>;
   matchedCommand?: string;
   error?: string;
+  shouldExit?: boolean;
 }
 
 export function fuzzyMatch(input: string, target: string, threshold = 0.7): boolean {
@@ -103,6 +105,14 @@ export function parseChatCommand(input: string): ParsedCommand {
       };
     }
     return { isCommand: true, error: `Invalid effort level: ${parts[1]}. Use: low/medium/high` };
+  }
+
+  if (fuzzyMatch(cmd, COMMANDS.BYE)) {
+    return {
+      isCommand: true,
+      shouldExit: true,
+      matchedCommand: COMMANDS.BYE,
+    };
   }
 
   return { isCommand: false };
