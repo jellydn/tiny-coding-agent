@@ -1,8 +1,8 @@
 import type { ProviderConfig } from "../config/schema.js";
 import type { LLMClient } from "./types.js";
-import { OpenAIProvider, type OpenAIProviderConfig } from "./openai.js";
-import { AnthropicProvider, type AnthropicProviderConfig } from "./anthropic.js";
-import { OllamaProvider, type OllamaProviderConfig } from "./ollama.js";
+import { OpenAIProvider } from "./openai.js";
+import { AnthropicProvider } from "./anthropic.js";
+import { OllamaProvider } from "./ollama.js";
 import { OpenRouterProvider } from "./openrouter.js";
 import { OpenCodeProvider } from "./opencode.js";
 import { detectProvider, type ProviderType } from "./model-registry.js";
@@ -33,7 +33,7 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
       return new OpenAIProvider({
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
-      } satisfies OpenAIProviderConfig);
+      });
     }
 
     case "anthropic": {
@@ -41,9 +41,7 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
       if (!config?.apiKey) {
         throw new Error("Anthropic provider requires apiKey in config");
       }
-      return new AnthropicProvider({
-        apiKey: config.apiKey,
-      } satisfies AnthropicProviderConfig);
+      return new AnthropicProvider({ apiKey: config.apiKey });
     }
 
     case "ollama": {
@@ -51,7 +49,7 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
       return new OllamaProvider({
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
-      } satisfies OllamaProviderConfig);
+      });
     }
 
     case "openrouter": {

@@ -5,15 +5,6 @@ export interface OpenCodeProviderConfig {
   baseUrl?: string;
 }
 
-/**
- * OpenCode Zen provider - curated list of tested and verified models
- * @see https://opencode.ai/docs/zen/
- *
- * OpenCode Zen provides an OpenAI-compatible API with a curated list of
- * models tested and verified for coding agent use cases.
- *
- * Models use the "opencode/" prefix (e.g., "opencode/gpt-5.2-codex").
- */
 export class OpenCodeProvider extends OpenAIProvider {
   constructor(config: OpenCodeProviderConfig) {
     super({

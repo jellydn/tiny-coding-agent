@@ -244,7 +244,6 @@ export class AnthropicProvider implements LLMClient {
       "claude-3-haiku-20240307": 200000,
     };
 
-    // Use model registry for thinking detection (centralized source of truth)
     const hasThinking = modelRegistrySupportsThinking(model);
 
     return {

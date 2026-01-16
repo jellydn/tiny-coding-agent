@@ -11,7 +11,8 @@ import { Agent, type RuntimeConfig } from "../core/agent.js";
 import { McpManager } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
-import type { ThinkingConfig } from "../config/schema.js";
+import type { SessionState } from "./chat-commands.js";
+import { parseChatCommand } from "./chat-commands.js";
 // Import provider classes for instanceof checks in handleStatus
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
@@ -84,129 +85,6 @@ async function createLLMClient(
     provider: provider as undefined | "openai" | "anthropic" | "ollama" | "openrouter" | "opencode",
     providers: config.providers,
   });
-}
-
-/**
- * Session state for runtime model/mode switching
- */
-interface SessionState {
-  model: string;
-  thinking?: ThinkingConfig;
-}
-
-/**
- * Available chat commands
- */
-const COMMANDS = {
-  MODEL: "/model",
-  THINKING: "/thinking",
-  EFFORT: "/effort",
-} as const;
-
-/**
- * Simple fuzzy matching using Levenshtein distance
- */
-function fuzzyMatch(input: string, target: string, threshold = 0.7): boolean {
-  const normalize = (s: string) => s.toLowerCase().trim();
-  const a = normalize(input);
-  const b = normalize(target);
-
-  if (a === b) return true;
-  if (a.startsWith(b) || b.startsWith(a)) return true;
-
-  const longer = a.length > b.length ? a : b;
-  if (longer.length === 0) return true;
-
-  const editDistance = (str1: string, str2: string): number => {
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const dp: number[][] = [];
-
-    // Initialize first row and column
-    for (let i = 0; i <= len2; i++) {
-      dp[i] = dp[i] ?? [];
-      dp[i]![0] = i;
-    }
-    for (let j = 0; j <= len1; j++) {
-      dp[0] = dp[0] ?? [];
-      dp[0]![j] = j;
-    }
-
-    // Fill the dp table
-    for (let i = 1; i <= len2; i++) {
-      for (let j = 1; j <= len1; j++) {
-        if (str2[i - 1] === str1[j - 1]) {
-          dp[i]![j] = (dp[i - 1] ?? [])[j - 1] ?? 0;
-        } else {
-          dp[i]![j] =
-            1 +
-            Math.min(
-              (dp[i - 1] ?? [])[j] ?? 0,
-              (dp[i] ?? [])[j - 1] ?? 0,
-              (dp[i - 1] ?? [])[j - 1] ?? 0,
-            );
-        }
-      }
-    }
-
-    return (dp[len2] ?? [])[len1] ?? 0;
-  };
-
-  const distance = editDistance(a, b);
-  const similarity = 1 - distance / longer.length;
-  return similarity >= threshold;
-}
-
-/**
- * Parse chat commands with fuzzy matching
- */
-function parseChatCommand(input: string): {
-  isCommand: boolean;
-  newState?: Partial<SessionState>;
-  matchedCommand?: string;
-  error?: string;
-} {
-  const parts = input.trim().split(/\s+/);
-  const cmd = parts[0]?.toLowerCase() ?? "";
-
-  // Fuzzy match command
-  if (fuzzyMatch(cmd, COMMANDS.MODEL) && parts.length > 1) {
-    const model = parts.slice(1).join(" ");
-    return { isCommand: true, newState: { model }, matchedCommand: COMMANDS.MODEL };
-  }
-
-  if (fuzzyMatch(cmd, COMMANDS.THINKING)) {
-    const state = parts[1]?.toLowerCase() ?? "";
-    if (state === "on" || state === "true" || state === "enable") {
-      return {
-        isCommand: true,
-        newState: { thinking: { enabled: true } },
-        matchedCommand: COMMANDS.THINKING,
-      };
-    }
-    if (state === "off" || state === "false" || state === "disable") {
-      return {
-        isCommand: true,
-        newState: { thinking: { enabled: false } },
-        matchedCommand: COMMANDS.THINKING,
-      };
-    }
-    return { isCommand: true, error: `Invalid thinking state: ${state}. Use: on/off` };
-  }
-
-  if (fuzzyMatch(cmd, COMMANDS.EFFORT) && parts.length > 1) {
-    const effort = parts[1]?.toLowerCase() as "low" | "medium" | "high";
-    if (effort && ["low", "medium", "high"].includes(effort)) {
-      return {
-        isCommand: true,
-        newState: { thinking: { enabled: true, effort } },
-        matchedCommand: COMMANDS.EFFORT,
-      };
-    }
-    return { isCommand: true, error: `Invalid effort level: ${parts[1]}. Use: low/medium/high` };
-  }
-
-  return { isCommand: false };
 }
 
 function createMemoryStore(
@@ -524,9 +402,7 @@ async function handleStatus(
       const baseUrl = config.providers.openai?.baseUrl;
       return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
     }
-    if (llmClient instanceof AnthropicProvider) {
-      return "Anthropic";
-    }
+    if (llmClient instanceof AnthropicProvider) return "Anthropic";
     if (llmClient instanceof OllamaProvider) {
       const baseUrl = config.providers.ollama?.baseUrl ?? "http://localhost:11434";
       return `Ollama (${baseUrl})`;
@@ -546,9 +422,8 @@ async function handleStatus(
   const capabilities: ModelCapabilities = await llmClient.getCapabilities(model);
 
   console.log("Model Capabilities:");
-  const capabilityCheck = (name: string, supported: boolean): string => {
-    return supported ? "  ✓" : "  ✗";
-  };
+  const capabilityCheck = (_name: string, supported: boolean): string =>
+    supported ? "  ✓" : "  ✗";
 
   console.log(`${capabilityCheck("Tools", capabilities.supportsTools)} Tools`);
   console.log(`${capabilityCheck("Streaming", capabilities.supportsStreaming)} Streaming`);

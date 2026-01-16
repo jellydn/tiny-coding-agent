@@ -26,14 +26,8 @@ export interface AgentOptions {
   thinking?: ThinkingConfig;
 }
 
-/**
- * Runtime configuration for per-request overrides
- * Allows changing model or thinking mode mid-conversation
- */
 export interface RuntimeConfig {
-  /** Override the model for this request */
   model?: string;
-  /** Override the thinking config for this request */
   thinking?: ThinkingConfig;
 }
 
@@ -108,7 +102,6 @@ export class Agent {
     model: string,
     runtimeConfig?: RuntimeConfig,
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    // Apply runtime overrides
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     let messages = this._conversationFile ? this._loadConversation() : [];
@@ -187,11 +180,9 @@ export class Agent {
       contextStats = updateContextStats(0, truncationApplied);
     }
 
-    // Get tool definitions for LLM
     const tools = this._getToolDefinitions();
 
     let iteration = 0;
-    // Track recent tool calls to detect loops
     const recentToolCalls: string[] = [];
     let loopDetected = false;
 
@@ -281,13 +272,11 @@ export class Agent {
 
       messages.push(assistantMessage);
 
-      // If no tool calls or stop finish reason, we're done
       if (assistantToolCalls.length === 0) {
         if (this._verbose) {
           console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
         }
 
-        // Save conversation if file is configured
         this._saveConversation(messages);
 
         yield {
@@ -299,7 +288,6 @@ export class Agent {
         return;
       }
 
-      // Signal tool execution starting
       yield {
         content: "",
         iterations: iteration + 1,
@@ -311,7 +299,6 @@ export class Agent {
         contextStats,
       };
 
-      // Execute all tool calls in parallel
       const toolExecutionPromises = assistantToolCalls.map(async (toolCall) => {
         if (this._verbose) {
           console.log(`\nExecuting tool: ${toolCall.name} with args:`, toolCall.arguments);
@@ -331,7 +318,6 @@ export class Agent {
 
       const toolExecutionResults = await Promise.all(toolExecutionPromises);
 
-      // Signal tool execution completion
       yield {
         content: "",
         iterations: iteration + 1,
@@ -344,9 +330,7 @@ export class Agent {
         contextStats,
       };
 
-      // Add tool results to messages
       for (const { toolCall, result } of toolExecutionResults) {
-        // Track tool call for loop detection
         const toolCallSignature = `${toolCall.name}:${JSON.stringify(toolCall.arguments)}`;
         recentToolCalls.push(toolCallSignature);
 
@@ -357,11 +341,9 @@ export class Agent {
         });
       }
 
-      // Detect repeated tool calls (possible loop)
       if (recentToolCalls.length >= 3) {
         const lastThree = recentToolCalls.slice(-3);
         if (lastThree.every((call) => call === lastThree[0])) {
-          // Same tool called 3 times in a row with same args
           const toolName = assistantToolCalls[0]?.name ?? "unknown";
           messages.push({
             role: "system",
@@ -378,7 +360,6 @@ export class Agent {
       contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
     }
 
-    // Handle loop detection - try one more LLM call to get final answer
     if (loopDetected) {
       if (this._verbose) {
         console.log(`\n[Loop detected - requesting final answer from LLM]`);
@@ -393,7 +374,7 @@ export class Agent {
           },
           ...messages,
         ],
-        tools: undefined, // No more tools
+        tools: undefined,
         thinking: effectiveThinking,
       });
 
@@ -408,7 +389,6 @@ export class Agent {
         }
       }
 
-      // Save and exit
       this._saveConversation(messages);
       yield {
         content: "",
@@ -419,7 +399,6 @@ export class Agent {
       return;
     }
 
-    // Max iterations reached
     throw new Error(`Agent reached max iterations (${this._maxIterations}) without finishing`);
   }
 

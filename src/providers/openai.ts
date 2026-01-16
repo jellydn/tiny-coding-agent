@@ -186,26 +186,23 @@ export class OpenAIProvider implements LLMClient {
       "gpt-4-turbo": 128000,
       "gpt-4": 8192,
       "gpt-3.5-turbo": 16385,
-      // Thinking models
       o1: 200000,
       "o1-mini": 128000,
       "o1-preview": 128000,
       "o3-mini": 200000,
     };
 
-    // Use model registry for thinking detection (centralized source of truth)
     const hasThinking = modelRegistrySupportsThinking(model);
-    const isThinkingModel = hasThinking;
 
     return {
       modelName: model,
-      supportsTools: !isThinkingModel, // o1/o3 don't support tools yet
+      supportsTools: !hasThinking,
       supportsStreaming: true,
-      supportsSystemPrompt: !isThinkingModel, // o1/o3 don't use system prompts
-      supportsToolStreaming: !isThinkingModel,
-      supportsThinking: isThinkingModel,
+      supportsSystemPrompt: !hasThinking,
+      supportsToolStreaming: !hasThinking,
+      supportsThinking: hasThinking,
       contextWindow: modelContextWindow[model] ?? 16385,
-      maxOutputTokens: isThinkingModel ? 100000 : 4096,
+      maxOutputTokens: hasThinking ? 100000 : 4096,
     };
   }
 }
