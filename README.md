@@ -11,6 +11,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 - **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, and OpenCode
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
+- **Memory System**: User-initiated persistent storage with relevance-based retrieval
 - **Plugin System**: Extend the agent with custom tools
 - **CLI-First Design**: Simple commands for chat, run, and config
 
@@ -296,6 +297,8 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 004: Context Management (Handoff)
 - 005: Tool System Design
 - 006: Plugin System
+- 007: Model Registry Pattern
+- 008: Memory System (User-Initiated Storage)
 
 ## Development
 
