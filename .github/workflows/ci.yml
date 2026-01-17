@@ -93,7 +93,7 @@ jobs:
         run: bun run build
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tiny-agent-linux-x64
           path: tiny-agent
