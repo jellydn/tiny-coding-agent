@@ -17,20 +17,20 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 ## Quick Install
 
-### One-Liner (Linux & macOS)
+### One-line Install (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh | sh
 ```
 
 This downloads the latest release binary for your platform and installs it to `~/.local/bin/`.
 
-**Options:**
+**Safer alternative** (inspect before running):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh | bash -s -- -v v0.1.0  # specific version
-curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh | bash -s -- -d /usr/local/bin  # custom dir
-curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh | bash -s -- -f  # overwrite existing
+curl -fsSL -o install.sh https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scripts/install.sh
+less install.sh  # inspect the script
+sh install.sh
 ```
 
 **Note:** After installation, add `~/.local/bin` to your PATH if not already present.
@@ -38,11 +38,10 @@ curl -fsSL https://raw.githubusercontent.com/jellydn/tiny-coding-agent/main/scri
 ### Homebrew (macOS)
 
 ```bash
-brew tap jellydn/tiny-coding-agent
-brew install tiny-agent
+brew install jellydn/tap/tiny-agent
 ```
 
-### From Source
+### Build from Source
 
 ```bash
 git clone https://github.com/jellydn/tiny-coding-agent.git
@@ -50,22 +49,6 @@ cd tiny-coding-agent
 bun install
 bun run build
 ./tiny-agent --help
-```
-
-### Binary Download
-
-Download the latest release from [GitHub Releases](https://github.com/jellydn/tiny-coding-agent/releases):
-
-| Platform | Architecture  | Binary                   |
-| -------- | ------------- | ------------------------ |
-| macOS    | Apple Silicon | `tiny-agent-macos-arm64` |
-| macOS    | Intel         | `tiny-agent-macos-x64`   |
-| Linux    | x64           | `tiny-agent-linux-x64`   |
-
-Verify integrity:
-
-```bash
-sha256sum -c SHA256SUMS
 ```
 
 ### System Requirements
@@ -90,22 +73,6 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-### "Permission denied" during installation
-
-The installation directory is not writable. Either:
-
-- Use `sudo` with a system directory: `-d /usr/local/bin`
-- Or ensure `~/.local/bin` exists and is writable
-
-### "Unsupported OS" error
-
-Currently supported:
-
-- Linux (x64, arm64)
-- macOS (Intel and Apple Silicon)
-
-Windows is not yet supported. Use WSL2 on Windows.
-
 ### API key errors
 
 Set your API key as an environment variable:
@@ -124,23 +91,6 @@ providers:
     apiKey: ${OPENAI_API_KEY}
 ```
 
-### Model not found
-
-Ensure your model is available for your provider. Run:
-
-```bash
-tiny-agent status
-```
-
-### Installation verification
-
-To verify your installation:
-
-```bash
-tiny-agent --help
-tiny-agent status
-```
-
 ## Uninstallation
 
 To remove the installed binary:
@@ -153,7 +103,7 @@ Or if installed via Homebrew:
 
 ```bash
 brew uninstall tiny-agent
-brew untap jellydn/tiny-coding-agent
+brew untap jellydn/tap
 ```
 
 ## Configuration

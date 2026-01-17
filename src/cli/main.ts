@@ -668,7 +668,7 @@ CONFIG:
     ~/.tiny-agent/config.yaml          Configuration file
     tiny-agent config open             Open config in editor
 
-For more information, visit: https://github.com/anomalyco/tiny-agent
+For more information, visit: https://github.com/jellydn/tiny-coding-agent
   `);
 }
 
