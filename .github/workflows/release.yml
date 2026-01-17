@@ -9,12 +9,47 @@ permissions:
   contents: write
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-
-  release:
-    needs: ci
+  lint:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run lint
+      - run: bun run format:check
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun test
+
+  build:
+    needs: [lint, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: tiny-agent-linux-x64
+          - os: macos-latest
+            artifact: tiny-agent-macos-x64
+            extra-args: ""
+          - os: macos-latest
+            artifact: tiny-agent-macos-arm64
+            extra-args: "--arm64"
 
     steps:
       - name: Checkout repository
@@ -25,16 +60,75 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
       - name: Install dependencies
         run: bun install
 
       - name: Build binary
-        run: bun run build
+        run: bun run build ${{ matrix.extra-args }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: tiny-agent
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Verify all binaries exist
+        run: |
+          cd release-artifacts
+          echo "Available artifacts:"
+          ls -la
+          for artifact in tiny-agent-linux-x64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
+            if [[ ! -d "$artifact" ]]; then
+              echo "ERROR: Missing artifact: $artifact"
+              exit 1
+            fi
+            if [[ ! -f "$artifact/tiny-agent" ]]; then
+              echo "ERROR: Missing binary in: $artifact"
+              exit 1
+            fi
+            echo "  ✓ $artifact"
+          done
+
+      - name: Setup SHA256
+        run: |
+          cd release-artifacts
+          find . -name "tiny-agent" -exec sh -c 'for f; do
+            dir=$(dirname "$f")
+            name=$(basename "$f")
+            cd "$dir"
+            sha256sum "$name" > "${name}.sha256"
+            cd - > /dev/null
+          done' _ {} +
+          cat **/*.sha256 > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: tiny-agent
+          files: |
+            release-artifacts/**/tiny-agent
+            release-artifacts/**/tiny-agent.sha256
+            release-artifacts/SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: false
