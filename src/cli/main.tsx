@@ -22,7 +22,11 @@ import {
   type ConfirmationRequest,
   type ConfirmationResult,
 } from "../tools/confirmation.js";
-import { setNoColor } from "../ui/utils.js";
+import { setNoColor, shouldUseInk } from "../ui/utils.js";
+import { render } from "ink";
+import React from "react";
+import { Spinner } from "../ui/components/Spinner.js";
+import { ToolOutput } from "../ui/components/ToolOutput.js";
 // Import provider classes for instanceof checks in handleStatus
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
@@ -61,7 +65,7 @@ function formatArgs(args: Record<string, unknown> | undefined): string {
   return entries.length > 0 ? ` (${entries.join(", ")})` : "";
 }
 
-function displayToolExecution(te: {
+function displayToolExecutionPlain(te: {
   name: string;
   status: "running" | "complete" | "error";
   args?: Record<string, unknown>;
@@ -83,6 +87,41 @@ function displayToolExecution(te: {
     if (te.error) {
       process.stdout.write(`  │ ${te.error.split("\n").join("\n  │ ")}\n`);
     }
+  }
+}
+
+function displayToolExecutionInk(te: {
+  name: string;
+  status: "running" | "complete" | "error";
+  args?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+}): void {
+  if (te.status === "running") {
+    return;
+  }
+  const success = te.status === "complete";
+  const outputPreview = te.output ? te.output.split("\n").slice(0, 6).join("\n") : undefined;
+  const { unmount } = render(
+    <ToolOutput name={te.name} success={success} output={outputPreview} error={te.error} />,
+  );
+  unmount();
+}
+
+function displayToolExecution(
+  te: {
+    name: string;
+    status: "running" | "complete" | "error";
+    args?: Record<string, unknown>;
+    output?: string;
+    error?: string;
+  },
+  useInk: boolean,
+): void {
+  if (useInk) {
+    displayToolExecutionInk(te);
+  } else {
+    displayToolExecutionPlain(te);
   }
 }
 
@@ -392,6 +431,13 @@ async function handleChat(
       try {
         process.stdout.write("\n");
         let hasContent = false;
+        const useInk = shouldUseInk();
+
+        // Show spinner while waiting for LLM response
+        let spinnerInstance: { unmount: () => void } | null = null;
+        if (useInk) {
+          spinnerInstance = render(<Spinner isLoading={true} />);
+        }
 
         // Build runtime config from session state
         const runtimeConfig: RuntimeConfig = {
@@ -400,15 +446,23 @@ async function handleChat(
         };
 
         for await (const chunk of agent.runStream(userInput, sessionState.model, runtimeConfig)) {
+          // Clear spinner on first content
+          if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
+            spinnerInstance.unmount();
+            spinnerInstance = null;
+          }
+
           if (chunk.content) {
             process.stdout.write(chunk.content);
             hasContent = true;
           }
 
           if (chunk.toolExecutions) {
-            process.stdout.write("\n  Tools:\n");
+            if (!useInk) {
+              process.stdout.write("\n  Tools:\n");
+            }
             for (const te of chunk.toolExecutions) {
-              displayToolExecution(te);
+              displayToolExecution(te, useInk);
             }
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
@@ -487,9 +541,12 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
-        process.stdout.write("\n  Tools:\n");
+        const useInk = shouldUseInk();
+        if (!useInk) {
+          process.stdout.write("\n  Tools:\n");
+        }
         for (const te of chunk.toolExecutions) {
-          displayToolExecution(te);
+          displayToolExecution(te, useInk);
         }
         if (!options.noTrackContext && chunk.contextStats) {
           const ctx = chunk.contextStats;
