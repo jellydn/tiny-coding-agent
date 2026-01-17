@@ -106,8 +106,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "✅ Complete - ToolOutput uses useStdout for height detection, useInput for scroll (↑/↓/j/k/PgUp/PgDn), line indicator."
     },
     {
       "id": "US-008",

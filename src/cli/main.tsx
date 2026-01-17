@@ -22,7 +22,7 @@ import {
   type ConfirmationRequest,
   type ConfirmationResult,
 } from "../tools/confirmation.js";
-import { setNoColor, shouldUseInk } from "../ui/utils.js";
+import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
 import { render } from "ink";
 import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
@@ -46,6 +46,7 @@ interface CliOptions {
   agentsMd?: string;
   allowAll?: boolean;
   noColor?: boolean;
+  json?: boolean;
 }
 
 function formatArgs(args: Record<string, unknown> | undefined): string {
@@ -125,6 +126,16 @@ function displayToolExecution(
   }
 }
 
+interface JsonOutput {
+  type: "user" | "assistant" | "tool";
+  content: string;
+  toolName?: string;
+}
+
+function outputJson(data: JsonOutput): void {
+  console.log(JSON.stringify(data));
+}
+
 function parseArgs(): {
   command: string;
   args: string[];
@@ -159,6 +170,8 @@ function parseArgs(): {
       options.allowAll = true;
     } else if (arg === "--no-color") {
       options.noColor = true;
+    } else if (arg === "--json") {
+      options.json = true;
     } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -429,9 +442,16 @@ async function handleChat(
       }
 
       try {
-        process.stdout.write("\n");
-        let hasContent = false;
         const useInk = shouldUseInk();
+        const jsonMode = isJsonMode();
+
+        if (jsonMode) {
+          outputJson({ type: "user", content: userInput });
+        } else {
+          process.stdout.write("\n");
+        }
+
+        let hasContent = false;
 
         // Show spinner while waiting for LLM response
         let spinnerInstance: { unmount: () => void } | null = null;
@@ -445,6 +465,8 @@ async function handleChat(
           thinking: sessionState.thinking,
         };
 
+        let accumulatedContent = "";
+
         for await (const chunk of agent.runStream(userInput, sessionState.model, runtimeConfig)) {
           // Clear spinner on first content
           if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
@@ -453,30 +475,50 @@ async function handleChat(
           }
 
           if (chunk.content) {
-            process.stdout.write(chunk.content);
+            if (jsonMode) {
+              accumulatedContent += chunk.content;
+            } else {
+              process.stdout.write(chunk.content);
+            }
             hasContent = true;
           }
 
           if (chunk.toolExecutions) {
-            if (!useInk) {
-              process.stdout.write("\n  Tools:\n");
-            }
-            for (const te of chunk.toolExecutions) {
-              displayToolExecution(te, useInk);
-            }
-            if (!options.noTrackContext && chunk.contextStats) {
-              const ctx = chunk.contextStats;
-              process.stdout.write(
-                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
-              );
-            }
-            if (!hasContent) {
-              process.stdout.write("Agent: ");
+            if (jsonMode) {
+              for (const te of chunk.toolExecutions) {
+                if (te.status !== "running") {
+                  outputJson({
+                    type: "tool",
+                    content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
+                    toolName: te.name,
+                  });
+                }
+              }
+            } else {
+              if (!useInk) {
+                process.stdout.write("\n  Tools:\n");
+              }
+              for (const te of chunk.toolExecutions) {
+                displayToolExecution(te, useInk);
+              }
+              if (!options.noTrackContext && chunk.contextStats) {
+                const ctx = chunk.contextStats;
+                process.stdout.write(
+                  `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
+                );
+              }
+              if (!hasContent) {
+                process.stdout.write("Agent: ");
+              }
             }
           }
 
           if (chunk.done) {
-            process.stdout.write("\n");
+            if (jsonMode && accumulatedContent) {
+              outputJson({ type: "assistant", content: accumulatedContent });
+            } else if (!jsonMode) {
+              process.stdout.write("\n");
+            }
           }
         }
       } catch (err) {
@@ -530,31 +572,62 @@ async function handleRun(
   const toolCount = toolRegistry.list().length;
   const memoryStatus = enableMemory ? "memory enabled" : "no memory";
   const agentsMdStatus = agentsMdPath ? "AGENTS.md loaded" : "";
-  console.log(
-    `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
-  );
+  const jsonMode = isJsonMode();
+  const useInk = shouldUseInk();
+
+  if (!jsonMode) {
+    console.log(
+      `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
+    );
+  }
+
+  if (jsonMode) {
+    outputJson({ type: "user", content: prompt });
+  }
 
   try {
+    let accumulatedContent = "";
+
     for await (const chunk of agent.runStream(prompt, model)) {
       if (chunk.content) {
-        process.stdout.write(chunk.content);
+        if (jsonMode) {
+          accumulatedContent += chunk.content;
+        } else {
+          process.stdout.write(chunk.content);
+        }
       }
 
       if (chunk.toolExecutions) {
-        const useInk = shouldUseInk();
-        if (!useInk) {
-          process.stdout.write("\n  Tools:\n");
-        }
-        for (const te of chunk.toolExecutions) {
-          displayToolExecution(te, useInk);
-        }
-        if (!options.noTrackContext && chunk.contextStats) {
-          const ctx = chunk.contextStats;
-          process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
+        if (jsonMode) {
+          for (const te of chunk.toolExecutions) {
+            if (te.status !== "running") {
+              outputJson({
+                type: "tool",
+                content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
+                toolName: te.name,
+              });
+            }
+          }
+        } else {
+          if (!useInk) {
+            process.stdout.write("\n  Tools:\n");
+          }
+          for (const te of chunk.toolExecutions) {
+            displayToolExecution(te, useInk);
+          }
+          if (!options.noTrackContext && chunk.contextStats) {
+            const ctx = chunk.contextStats;
+            process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
+          }
         }
       }
     }
-    process.stdout.write("\n");
+
+    if (jsonMode && accumulatedContent) {
+      outputJson({ type: "assistant", content: accumulatedContent });
+    } else if (!jsonMode) {
+      process.stdout.write("\n");
+    }
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -709,6 +782,7 @@ OPTIONS:
     --no-track-context                 Disable context tracking (enabled by default)
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
     --no-color                         Disable colored output (for pipes/non-TTY)
+    --json                             Output messages as JSON (for programmatic use)
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -857,6 +931,10 @@ export async function main(): Promise<void> {
 
     if (options.noColor) {
       setNoColor(true);
+    }
+
+    if (options.json) {
+      setJsonMode(true);
     }
 
     if (options.help) {
