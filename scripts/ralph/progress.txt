@@ -6,6 +6,7 @@ Started: Sat Jan 18 2026
 - tsconfig.json already configured with `jsx: react-jsx` - no changes needed for JSX support
 - Use `src/ui/` for all Ink/React components, `src/ui/components/` for reusable UI pieces
 - Ink v6 uses React 19 - use functional components with proper React.ReactElement return types
+- Use src/ui/utils.ts for TTY/color detection: isTTY(), shouldUseInk(), setNoColor(), setJsonMode()
 
 ---
 
@@ -18,5 +19,16 @@ Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
   - tsconfig already had `jsx: react-jsx` configured from project setup
   - Ink v6 is the latest version, works with React 19
   - App component exports both the component and a renderApp() helper for easy rendering
+---
+
+## 2026-01-18 - US-002
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Created src/ui/utils.ts with TTY detection and mode helpers
+- Added --no-color CLI flag to main.ts
+- Updated help text to document --no-color flag
+- **Learnings for future iterations:**
+  - shouldUseInk() combines isTTY() check with noColor and jsonMode flags
+  - setNoColor() and setJsonMode() allow forcing plain output programmatically
+  - Check both stdout.isTTY and stdin.isTTY for full interactive detection
 ---
 
