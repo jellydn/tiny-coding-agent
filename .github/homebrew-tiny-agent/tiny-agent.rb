@@ -17,8 +17,14 @@ class TinyAgent < Formula
   end
 
   on_linux do
-    url "https://github.com/jellydn/tiny-coding-agent/releases/download/v#{version}/tiny-agent-linux-x64"
-    sha256 "REPLACE_WITH_ACTUAL_LINUX_X64_SHA256"
+    on_intel do
+      url "https://github.com/jellydn/tiny-coding-agent/releases/download/v#{version}/tiny-agent-linux-x64"
+      sha256 "REPLACE_WITH_ACTUAL_LINUX_X64_SHA256"
+    end
+    on_arm do
+      url "https://github.com/jellydn/tiny-coding-agent/releases/download/v#{version}/tiny-agent-linux-arm64"
+      sha256 "REPLACE_WITH_ACTUAL_LINUX_ARM64_SHA256"
+    end
   end
 
   def install

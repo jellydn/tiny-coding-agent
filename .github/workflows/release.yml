@@ -44,6 +44,8 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: tiny-agent-linux-x64
+          - os: ubuntu-latest
+            artifact: tiny-agent-linux-arm64
           - os: macos-latest
             artifact: tiny-agent-macos-x64
             extra-args: ""
@@ -97,7 +99,7 @@ jobs:
           cd release-artifacts
           echo "Available artifacts:"
           ls -la
-          for artifact in tiny-agent-linux-x64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
+          for artifact in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
             if [[ ! -d "$artifact" ]]; then
               echo "ERROR: Missing artifact: $artifact"
               exit 1
@@ -112,13 +114,21 @@ jobs:
       - name: Setup SHA256
         run: |
           cd release-artifacts
-          find . -name "tiny-agent" -exec sh -c 'for f; do
-            dir=$(dirname "$f")
-            name=$(basename "$f")
-            cd "$dir"
-            sha256sum "$name" > "${name}.sha256"
-            cd - > /dev/null
-          done' _ {} +
+          # Rename binaries to platform-specific names
+          for dir in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
+            if [[ -f "$dir/tiny-agent" ]]; then
+              mv "$dir/tiny-agent" "$dir/$dir"
+            fi
+          done
+          # Generate checksums
+          find . -name "tiny-agent-*" -type f -exec sh -c '
+            for f; do
+              dir=$(dirname "$f")
+              name=$(basename "$f")
+              (cd "$dir" && sha256sum "$name" > "${name}.sha256")
+            done
+          ' _ {} +
+          # Aggregate checksums
           cat **/*.sha256 > SHA256SUMS
           cat SHA256SUMS
 
@@ -126,9 +136,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/**/tiny-agent
-            release-artifacts/**/tiny-agent.sha256
-            release-artifacts/SHA256SUMS
+            release-artifacts/**/tiny-agent-*
+            release-artifacts/**/SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: false

@@ -46,7 +46,7 @@ brew install tiny-agent
 
 ```bash
 git clone https://github.com/jellydn/tiny-coding-agent.git
-cd tiny-agent
+cd tiny-coding-agent
 bun install
 bun run build
 ./tiny-agent --help
@@ -155,8 +155,6 @@ Or if installed via Homebrew:
 brew uninstall tiny-agent
 brew untap jellydn/tiny-coding-agent
 ```
-
-## Configuration
 
 ## Configuration
 

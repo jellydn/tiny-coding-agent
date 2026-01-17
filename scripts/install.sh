@@ -50,7 +50,10 @@ while [[ $# -gt 0 ]]; do
 		FORCE_ARCH="$2"
 		shift 2
 		;;
-	-f | --force) FORCE_OVERWRITE="1" ;;
+	-f | --force)
+		FORCE_OVERWRITE="1"
+		shift
+		;;
 	-h | --help) usage ;;
 	*) err "Unknown option: $1" ;;
 	esac
@@ -140,7 +143,7 @@ install() {
 	checksum_url=$(get_checksum_url "$version")
 
 	temp_dir=$(mktemp -d)
-	trap "rm -rf '$temp_dir'" EXIT
+	trap 'rm -rf "$temp_dir"' EXIT
 
 	binary_path="${temp_dir}/tiny-agent"
 	local checksum_path="${temp_dir}/SHA256SUMS"
@@ -155,7 +158,11 @@ install() {
 		expected=$(grep "tiny-agent-${os}-${arch}$" "$checksum_path" | awk '{print $1}')
 		if [[ -n "$expected" ]]; then
 			local actual
-			actual=$(sha256sum "$binary_path" | awk '{print $1}')
+			if command -v sha256sum >/dev/null 2>&1; then
+				actual=$(sha256sum "$binary_path" | awk '{print $1}')
+			else
+				actual=$(shasum -a 256 "$binary_path" | awk '{print $1}')
+			fi
 			if [[ "$expected" != "$actual" ]]; then
 				err "Checksum verification failed!"
 			fi
