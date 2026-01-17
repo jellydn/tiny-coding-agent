@@ -22,7 +22,7 @@
     "ollama": "^0.6.3",
     "openai": "^6.16.0",
     "yaml": "^2.8.2",
-    "zod": "^3.25.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
