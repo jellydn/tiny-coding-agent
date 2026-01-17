@@ -22,6 +22,7 @@ import {
   type ConfirmationRequest,
   type ConfirmationResult,
 } from "../tools/confirmation.js";
+import { setNoColor } from "../ui/utils.js";
 // Import provider classes for instanceof checks in handleStatus
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
@@ -40,6 +41,7 @@ interface CliOptions {
   memoryFile?: string;
   agentsMd?: string;
   allowAll?: boolean;
+  noColor?: boolean;
 }
 
 function formatArgs(args: Record<string, unknown> | undefined): string {
@@ -116,6 +118,8 @@ function parseArgs(): {
       i++;
     } else if (arg === "--allow-all" || arg === "-y") {
       options.allowAll = true;
+    } else if (arg === "--no-color") {
+      options.noColor = true;
     } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -647,6 +651,7 @@ OPTIONS:
     --no-memory                        Disable memory (enabled by default)
     --no-track-context                 Disable context tracking (enabled by default)
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
+    --no-color                         Disable colored output (for pipes/non-TTY)
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -792,6 +797,10 @@ async function handleMemory(
 export async function main(): Promise<void> {
   try {
     const { command, args, options } = parseArgs();
+
+    if (options.noColor) {
+      setNoColor(true);
+    }
 
     if (options.help) {
       showHelp();

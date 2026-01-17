@@ -2,3 +2,21 @@
 Started: Sat Jan 18 2026
 ---
 
+## Codebase Patterns
+- tsconfig.json already configured with `jsx: react-jsx` - no changes needed for JSX support
+- Use `src/ui/` for all Ink/React components, `src/ui/components/` for reusable UI pieces
+- Ink v6 uses React 19 - use functional components with proper React.ReactElement return types
+
+---
+
+## 2026-01-18 - US-001
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Installed ink@6.6.0, react@19.2.3, @types/react@19.2.8
+- Created src/ui/App.tsx with basic App component and renderApp helper
+- Created src/ui/components/ directory for future components
+- **Learnings for future iterations:**
+  - tsconfig already had `jsx: react-jsx` configured from project setup
+  - Ink v6 is the latest version, works with React 19
+  - App component exports both the component and a renderApp() helper for easy rendering
+---
+
