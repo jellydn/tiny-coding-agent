@@ -1,5 +1,5 @@
 import type { LLMClient, Message } from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
+import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { countTokens, truncateMessages } from "./tokens.js";
@@ -34,6 +34,9 @@ export interface RuntimeConfig {
 export interface ToolExecution {
   name: string;
   status: "running" | "complete" | "error";
+  args?: Record<string, unknown>;
+  output?: string;
+  error?: string;
   summary?: string;
 }
 
@@ -301,49 +304,49 @@ export class Agent {
         toolExecutions: assistantToolCalls.map((tc) => ({
           name: tc.name,
           status: "running" as const,
+          args: tc.arguments,
         })),
         contextStats,
       };
 
-      const toolExecutionPromises = assistantToolCalls.map(async (toolCall) => {
-        if (this._verbose) {
-          console.log(`\nExecuting tool: ${toolCall.name} with args:`, toolCall.arguments);
-        }
+      const calls = assistantToolCalls.map((tc) => ({
+        name: tc.name,
+        args: tc.arguments,
+      }));
+      const batchResults = await this._toolRegistry.executeBatch(calls);
 
-        const result = await this._toolRegistry.execute(toolCall.name, toolCall.arguments);
-
-        if (this._verbose) {
-          console.log(`Tool result: ${result.error || result.output || "(no output)"}`);
-        }
-
-        return {
-          toolCall,
-          result,
-        };
-      });
-
-      const toolExecutionResults = await Promise.all(toolExecutionPromises);
+      // Map results back to original tool calls
+      const resultMap = new Map(batchResults.map((br) => [br.name, br]));
+      const toolExecutionResults = assistantToolCalls.map((tc) => ({
+        toolCall: tc,
+        result: resultMap.get(tc.name)?.result ?? {
+          success: false,
+          error: `Tool "${tc.name}" result not found`,
+        },
+      }));
 
       yield {
         content: "",
         iterations: iteration + 1,
         done: false,
         toolExecutions: toolExecutionResults.map(({ toolCall, result }) => ({
-          name: toolCall.name,
+          name: toolCall?.name,
           status: result.success ? "complete" : "error",
-          summary: result.error ? "Failed" : undefined,
+          args: toolCall?.arguments,
+          output: result.success ? truncateOutput(result.output) : undefined,
+          error: result.error ? truncateOutput(result.error) : undefined,
         })),
         contextStats,
       };
 
       for (const { toolCall, result } of toolExecutionResults) {
-        const toolCallSignature = `${toolCall.name}:${JSON.stringify(toolCall.arguments)}`;
+        const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
         recentToolCalls.push(toolCallSignature);
 
         messages.push({
           role: "tool",
           content: result.error || result.output || "(no output)",
-          toolCallId: toolCall.id,
+          toolCallId: toolCall?.id,
         });
       }
 
@@ -353,7 +356,7 @@ export class Agent {
       );
 
       if (notFoundErrors.length > 0) {
-        const missingTools = notFoundErrors.map(({ toolCall }) => toolCall.name).join(", ");
+        const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
         messages.push({
           role: "system",
           content: `ERROR: The following tool(s) are not available: ${missingTools}. Please stop and provide your final answer based on the information you have gathered, or ask the user for alternative approaches.`,
@@ -363,6 +366,37 @@ export class Agent {
         }
         loopDetected = true;
         break;
+      }
+
+      // Check for "User declined confirmation" errors - user rejected the operation
+      const declinedErrors = toolExecutionResults.filter(
+        ({ result }) => !result.success && result.error?.includes("User declined confirmation"),
+      );
+
+      if (declinedErrors.length > 0) {
+        const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
+
+        // Check if ALL tools in this batch were declined
+        if (declinedErrors.length === toolExecutionResults.length) {
+          messages.push({
+            role: "system",
+            content: `All tool calls (${declinedTools}) were declined by the user. Provide your final answer now without making any more tool calls.`,
+          });
+          if (this._verbose) {
+            console.log(`\n[INFO] All tools declined: ${declinedTools}, requesting final answer`);
+          }
+          loopDetected = true;
+          break;
+        }
+
+        if (this._verbose) {
+          console.log(
+            `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
+          );
+        }
+        // Continue with remaining tools - don't break the loop
+        contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
+        continue;
       }
 
       if (recentToolCalls.length >= 3) {
@@ -483,4 +517,18 @@ export class Agent {
       console.error(`Warning: Failed to save conversation to ${this._conversationFile}: ${err}`);
     }
   }
+}
+
+const MAX_OUTPUT_LENGTH = 500;
+
+function truncateOutput(output: string | undefined): string | undefined {
+  if (!output) return output;
+  const lines = output.split("\n");
+  if (lines.length > 10) {
+    return `${lines.slice(0, 10).join("\n")}\n... (${lines.length - 10} more lines)`;
+  }
+  if (output.length > MAX_OUTPUT_LENGTH) {
+    return `${output.slice(0, MAX_OUTPUT_LENGTH)}\n... (${output.length - MAX_OUTPUT_LENGTH} more chars)`;
+  }
+  return output;
 }

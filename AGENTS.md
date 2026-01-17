@@ -3,50 +3,37 @@
 ## Build Commands
 
 ```bash
-bun run dev                    # Watch mode
-bun run build                  # Compile to binary (outputs tiny-agent)
-bun run typecheck              # Type check (tsc --noEmit)
-bun run lint                   # Lint (oxlint)
-bun run lint:fix               # Auto-fix lint issues
-bun run format                 # Format code (oxfmt)
-bun run format:check           # Check formatting
-bun test                       # Run all tests
-bun test <file>                # Run single test (e.g., src/core/memory.test.ts)
-bun test:watch                 # Watch mode for TDD
+bun run dev              # Watch mode
+bun run build            # Compile to binary (outputs tiny-agent)
+bun run typecheck        # Type check (tsc --noEmit)
+bun run lint             # Lint (oxlint)
+bun run lint:fix         # Auto-fix lint issues
+bun run format           # Format code (oxfmt)
+bun test                 # Run all tests
+bun test <file>          # Run single test (e.g., src/core/memory.test.ts)
+bun test:watch           # Watch mode for TDD
+bun run format && bun run typecheck && bun run lint  # After changes
 ```
 
-**After changes**: `bun run format && bun run typecheck && bun run lint`
+## Code Style
 
-## Core Principles
-
-- **Small, Safe Steps**: Make big changes through small, reversible steps
-- **Human Relationships**: Code is communication between humans
-- **Eliminate Problems**: Remove complexity rather than managing it
-
-## TypeScript Guidelines
-
-- ES modules with TypeScript 5+ and strict mode
-- Compiler options: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
-- Use `.js` extension for internal imports
-- Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
-
-### Imports (order matters)
+### Imports & Naming
 
 ```typescript
 import * as fs from "node:fs/promises"; // Node built-ins with node: prefix
 import OpenAI from "openai"; // External deps
 import type { Tool } from "./types.js"; // Internal: .js extension
+
+// Naming: kebab-case (files), PascalCase (classes/types), camelCase (vars/functions),
+// SCREAMING_SNAKE_CASE (constants), _prefix (private members)
 ```
 
-### Naming Conventions
+### TypeScript
 
-| Style                  | Usage                                 |
-| ---------------------- | ------------------------------------- |
-| `kebab-case`           | Files                                 |
-| `PascalCase`           | Classes, interfaces, types            |
-| `camelCase`            | Variables, functions                  |
-| `SCREAMING_SNAKE_CASE` | Constants                             |
-| `_prefix`              | Private members (`_client`, `_tools`) |
+- ES modules with TypeScript 5+, strict mode
+- Compiler: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
+- Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
+- Use `satisfies` for type narrowing with validation
 
 ### Strings & Variables
 
@@ -76,17 +63,10 @@ Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 
 ### Tidying Practices
 
-- **Guard Clauses**: Move preconditions to the top and return early
-- **Helper Variables**: Extract complex expressions into named variables
-- **Dead Code**: Delete code that isn't executed
-- **Normalize Symmetries**: Use consistent patterns throughout
-
-### Code Structure
-
-- Keep functions small (<50 lines), use guard clauses
-- Extract complex conditions into named variables
-- Classes use `_` prefix for private fields
-- Use `satisfies` for type narrowing with validation
+- **Guard Clauses**: Move preconditions to top, return early
+- **Helper Variables**: Extract complex expressions
+- **Dead Code**: Delete unused code
+- **Normalize Symmetries**: Use consistent patterns
 
 ### Registry Pattern
 
@@ -105,7 +85,7 @@ export const tool: Tool = {
 
 ## Testing
 
-Use bun:test with `describe`, `it`, `expect`. Clean up resources with `beforeEach`/`afterEach`:
+Use bun:test with `describe`, `it`, `expect`. Clean up resources:
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -120,7 +100,6 @@ describe("MemoryStore", () => {
       /* ignore */
     }
   });
-
   afterEach(() => {
     try {
       unlinkSync(tempFile);
@@ -140,19 +119,21 @@ describe("MemoryStore", () => {
 });
 ```
 
-**Write Tests That Give Confidence**: Test behavior, not implementation details; focus on user-facing functionality.
+**Write tests that give confidence**: Test behavior, not implementation details.
 
 ## Project Structure
 
 ```
 src/
-  core/         # Agent loop, memory, tokens
-  tools/        # Built-in tools (file, bash, grep, glob, web)
-  providers/    # LLM clients (OpenAI, Anthropic, Ollama)
-  mcp/          # MCP client integration
-  cli/          # CLI interface
-  config/       # Configuration loading
+  core/       # Agent loop, memory, tokens
+  tools/      # Built-in tools (file, bash, grep, glob, web)
+  providers/  # LLM clients (OpenAI, Anthropic, Ollama)
+  mcp/        # MCP client integration
+  cli/        # CLI interface
+  config/     # Configuration loading
 ```
+
+Dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `yaml`, `zod`.
 
 ## CLI Usage
 
@@ -161,20 +142,15 @@ tiny-agent                         # Interactive chat
 tiny-agent run "fix this bug"      # Run single prompt
 tiny-agent --model claude-3-5-sonnet "help"  # Specify model
 tiny-agent --provider ollama run "help"      # Specify provider
-tiny-agent --no-memory run "help"   # Disable memory
 tiny-agent memory list              # List memories
-tiny-agent memory add "I prefer TS" # Add memory
 tiny-agent config                   # Show config
 tiny-agent status                   # Show capabilities
 ```
 
 Options: `--model`, `--provider`, `--verbose`, `--save`, `--no-memory`, `--no-track-context`, `--agents-md <path>`, `--help`.
 
-## Dependencies
+## Core Principles
 
-- `@anthropic-ai/sdk` - Claude provider
-- `openai` - OpenAI-compatible APIs
-- `ollama` - Local model provider
-- `@modelcontextprotocol/sdk` - MCP client
-- `yaml` - Config parsing
-- `zod` - Runtime validation
+- **Small, Safe Steps**: Make big changes through small, reversible steps
+- **Human Relationships**: Code is communication between humans
+- **Eliminate Problems**: Remove complexity rather than managing it

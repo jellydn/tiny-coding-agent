@@ -4,6 +4,68 @@ import { z } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 60000;
 
+const READ_ONLY_COMMANDS = new Set([
+  // Git read-only
+  "git status",
+  "git log",
+  "git show",
+  "git diff",
+  "git config",
+  "git branch",
+  "git remote",
+  "git tag",
+  "git stash",
+  "git reflog",
+  "git describe",
+  // Shell read-only
+  "ls",
+  "dir",
+  "cat",
+  "head",
+  "tail",
+  "grep",
+  "find",
+  "echo",
+  "pwd",
+  "which",
+  "type",
+  "file",
+  "stat",
+  // Test runners
+  "npm test",
+  "npm run test",
+  "bun test",
+  "pytest",
+]);
+
+const DESTRUCTIVE_PATTERNS = [
+  /\brm\s/, // rm command
+  /\bmv\s/, // mv command
+  /\bgit\s+(commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase)\b/, // dangerous git
+  /\brmdir\b/,
+  />[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|>][^|]*/, // output redirection to file (but not /dev, /proc, /sys)
+  />>[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|>][^|]*/, // append redirection to file (but not /dev, /proc, /sys)
+  /<[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|][^|]*/, // input redirection from file (but not /dev, /proc, /sys)
+];
+
+export function isDestructiveCommand(command: string): boolean {
+  const trimmed = command.trim();
+
+  for (const pattern of DESTRUCTIVE_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return true;
+    }
+  }
+
+  for (const readOnly of READ_ONLY_COMMANDS) {
+    if (trimmed === readOnly || trimmed.startsWith(`${readOnly} `)) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 const bashArgsSchema = z.object({
   command: z.string(),
   cwd: z.string().optional(),
@@ -14,6 +76,13 @@ export const bashTool: Tool = {
   name: "bash",
   description:
     "Execute a shell command and return stdout, stderr, and exit code. Use for running builds, tests, scripts, and system commands.",
+  dangerous: (args) => {
+    const { command } = args as { command: string };
+    if (isDestructiveCommand(command)) {
+      return `Destructive command: ${command}`;
+    }
+    return false;
+  },
   parameters: {
     type: "object",
     properties: {

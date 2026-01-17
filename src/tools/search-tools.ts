@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
+import { isIgnored, findGitignorePatterns } from "./gitignore.js";
 
 const MAX_RESULTS = 100;
 const MAX_LINE_LENGTH = 200;
@@ -96,12 +97,21 @@ async function searchFiles(
   }
 
   if (stat.isDirectory()) {
+    const gitignorePatterns = await findGitignorePatterns(searchPath);
     const entries = await fs.readdir(searchPath, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       if (entry.name === "node_modules") continue;
 
       const entryPath = path.join(searchPath, entry.name);
+
+      if (gitignorePatterns.length > 0) {
+        const isDir = entry.isDirectory();
+        if (isIgnored(entryPath, gitignorePatterns, isDir)) {
+          continue;
+        }
+      }
+
       if (entry.isDirectory()) {
         await searchFiles(entryPath, regex, includePattern, results);
       } else if (entry.isFile()) {
@@ -121,9 +131,9 @@ async function searchInFile(filePath: string, regex: RegExp, results: string[]):
     const lines = content.split("\n");
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i] ?? "";
+      const line = lines[i];
       regex.lastIndex = 0;
-      if (regex.test(line)) {
+      if (line && regex.test(line)) {
         const lineNum = i + 1;
         const truncatedLine =
           line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + "..." : line;
@@ -210,6 +220,7 @@ async function globFiles(
     return;
   }
 
+  const gitignorePatterns = await findGitignorePatterns(basePath);
   const entries = await fs.readdir(currentPath, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -218,6 +229,13 @@ async function globFiles(
 
     const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
     const entryFullPath = path.join(basePath, entryRelativePath);
+
+    if (gitignorePatterns.length > 0) {
+      const isDir = entry.isDirectory();
+      if (isIgnored(entryRelativePath, gitignorePatterns, isDir)) {
+        continue;
+      }
+    }
 
     if (entry.isDirectory()) {
       if (pattern.includes("**") || shouldDescendIntoDir(pattern, entryRelativePath)) {

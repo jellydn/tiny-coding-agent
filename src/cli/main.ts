@@ -13,6 +13,15 @@ import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import type { SessionState } from "./chat-commands.js";
 import { parseChatCommand } from "./chat-commands.js";
+import {
+  setConfirmationHandler,
+  isSessionApprovedAll,
+  isSessionDeniedAll,
+  setSessionApproval,
+  clearSessionApproval,
+  type ConfirmationRequest,
+  type ConfirmationResult,
+} from "../tools/confirmation.js";
 // Import provider classes for instanceof checks in handleStatus
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
@@ -30,6 +39,49 @@ interface CliOptions {
   noTrackContext?: boolean;
   memoryFile?: string;
   agentsMd?: string;
+  allowAll?: boolean;
+}
+
+function formatArgs(args: Record<string, unknown> | undefined): string {
+  if (!args || Object.keys(args).length === 0) return "";
+  const entries = Object.entries(args)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => {
+      const str = typeof v === "string" ? v : JSON.stringify(v);
+      if (k === "content" && str.length > 300) {
+        return `${k}=\n${str.slice(0, 300)}\n... (${str.length - 300} more chars)`;
+      }
+      if (str.length > 60) {
+        return `${k}=${str.slice(0, 60)}...`;
+      }
+      return `${k}=${str}`;
+    });
+  return entries.length > 0 ? ` (${entries.join(", ")})` : "";
+}
+
+function displayToolExecution(te: {
+  name: string;
+  status: "running" | "complete" | "error";
+  args?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+}): void {
+  const argsStr = formatArgs(te.args);
+  if (te.status === "running") {
+    process.stdout.write(`  ${te.name}${argsStr} ...\n`);
+  } else if (te.status === "complete") {
+    process.stdout.write(`  ${te.name}${argsStr} ✓\n`);
+    if (te.output) {
+      const lines = te.output.split("\n");
+      const preview = lines.length > 6 ? lines.slice(0, 6).join("\n") + "\n  ..." : te.output;
+      process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
+    }
+  } else if (te.status === "error") {
+    process.stdout.write(`  ${te.name}${argsStr} ✗\n`);
+    if (te.error) {
+      process.stdout.write(`  │ ${te.error.split("\n").join("\n  │ ")}\n`);
+    }
+  }
 }
 
 function parseArgs(): {
@@ -62,6 +114,8 @@ function parseArgs(): {
     } else if (arg === "--agents-md" && i + 1 < args.length) {
       options.agentsMd = args[i + 1];
       i++;
+    } else if (arg === "--allow-all" || arg === "-y") {
+      options.allowAll = true;
     } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -201,6 +255,75 @@ async function handleChat(
     output: process.stdout,
   });
 
+  // Set up confirmation handler for dangerous tools
+  if (!options.allowAll) {
+    setConfirmationHandler((request: ConfirmationRequest): Promise<ConfirmationResult> => {
+      return new Promise((resolve) => {
+        const { actions } = request;
+
+        if (isSessionApprovedAll()) {
+          resolve(true);
+          return;
+        }
+
+        if (isSessionDeniedAll()) {
+          resolve(false);
+          return;
+        }
+
+        console.log("\n⚠️  The following operations will be performed:");
+        for (let i = 0; i < actions.length; i++) {
+          const action = actions[i];
+          if (!action) continue;
+
+          console.log(`  [${i + 1}] ${action.tool}: ${action.description}`);
+
+          const argsPreview = Object.entries(action.args)
+            .map(([k, v]) => {
+              const str = typeof v === "string" ? v : JSON.stringify(v);
+              if (k === "content" && str.length > 200) {
+                return `${k}=\n${str.slice(0, 200)}\n... (${str.length - 200} more chars)`;
+              }
+              if (str.length > 80) {
+                return `${k}=${str.slice(0, 80)}...`;
+              }
+              return `${k}=${str}`;
+            })
+            .join("\n      ");
+          if (argsPreview) console.log(`      ${argsPreview}`);
+        }
+
+        rl.question("\nApprove all? (y/N), or enter number to approve individually: ", (answer) => {
+          const trimmed = answer.toLowerCase().trim();
+          if (trimmed === "y" || trimmed === "yes") {
+            setSessionApproval(true);
+            resolve(true);
+            return;
+          }
+
+          if (trimmed === "n" || trimmed === "no") {
+            setSessionApproval(false);
+            resolve(false);
+            return;
+          }
+
+          // Check if user entered a number (for per-command approval)
+          const num = parseInt(trimmed);
+          if (!isNaN(num) && num >= 1 && num <= actions.length) {
+            const selectedAction = actions[num - 1];
+            if (selectedAction) {
+              console.log(`  → Approved [${num}] ${selectedAction.tool}`);
+            }
+            resolve({ type: "partial", selectedIndex: num - 1 });
+            return;
+          }
+
+          resolve(false);
+        });
+      });
+    });
+  }
+
   // Handle Ctrl+D (EOF) for graceful exit
   rl.on("close", () => {
     console.log("\nGoodbye!");
@@ -227,6 +350,8 @@ async function handleChat(
 
   const askQuestion = (): void => {
     rl.question("You: ", async (userInput: string) => {
+      clearSessionApproval();
+
       if (!userInput.trim()) {
         askQuestion();
         return;
@@ -277,21 +402,14 @@ async function handleChat(
           }
 
           if (chunk.toolExecutions) {
-            process.stdout.write("\n");
+            process.stdout.write("\n  Tools:\n");
             for (const te of chunk.toolExecutions) {
-              if (te.status === "running") {
-                process.stdout.write(`[${te.name}...]\n`);
-              } else if (te.status === "complete") {
-                process.stdout.write(`[${te.name}✓]\n`);
-              } else if (te.status === "error") {
-                process.stdout.write(`[${te.name}✗]\n`);
-              }
+              displayToolExecution(te);
             }
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
               process.stdout.write(
-                `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} - ` +
-                  `sys: ${ctx.systemPromptTokens}t, mem: ${ctx.memoryTokens}t, conv: ${ctx.conversationTokens}t]\n`,
+                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
               );
             }
             if (!hasContent) {
@@ -365,22 +483,13 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
-        process.stdout.write("\n");
+        process.stdout.write("\n  Tools:\n");
         for (const te of chunk.toolExecutions) {
-          if (te.status === "running") {
-            process.stdout.write(`[${te.name}...]\n`);
-          } else if (te.status === "complete") {
-            process.stdout.write(`[${te.name}✓]\n`);
-          } else if (te.status === "error") {
-            process.stdout.write(`[${te.name}✗]\n`);
-          }
+          displayToolExecution(te);
         }
         if (!options.noTrackContext && chunk.contextStats) {
           const ctx = chunk.contextStats;
-          process.stdout.write(
-            `[Context: ${ctx.totalTokens}/${ctx.maxContextTokens} - ` +
-              `sys: ${ctx.systemPromptTokens}t, mem: ${ctx.memoryTokens}t, conv: ${ctx.conversationTokens}t]\n`,
-          );
+          process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
         }
       }
     }

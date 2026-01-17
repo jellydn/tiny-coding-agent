@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
 import { z } from "zod";
+import { findGitignorePatterns, isIgnored } from "./gitignore.js";
 
 export function handleFileError(filePath: string, err: unknown, context: string): ToolResult {
   const error = err as NodeJS.ErrnoException;
@@ -37,10 +38,39 @@ const listDirectoryArgsSchema = z.object({
   recursive: z.boolean().optional(),
 });
 
+const SENSITIVE_PATTERNS = [
+  /\.env$/,
+  /\.env\.(?!example|sample|template|default)([a-zA-Z0-9_-]+)$/,
+  /\.aws\/credentials$/,
+  /\.aws\/config$/,
+  /\.ssh\//,
+  /\.npmrc$/,
+  /\.git-credentials$/,
+  /\.gitconfig$/,
+  /\/etc\/passwd$/,
+  /\/etc\/shadow$/,
+  /\.pki\//,
+  /\.gnupg\//,
+];
+
+function isSensitiveFile(filePath: string): boolean {
+  const basename = path.basename(filePath);
+  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(filePath) || pattern.test(basename));
+}
+
+export { isSensitiveFile };
+
 export const readFileTool: Tool = {
   name: "read_file",
   description:
     "Read the contents of a file. Optionally specify a line range to read only a portion of the file.",
+  dangerous: (args: Record<string, unknown>) => {
+    const filePath = (args.path as string) ?? "";
+    if (isSensitiveFile(filePath)) {
+      return `Reading sensitive file: ${filePath}`;
+    }
+    return false;
+  },
   parameters: {
     type: "object",
     properties: {
@@ -68,6 +98,19 @@ export const readFileTool: Tool = {
     const { path: filePath, start_line, end_line } = parsed.data;
 
     try {
+      const resolvedPath = path.resolve(filePath);
+      const gitignorePatterns = await findGitignorePatterns(resolvedPath);
+
+      if (gitignorePatterns.length > 0) {
+        const isFileIgnored = isIgnored(filePath, gitignorePatterns, false);
+        if (isFileIgnored) {
+          return {
+            success: false,
+            error: `File "${filePath}" is ignored by .gitignore. Use absolute path to read outside the repo.`,
+          };
+        }
+      }
+
       const content = await fs.readFile(filePath, "utf-8");
 
       if (start_line !== undefined || end_line !== undefined) {
@@ -89,6 +132,7 @@ export const writeFileTool: Tool = {
   name: "write_file",
   description:
     "Write content to a file. Creates the file and any parent directories if they don't exist. Overwrites existing content.",
+  dangerous: "Will create or overwrite file",
   parameters: {
     type: "object",
     properties: {
@@ -126,6 +170,7 @@ export const editFileTool: Tool = {
   name: "edit_file",
   description:
     "Edit a file by replacing specific text. Searches for the old_str and replaces it with new_str.",
+  dangerous: "Will modify existing file",
   parameters: {
     type: "object",
     properties: {

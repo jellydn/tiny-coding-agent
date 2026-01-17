@@ -162,6 +162,7 @@ export class McpManager {
     return {
       name: prefixedName,
       description: `[MCP: ${serverName}] ${toolDef.description}`,
+      dangerous: `MCP server call: ${serverName}`,
       parameters: {
         type: "object",
         properties: toolDef.inputSchema.properties ?? {},

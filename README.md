@@ -62,6 +62,14 @@ providers:
     # baseUrl: https://ollama.com
     # apiKey: ${OLLAMA_API_KEY}
 
+  # OpenRouter
+  openrouter:
+    apiKey: ${OPENROUTER_API_KEY}
+
+  # OpenCode
+  opencode:
+    apiKey: ${OPENCODE_API_KEY}
+
 # MCP servers for extended capabilities
 mcpServers:
   context7:
@@ -100,6 +108,14 @@ trackContextUsage: true
 
 For access to larger cloud-hosted models via [Ollama Cloud](https://ollama.com/cloud):
 
+Get your API key and export it as an environment variable:
+
+```bash
+export OLLAMA_API_KEY="your-api-key"
+```
+
+**Config:**
+
 ```yaml
 defaultModel: gpt-oss:120b
 providers:
@@ -108,183 +124,125 @@ providers:
     apiKey: ${OLLAMA_API_KEY}
 ```
 
-Set your API key:
+### OpenCode Zen
+
+[OpenCode Zen](https://opencode.ai/zen) provides curated, tested models for coding agents.
 
 ```bash
-export OLLAMA_API_KEY=sk-xxx
+# Get API key from https://opencode.ai/auth
+export OPENCODE_API_KEY="your-api-key"
 ```
 
-**Available Ollama Cloud models:**
-
-- `gpt-oss:120b` - 120B parameter model
-- `llama-3.1-405b` - 405B parameter model
-- And more - see [Ollama Cloud](https://ollama.com/cloud) for full list
-
-**Switching between local and cloud:**
+**Config:**
 
 ```yaml
-# Local Ollama (default, no API key needed)
 providers:
-  ollama:
-    baseUrl: http://localhost:11434
-
-  # Ollama Cloud (requires API key)
-  ollama:
-    baseUrl: https://ollama.com
-    apiKey: ${OLLAMA_API_KEY}
-
-  # OpenRouter - aggregates models from multiple providers
-  openrouter:
-    apiKey: ${OPENROUTER_API_KEY}
-    baseUrl: https://openrouter.ai/api/v1 # Optional: custom base URL
-
-  # OpenCode Zen - curated coding models
   opencode:
     apiKey: ${OPENCODE_API_KEY}
-    baseUrl: https://opencode.ai/zen/v1 # Optional: custom base URL
+```
+
+**Available models:**
+
+- `big-pickle` - OpenCode's flagship coding model
+- `claude-opus-4`, `claude-sonnet-4`, `claude-3-5-haiku`
+- `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-nano`
+- `qwen3-coder` - Qwen Coder
+- `kimi-k2`, `kimi-k2-thinking` - Kimi models
+
+**Usage:**
+
+```bash
+tiny-agent --provider opencode --model big-pickle "fix this bug"
+tiny-agent --provider opencode --model qwen3-coder "write a function"
 ```
 
 ## CLI Commands
 
-- `tiny-agent chat` - Start interactive chat session
-- `tiny-agent run "prompt"` - Run single prompt and exit
-- `tiny-agent config` - Show current configuration
-- `tiny-agent status` - Show current status (LLM provider, MCP servers, tools)
+| Command                   | Description               |
+| ------------------------- | ------------------------- |
+| `tiny-agent chat`         | Interactive chat session  |
+| `tiny-agent run "prompt"` | Single prompt, then exit  |
+| `tiny-agent config`       | Show current config       |
+| `tiny-agent status`       | Show provider, MCP, tools |
+
+### Options
+
+| Option              | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `--model <name>`    | Override default model                                  |
+| `--provider <name>` | Override provider (openai\|anthropic\|ollama\|opencode) |
+| `--verbose, -v`     | Enable verbose logging                                  |
+| `--save`            | Save conversation to file                               |
+| `--no-memory`       | Disable memory                                          |
+| `--allow-all, -y`   | Auto-approve all tool confirmations                     |
+
+### Tool Confirmation
+
+Dangerous tools require confirmation before execution:
+
+- **Destructive**: `write_file`, `edit_file`, `bash` (git commit, rm, redirection)
+- **Sensitive files**: `read_file` (.env, SSH keys, credentials)
+- **External**: MCP tools
+
+**Smart Detection**: Safe bash commands like `git status`, `ls`, `cat`, `npm test` skip confirmation.
+
+**Interactive Prompt**:
+
+```
+⚠️  The following operations will be performed:
+  [1] write_file: Will create or overwrite file
+      (path="example.ts")
+  [2] bash: Destructive command: rm file.txt
+
+Approve all? (y/N), or enter number to approve individually:
+```
+
+**Bypass Confirmations**: Use `--allow-all` or `-y` flag for automation/CI.
 
 ### Chat Commands
 
-During interactive chat, use these commands to change settings on the fly:
-
-| Command                     | Description                  | Example                    |
-| --------------------------- | ---------------------------- | -------------------------- |
-| `/model <name>`             | Switch to a different model  | `/model claude-3-5-sonnet` |
-| `/thinking on\|off`         | Enable/disable thinking mode | `/thinking on`             |
-| `/effort low\|medium\|high` | Set thinking effort level    | `/effort high`             |
-| `/bye`                      | Exit the chat session        | `/bye`                     |
-
-Fuzzy matching is enabled - `/m` → `/model`, `/t` → `/thinking`, `/b` → `/bye`, etc.
-
-**To exit the chat session**, press `Ctrl+D` or type `/bye`.
+| Command                     | Description                   |
+| --------------------------- | ----------------------------- |
+| `/model <name>`             | Switch model                  |
+| `/thinking on\|off`         | Toggle thinking mode          |
+| `/effort low\|medium\|high` | Set effort level              |
+| `/bye`                      | Exit chat (Ctrl+D also works) |
 
 ## Custom Plugins
 
-Extend the agent with custom tools by creating JavaScript files in `~/.tiny-agent/plugins/`:
-
-### Example: Timezone Plugin
-
-Create `~/.tiny-agent/plugins/timezone-tool.js`:
+Add tools via `~/.tiny-agent/plugins/<name>.js`:
 
 ```javascript
-const timezoneAlias = {
-  vietnam: "Asia/Ho_Chi_Minh",
-  hanoi: "Asia/Ho_Chi_Minh",
-};
-
-const timezoneTool = {
-  name: "get_timezone_time",
-  description:
-    "Get current time in a specific timezone. Use this when user asks for time in a specific city or country.",
+export default {
+  name: "my_tool",
+  description: "What this tool does",
   parameters: {
     type: "object",
-    properties: {
-      timezone: {
-        type: "string",
-        description:
-          "Timezone string (e.g., 'America/New_York', 'Europe/London'). Country aliases: 'vietnam' → Asia/Ho_Chi_Minh",
-      },
-      format: {
-        type: "string",
-        description: "Date format (default: '%Y-%m-%d %H:%M:%S %Z %z')",
-      },
-    },
-    required: ["timezone"],
+    properties: { input: { type: "string" } },
+    required: ["input"],
   },
-  async execute(args) {
-    const requestedTimezone = args.timezone;
-    const format = args.format ?? "%Y-%m-%d %H:%M:%S %Z %z";
-
-    const timezone = timezoneAlias[requestedTimezone.toLowerCase()] ?? requestedTimezone;
-
-    try {
-      const { spawn } = await import("node:child_process");
-      const command = `date -z "${timezone}" +"${format}"`;
-
-      return new Promise((resolve) => {
-        const stdout = [];
-        const stderr = [];
-
-        const child = spawn(command, [], { shell: true });
-
-        child.stdout.on("data", (data) => stdout.push(data));
-        child.stderr.on("data", (data) => stderr.push(data));
-
-        child.on("close", (exitCode) => {
-          const stdoutStr = Buffer.concat(stdout).toString("utf-8").trim();
-          const stderrStr = Buffer.concat(stderr).toString("utf-8").trim();
-
-          if (exitCode !== 0) {
-            resolve({ success: false, error: `Command failed: ${stderrStr}` });
-            return;
-          }
-
-          resolve({ success: true, output: stdoutStr });
-        });
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: `Failed to get timezone time: ${message}` };
-    }
+  async execute({ input }) {
+    return { success: true, output: "result" };
   },
 };
-
-export default timezoneTool;
 ```
 
-**After saving, restart the agent:**
-
-```bash
-bun run index.ts run "what time in Vietnam now?"
-# Output: The current time in Vietnam is 10:00 PM (Local Time).
-```
-
-**Plugin structure:**
-
-- `name`: Unique tool identifier (kebab-case)
-- `description`: Clear description that helps the LLM understand when to use the tool
-- `parameters`: JSON Schema defining expected inputs (properties, required)
-- `execute`: Async function that:
-  - Receives `args` object with user-provided values
-  - Returns `{ success: true, output: "..." }` on success
-  - Returns `{ success: false, error: "..." }` on failure
-
-**Enable/disable tools in config:**
+Enable in config:
 
 ```yaml
 tools:
-  get_timezone_time:
-    enabled: true # Enable plugin tool
-  web_search:
-    enabled: false # Disable built-in tool
+  my_tool: { enabled: true }
 ```
-
-**Plugin tips:**
-
-- Use JavaScript (not TypeScript) for plugins to avoid type dependency issues
-- Provide helpful descriptions - LLM uses them to decide which tool to call
-- Handle errors gracefully and return structured results
-- Use async/await for any async operations
-- Plugin files are auto-loaded on agent startup
 
 ## Project Structure
 
 ```
 src/
-  core/       # Agent loop, context management
+  core/       # Agent loop, memory, context
   tools/      # Built-in tools
-  providers/  # LLM provider implementations
-  mcp/        # MCP client integration
-  cli/        # Command-line interface
-  config/     # Configuration loading
+  providers/  # LLM clients (OpenAI, Anthropic, Ollama)
+  mcp/        # MCP client
+  cli/        # CLI interface
 ```
 
 ## Architecture
@@ -298,16 +256,16 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 005: Tool System Design
 - 006: Plugin System
 - 007: Model Registry Pattern
-- 008: Memory System (User-Initiated Storage)
+- 008: Memory System
+- 009: Tool Confirmation System
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for development guidelines including:
+See [AGENTS.md](AGENTS.md) for:
 
-- Build commands: `bun run dev`, `bun run build`, `bun test`, `bun test:watch`
-- Code style and TypeScript conventions
+- Build commands: `bun run dev`, `bun run build`, `bun test`
+- TypeScript conventions and code style
 - Testing patterns with bun:test
-- Project structure overview
 
 ## License
 

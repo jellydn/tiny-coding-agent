@@ -4,17 +4,23 @@ export interface ToolResult {
   error?: string;
 }
 
-export interface ToolParameters {
-  type: "object";
-  properties: Record<string, unknown>;
-  required?: string[];
-}
+export type ToolDangerLevel =
+  | boolean
+  | string
+  | ((args: Record<string, unknown>) => boolean | string | undefined);
 
 export interface Tool {
   name: string;
   description: string;
   parameters: ToolParameters;
+  dangerous?: ToolDangerLevel;
   execute(args: Record<string, unknown>): Promise<ToolResult>;
+}
+
+export interface ToolParameters {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
 }
 
 export interface OpenAIFunctionDef {
