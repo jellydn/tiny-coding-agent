@@ -269,11 +269,12 @@ export class Agent {
         }
       }
 
-      // Add assistant's response to messages
       const assistantMessage: Message = {
         role: "assistant",
         content: fullContent,
       };
+
+      messages.push(assistantMessage);
 
       if (assistantToolCalls.length > 0) {
         assistantMessage.toolCalls = assistantToolCalls;
@@ -315,7 +316,6 @@ export class Agent {
       }));
       const batchResults = await this._toolRegistry.executeBatch(calls);
 
-      // Map results back to original tool calls
       const resultMap = new Map(batchResults.map((br) => [br.name, br]));
       const toolExecutionResults = assistantToolCalls.map((tc) => ({
         toolCall: tc,
@@ -350,7 +350,6 @@ export class Agent {
         });
       }
 
-      // Check for "not found" errors - these are fatal and should stop the loop
       const notFoundErrors = toolExecutionResults.filter(
         ({ result }) => !result.success && result.error?.includes("not found"),
       );
@@ -368,7 +367,6 @@ export class Agent {
         break;
       }
 
-      // Check for "User declined confirmation" errors - user rejected the operation
       const declinedErrors = toolExecutionResults.filter(
         ({ result }) => !result.success && result.error?.includes("User declined confirmation"),
       );
@@ -376,7 +374,6 @@ export class Agent {
       if (declinedErrors.length > 0) {
         const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
 
-        // Check if ALL tools in this batch were declined
         if (declinedErrors.length === toolExecutionResults.length) {
           messages.push({
             role: "system",
@@ -394,7 +391,6 @@ export class Agent {
             `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
           );
         }
-        // Continue with remaining tools - don't break the loop
         contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
         continue;
       }
