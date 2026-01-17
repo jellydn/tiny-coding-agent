@@ -97,7 +97,7 @@ get_version() {
 
 	local tag
 	tag=$(curl -fsS "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
-		grep '"tag_name"' | sed 's/.*": "//;s/"//')
+		grep '"tag_name"' | sed 's/.*": "//;s/",$//;s/"//')
 
 	if [[ -z "$tag" ]]; then
 		err "Failed to detect latest version"
