@@ -14,7 +14,11 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release:patch": "bun run test && bun run typecheck && bun run lint && bunx bumpp patch --yes",
+    "release:minor": "bun run test && bun run typecheck && bun run lint && bunx bumpp minor --yes",
+    "release:major": "bun run test && bun run typecheck && bun run lint && bunx bumpp major --yes",
+    "pre": "bun run test && bun run typecheck && bun run lint"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -22,10 +26,11 @@
     "ollama": "^0.6.3",
     "openai": "^6.16.0",
     "yaml": "^2.8.2",
-    "zod": "^3.25.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "bumpp": "^10.4.0",
     "husky": "^9.1.7",
     "oxfmt": "^0.24.0",
     "oxlint": "^1.39.0",
