@@ -48,10 +48,10 @@ jobs:
           - os: ubuntu-latest
             artifact: tiny-agent-linux-arm64
           - os: macos-latest
-            artifact: tiny-agent-macos-x64
+            artifact: tiny-agent-darwin-x64
             extra-args: ""
           - os: macos-latest
-            artifact: tiny-agent-macos-arm64
+            artifact: tiny-agent-darwin-arm64
             extra-args: "--arm64"
 
     steps:
@@ -100,7 +100,7 @@ jobs:
           cd release-artifacts
           echo "Available artifacts:"
           ls -la
-          for artifact in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
+          for artifact in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-darwin-x64 tiny-agent-darwin-arm64; do
             if [[ ! -d "$artifact" ]]; then
               echo "ERROR: Missing artifact: $artifact"
               exit 1
@@ -112,11 +112,11 @@ jobs:
             echo "  ✓ $artifact"
           done
 
-      - name: Setup SHA256
+      - name: Setup checksums
         run: |
           cd release-artifacts
           # Rename binaries to platform-specific names
-          for dir in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-macos-x64 tiny-agent-macos-arm64; do
+          for dir in tiny-agent-linux-x64 tiny-agent-linux-arm64 tiny-agent-darwin-x64 tiny-agent-darwin-arm64; do
             if [[ -f "$dir/tiny-agent" ]]; then
               mv "$dir/tiny-agent" "$dir/$dir"
             fi
@@ -130,15 +130,15 @@ jobs:
             done
           ' _ {} +
           # Aggregate checksums
-          cat **/*.sha256 > SHA256SUMS
-          cat SHA256SUMS
+          cat **/*.sha256 > checksums.txt
+          cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-artifacts/**/tiny-agent-*
-            release-artifacts/**/SHA256SUMS
+            release-artifacts/**/checksums.txt
           generate_release_notes: true
           draft: false
           prerelease: false

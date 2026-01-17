@@ -1,197 +1,92 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -e
 
 REPO="jellydn/tiny-coding-agent"
-INSTALL_DIR="${HOME}/.local/bin"
-VERSION=""
-FORCE_ARCH=""
-FORCE_OVERWRITE=""
+BINARY_NAME="tiny-agent"
+INSTALL_DIR="${TINY_AGENT_INSTALL_DIR:-$HOME/.local/bin}"
 
-usage() {
-	cat <<EOF
-Usage: $0 [OPTIONS]
+# Detect OS
+OS="$(uname -s)"
+case "$OS" in
+  Linux*)  OS="linux" ;;
+  Darwin*) OS="darwin" ;;
+  *)       echo "Unsupported OS: $OS"; exit 1 ;;
+esac
 
-Install tiny-agent binary.
+# Detect architecture
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64)  ARCH="x64" ;;
+  aarch64) ARCH="arm64" ;;
+  arm64)   ARCH="arm64" ;;
+  *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
+esac
 
-OPTIONS:
-  -v, --version <version>  Specific version to install (default: latest)
-  -d, --dir <path>        Installation directory (default: ~/.local/bin)
-  -a, --arch <arch>       Force architecture: x64|arm64 (auto-detected)
-  -f, --force             Overwrite existing installation
-  -h, --help              Show this help
+ARTIFACT="tiny-agent-${OS}-${ARCH}"
+echo "Detected: $OS-$ARCH"
 
-EXAMPLES:
-  $0                      # Install latest version
-  $0 -v v0.1.0            # Install specific version
-  $0 -f                   # Overwrite existing
+# Get latest release URL
+LATEST_URL="https://api.github.com/repos/${REPO}/releases/latest"
+RELEASE_DATA=$(curl -fsSL "$LATEST_URL")
+DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url.*${ARTIFACT}\"" | cut -d '"' -f 4 | head -n 1)
+CHECKSUM_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url.*checksums.txt\"" | cut -d '"' -f 4 | head -n 1)
 
-EOF
-	exit 0
-}
+if [ -z "$DOWNLOAD_URL" ]; then
+  echo "Error: Could not find download URL for $ARTIFACT"
+  exit 1
+fi
 
-msg() { echo "[tiny-agent] $*"; }
-warn() { echo "[tiny-agent] WARNING: $*" >&2; }
-err() {
-	echo "[tiny-agent] ERROR: $*" >&2
-	exit 1
-}
+echo "Downloading from: $DOWNLOAD_URL"
 
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	-v | --version)
-		VERSION="$2"
-		shift 2
-		;;
-	-d | --dir)
-		INSTALL_DIR="$2"
-		shift 2
-		;;
-	-a | --arch)
-		FORCE_ARCH="$2"
-		shift 2
-		;;
-	-f | --force)
-		FORCE_OVERWRITE="1"
-		shift
-		;;
-	-h | --help) usage ;;
-	*) err "Unknown option: $1" ;;
-	esac
-done
+# Create install directory
+mkdir -p "$INSTALL_DIR"
 
-detect_os() {
-	case "$(uname -s)" in
-	Linux*) echo "linux" ;;
-	Darwin*) echo "macos" ;;
-	*) err "Unsupported OS: $(uname -s)" ;;
-	esac
-}
+# Download binary
+curl -fsSL "$DOWNLOAD_URL" -o "${INSTALL_DIR}/${BINARY_NAME}"
 
-detect_arch() {
-	case "$(uname -m)" in
-	x86_64 | amd64) echo "x64" ;;
-	aarch64 | arm64) echo "arm64" ;;
-	*) err "Unsupported architecture: $(uname -m)" ;;
-	esac
-}
+# Verify checksum if available
+if [ -n "$CHECKSUM_URL" ]; then
+  echo "Verifying checksum..."
+  CHECKSUMS=$(curl -fsSL "$CHECKSUM_URL")
+  EXPECTED=$(echo "$CHECKSUMS" | grep "$ARTIFACT" | awk '{print $1}')
 
-get_download_url() {
-	local os="$1"
-	local arch="$2"
-	local version="$3"
+  if [ -n "$EXPECTED" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      ACTUAL=$(sha256sum "${INSTALL_DIR}/${BINARY_NAME}" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+      ACTUAL=$(shasum -a 256 "${INSTALL_DIR}/${BINARY_NAME}" | awk '{print $1}')
+    else
+      echo "Warning: No sha256sum or shasum found, skipping verification"
+      ACTUAL="$EXPECTED"
+    fi
 
-	local filename="tiny-agent-${os}-${arch}"
-	echo "https://github.com/${REPO}/releases/download/${version}/${filename}"
-}
+    if [ "$EXPECTED" != "$ACTUAL" ]; then
+      echo "Error: Checksum verification failed!"
+      echo "Expected: $EXPECTED"
+      echo "Actual:   $ACTUAL"
+      rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+      exit 1
+    fi
+    echo "Checksum verified ✓"
+  fi
+fi
 
-get_checksum_url() {
-	local version="$1"
-	echo "https://github.com/${REPO}/releases/download/${version}/SHA256SUMS"
-}
+chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
-get_version() {
-	if [[ -n "$VERSION" ]]; then
-		echo "$VERSION"
-		return
-	fi
+echo ""
+echo "✓ Installed $BINARY_NAME to ${INSTALL_DIR}/${BINARY_NAME}"
 
-	local tag
-	tag=$(curl -fsS "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
-		grep '"tag_name"' | sed 's/.*": "//;s/",$//;s/"//')
+# Check if in PATH (POSIX-compliant)
+case ":$PATH:" in
+  *:"$INSTALL_DIR":*)
+    ;;
+  *)
+    echo ""
+    echo "Add to your PATH by adding this to your shell config:"
+    echo ""
+    echo "  export PATH=\"\$PATH:$INSTALL_DIR\""
+    echo ""
+    ;;
+esac
 
-	if [[ -z "$tag" ]]; then
-		err "Failed to detect latest version"
-	fi
-	echo "$tag"
-}
-
-check_write_permission() {
-	if [[ ! -d "$INSTALL_DIR" ]]; then
-		if ! mkdir -p "$INSTALL_DIR" 2>/dev/null; then
-			err "Cannot create ${INSTALL_DIR}. Check permissions or use -d to specify another directory."
-		fi
-		return 0
-	fi
-
-	if [[ ! -w "$INSTALL_DIR" ]]; then
-		err "Cannot write to ${INSTALL_DIR}. Check permissions or use -d to specify another directory."
-	fi
-}
-
-install() {
-	local os arch version url checksum_url temp_dir binary_path
-
-	os=$(detect_os)
-	arch=$(detect_arch)
-	version=$(get_version)
-
-	if [[ -n "$FORCE_ARCH" ]]; then
-		arch="$FORCE_ARCH"
-	fi
-
-	msg "Installing tiny-agent ${version} for ${os}-${arch}"
-	msg "Repository: ${REPO}"
-
-	if [[ -f "${INSTALL_DIR}/tiny-agent" && "${FORCE_OVERWRITE}" != "1" ]]; then
-		warn "Existing installation found. Use -f to overwrite."
-		err "Aborted."
-	fi
-
-	check_write_permission
-
-	url=$(get_download_url "$os" "$arch" "$version")
-	checksum_url=$(get_checksum_url "$version")
-
-	temp_dir=$(mktemp -d)
-	trap 'rm -rf "$temp_dir"' EXIT
-
-	binary_path="${temp_dir}/tiny-agent"
-	local checksum_path="${temp_dir}/SHA256SUMS"
-
-	msg "Downloading binary from ${url}"
-	if ! curl -fsSL -o "$binary_path" "$url"; then
-		err "Failed to download binary. Check version and network connection."
-	fi
-
-	if curl -fsS -o "$checksum_path" "$checksum_url" 2>/dev/null; then
-		local expected
-		expected=$(grep "tiny-agent-${os}-${arch}$" "$checksum_path" | awk '{print $1}')
-		if [[ -n "$expected" ]]; then
-			local actual
-			if command -v sha256sum >/dev/null 2>&1; then
-				actual=$(sha256sum "$binary_path" | awk '{print $1}')
-			else
-				actual=$(shasum -a 256 "$binary_path" | awk '{print $1}')
-			fi
-			if [[ "$expected" != "$actual" ]]; then
-				err "Checksum verification failed!"
-			fi
-			msg "Checksum verified"
-		fi
-	else
-		msg "Warning: Could not download checksum file, skipping verification"
-	fi
-
-	chmod +x "$binary_path"
-
-	mkdir -p "$INSTALL_DIR"
-	cp "$binary_path" "${INSTALL_DIR}/tiny-agent"
-
-	msg "Installed tiny-agent to ${INSTALL_DIR}/tiny-agent"
-
-	if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
-		msg ""
-		msg "IMPORTANT: Add ${INSTALL_DIR} to your PATH:"
-		msg ""
-		echo "  # For bash:"
-		echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
-		echo ""
-		echo "  # For zsh:"
-		echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
-	fi
-
-	msg ""
-	msg "Done! Run 'tiny-agent --help' to get started."
-}
-
-install
+echo "Run 'tiny-agent --help' to get started!"
