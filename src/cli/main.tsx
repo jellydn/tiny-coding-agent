@@ -28,6 +28,12 @@ import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 // Import provider classes for instanceof checks in handleStatus
+
+/**
+ * Configuration for tool output preview in plain text mode.
+ * Can be overridden via TINY_AGENT_TOOL_PREVIEW_LINES environment variable.
+ */
+const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
 import { OllamaProvider } from "../providers/ollama.js";
@@ -80,7 +86,9 @@ function displayToolExecutionPlain(te: {
     process.stdout.write(`  ${te.name}${argsStr} ✓\n`);
     if (te.output) {
       const lines = te.output.split("\n");
-      const preview = lines.length > 6 ? lines.slice(0, 6).join("\n") + "\n  ..." : te.output;
+      const preview = lines.length > TOOL_PREVIEW_LINES
+        ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
+        : te.output;
       process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
     }
   } else if (te.status === "error") {

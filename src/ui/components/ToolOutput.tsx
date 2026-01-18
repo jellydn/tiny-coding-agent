@@ -46,6 +46,7 @@ export function ToolOutput({
 
   useInput(
     (input, key) => {
+      // 'input' is used for vim-style j/k navigation
       if (!needsScrolling) return;
 
       if (key.downArrow || input === "j") {

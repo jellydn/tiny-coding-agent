@@ -72,6 +72,14 @@ src/ui/
 - Slightly increased bundle size
 - React paradigm may be unfamiliar to some contributors
 
+**Compatibility Notes:**
+
+- **React 19 + Ink v6**: Using React 19 with Ink v6 is a newer combination. Ink v6 has preliminary React 19 support, but this is less battle-tested than React 18. If issues arise with React concurrent features or hooks, consider pinning to React 18:
+  ```json
+  "react": "^18.3.0"
+  ```
+- **Node.js Version**: Ink requires Node.js 16+ which aligns with the project's minimum version
+
 **Future Considerations:**
 
 - Multi-pane layout (sidebar with context, main chat area)
