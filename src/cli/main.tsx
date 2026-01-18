@@ -86,9 +86,10 @@ function displayToolExecutionPlain(te: {
     process.stdout.write(`  ${te.name}${argsStr} ✓\n`);
     if (te.output) {
       const lines = te.output.split("\n");
-      const preview = lines.length > TOOL_PREVIEW_LINES
-        ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
-        : te.output;
+      const preview =
+        lines.length > TOOL_PREVIEW_LINES
+          ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
+          : te.output;
       process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
     }
   } else if (te.status === "error") {
@@ -546,14 +547,41 @@ async function handleChat(
   askQuestion();
 }
 
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) {
+    return "";
+  }
+
+  return new Promise((resolve) => {
+    let data = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on("end", () => {
+      resolve(data);
+    });
+    process.stdin.on("error", () => {
+      resolve("");
+    });
+  });
+}
+
 async function handleRun(
   config: ReturnType<typeof loadConfig>,
   args: string[],
   options: CliOptions,
 ): Promise<void> {
-  const prompt = args.join(" ");
+  const promptArg = args.join(" ");
+  const stdinContent = await readStdin();
+
+  let prompt = promptArg;
+  if (stdinContent.trim()) {
+    prompt = stdinContent.trim() + (promptArg ? `\n\n${promptArg}` : "");
+  }
+
   if (!prompt) {
-    console.error("Error: run command requires a prompt");
+    console.error("Error: run command requires a prompt (or pipe content to stdin)");
     process.exit(1);
   }
 
