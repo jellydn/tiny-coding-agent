@@ -1,0 +1,18 @@
+# Ralph Progress Log
+Started: Tue Jan 13 17:34:31 +08 2026
+---
+
+## 2026-01-13 - US-013
+- Implemented token counting and context window management
+- Files created: src/core/tokens.ts (countTokens, countMessagesTokens, truncateMessages)
+- Files modified:
+  - src/config/schema.ts (added maxContextTokens config option)
+  - src/config/loader.ts (added TINY_AGENT_MAX_CONTEXT_TOKENS env var override)
+  - src/core/agent.ts (integrated token counting and context management)
+  - src/cli/main.ts (passes maxContextTokens to Agent, displays in config output)
+- **Learnings for future iterations:**
+  - Token counting uses simple approximation: 4 characters per token
+  - truncateMessages removes oldest messages when exceeding context limit
+  - Reserve 1000 tokens for response when calculating available context
+  - Config options: `maxContextTokens` in config, `TINY_AGENT_MAX_CONTEXT_TOKENS` env var
+---

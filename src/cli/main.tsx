@@ -22,7 +22,18 @@ import {
   type ConfirmationRequest,
   type ConfirmationResult,
 } from "../tools/confirmation.js";
+import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
+import { render } from "ink";
+import React from "react";
+import { Spinner } from "../ui/components/Spinner.js";
+import { ToolOutput } from "../ui/components/ToolOutput.js";
 // Import provider classes for instanceof checks in handleStatus
+
+/**
+ * Configuration for tool output preview in plain text mode.
+ * Can be overridden via TINY_AGENT_TOOL_PREVIEW_LINES environment variable.
+ */
+const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
 import { OllamaProvider } from "../providers/ollama.js";
@@ -40,6 +51,68 @@ interface CliOptions {
   memoryFile?: string;
   agentsMd?: string;
   allowAll?: boolean;
+  noColor?: boolean;
+  json?: boolean;
+}
+
+class ThinkingTagFilter {
+  private buffer = "";
+  private inThinkingBlock = false;
+
+  filter(chunk: string): string {
+    this.buffer += chunk;
+    let output = "";
+
+    while (this.buffer.length > 0) {
+      if (this.inThinkingBlock) {
+        const endIdx = this.buffer.indexOf("</think>");
+        if (endIdx !== -1) {
+          this.buffer = this.buffer.slice(endIdx + 8);
+          this.inThinkingBlock = false;
+        } else {
+          if (this.buffer.length > 100) {
+            this.buffer = this.buffer.slice(-20);
+          }
+          break;
+        }
+      } else {
+        const startIdx = this.buffer.indexOf("<think>");
+        if (startIdx !== -1) {
+          output += this.buffer.slice(0, startIdx);
+          this.buffer = this.buffer.slice(startIdx + 7);
+          this.inThinkingBlock = true;
+        } else {
+          const partialMatch = this.findPartialTag(this.buffer, "<think>");
+          if (partialMatch > 0) {
+            output += this.buffer.slice(0, this.buffer.length - partialMatch);
+            this.buffer = this.buffer.slice(-partialMatch);
+            break;
+          } else {
+            output += this.buffer;
+            this.buffer = "";
+          }
+        }
+      }
+    }
+
+    return output;
+  }
+
+  private findPartialTag(text: string, tag: string): number {
+    for (let i = 1; i < tag.length; i++) {
+      if (text.endsWith(tag.slice(0, i))) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  flush(): string {
+    const remaining = this.inThinkingBlock ? "" : this.buffer;
+    this.buffer = "";
+    this.inThinkingBlock = false;
+    return remaining;
+  }
 }
 
 function formatArgs(args: Record<string, unknown> | undefined): string {
@@ -59,7 +132,7 @@ function formatArgs(args: Record<string, unknown> | undefined): string {
   return entries.length > 0 ? ` (${entries.join(", ")})` : "";
 }
 
-function displayToolExecution(te: {
+function displayToolExecutionPlain(te: {
   name: string;
   status: "running" | "complete" | "error";
   args?: Record<string, unknown>;
@@ -73,7 +146,10 @@ function displayToolExecution(te: {
     process.stdout.write(`  ${te.name}${argsStr} ✓\n`);
     if (te.output) {
       const lines = te.output.split("\n");
-      const preview = lines.length > 6 ? lines.slice(0, 6).join("\n") + "\n  ..." : te.output;
+      const preview =
+        lines.length > TOOL_PREVIEW_LINES
+          ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
+          : te.output;
       process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
     }
   } else if (te.status === "error") {
@@ -82,6 +158,56 @@ function displayToolExecution(te: {
       process.stdout.write(`  │ ${te.error.split("\n").join("\n  │ ")}\n`);
     }
   }
+}
+
+function displayToolExecutionInk(te: {
+  name: string;
+  status: "running" | "complete" | "error";
+  args?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+}): void {
+  if (te.status === "running") {
+    return;
+  }
+  const success = te.status === "complete";
+  const { unmount } = render(
+    <ToolOutput
+      name={te.name}
+      success={success}
+      output={te.output}
+      error={te.error}
+      args={te.args}
+    />,
+  );
+  unmount();
+}
+
+function displayToolExecution(
+  te: {
+    name: string;
+    status: "running" | "complete" | "error";
+    args?: Record<string, unknown>;
+    output?: string;
+    error?: string;
+  },
+  useInk: boolean,
+): void {
+  if (useInk) {
+    displayToolExecutionInk(te);
+  } else {
+    displayToolExecutionPlain(te);
+  }
+}
+
+interface JsonOutput {
+  type: "user" | "assistant" | "tool";
+  content: string;
+  toolName?: string;
+}
+
+function outputJson(data: JsonOutput): void {
+  console.log(JSON.stringify(data));
 }
 
 function parseArgs(): {
@@ -116,6 +242,10 @@ function parseArgs(): {
       i++;
     } else if (arg === "--allow-all" || arg === "-y") {
       options.allowAll = true;
+    } else if (arg === "--no-color") {
+      options.noColor = true;
+    } else if (arg === "--json") {
+      options.json = true;
     } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -386,8 +516,22 @@ async function handleChat(
       }
 
       try {
-        process.stdout.write("\n");
+        const useInk = shouldUseInk();
+        const jsonMode = isJsonMode();
+
+        if (jsonMode) {
+          outputJson({ type: "user", content: userInput });
+        } else {
+          process.stdout.write("\n");
+        }
+
         let hasContent = false;
+
+        // Show spinner while waiting for LLM response
+        let spinnerInstance: { unmount: () => void } | null = null;
+        if (useInk) {
+          spinnerInstance = render(<Spinner isLoading={true} />);
+        }
 
         // Build runtime config from session state
         const runtimeConfig: RuntimeConfig = {
@@ -395,30 +539,68 @@ async function handleChat(
           thinking: sessionState.thinking,
         };
 
+        let accumulatedContent = "";
+        const thinkFilter = new ThinkingTagFilter();
+
         for await (const chunk of agent.runStream(userInput, sessionState.model, runtimeConfig)) {
+          // Clear spinner on first content
+          if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
+            spinnerInstance.unmount();
+            spinnerInstance = null;
+          }
+
           if (chunk.content) {
-            process.stdout.write(chunk.content);
+            const filtered = thinkFilter.filter(chunk.content);
+            if (jsonMode) {
+              accumulatedContent += filtered;
+            } else if (filtered) {
+              process.stdout.write(filtered);
+            }
             hasContent = true;
           }
 
           if (chunk.toolExecutions) {
-            process.stdout.write("\n  Tools:\n");
-            for (const te of chunk.toolExecutions) {
-              displayToolExecution(te);
-            }
-            if (!options.noTrackContext && chunk.contextStats) {
-              const ctx = chunk.contextStats;
-              process.stdout.write(
-                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
-              );
-            }
-            if (!hasContent) {
-              process.stdout.write("Agent: ");
+            if (jsonMode) {
+              for (const te of chunk.toolExecutions) {
+                if (te.status !== "running") {
+                  outputJson({
+                    type: "tool",
+                    content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
+                    toolName: te.name,
+                  });
+                }
+              }
+            } else {
+              if (!useInk) {
+                process.stdout.write("\n  Tools:\n");
+              }
+              for (const te of chunk.toolExecutions) {
+                displayToolExecution(te, useInk);
+              }
+              if (!options.noTrackContext && chunk.contextStats) {
+                const ctx = chunk.contextStats;
+                process.stdout.write(
+                  `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
+                );
+              }
+              if (!hasContent) {
+                process.stdout.write("Agent: ");
+              }
             }
           }
 
           if (chunk.done) {
-            process.stdout.write("\n");
+            const remaining = thinkFilter.flush();
+            if (remaining && !jsonMode) {
+              process.stdout.write(remaining);
+            }
+            accumulatedContent += remaining;
+
+            if (jsonMode && accumulatedContent) {
+              outputJson({ type: "assistant", content: accumulatedContent });
+            } else if (!jsonMode) {
+              process.stdout.write("\n");
+            }
           }
         }
       } catch (err) {
@@ -433,14 +615,41 @@ async function handleChat(
   askQuestion();
 }
 
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) {
+    return "";
+  }
+
+  return new Promise((resolve) => {
+    let data = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on("end", () => {
+      resolve(data);
+    });
+    process.stdin.on("error", () => {
+      resolve("");
+    });
+  });
+}
+
 async function handleRun(
   config: ReturnType<typeof loadConfig>,
   args: string[],
   options: CliOptions,
 ): Promise<void> {
-  const prompt = args.join(" ");
+  const promptArg = args.join(" ");
+  const stdinContent = await readStdin();
+
+  let prompt = promptArg;
+  if (stdinContent.trim()) {
+    prompt = stdinContent.trim() + (promptArg ? `\n\n${promptArg}` : "");
+  }
+
   if (!prompt) {
-    console.error("Error: run command requires a prompt");
+    console.error("Error: run command requires a prompt (or pipe content to stdin)");
     process.exit(1);
   }
 
@@ -472,28 +681,70 @@ async function handleRun(
   const toolCount = toolRegistry.list().length;
   const memoryStatus = enableMemory ? "memory enabled" : "no memory";
   const agentsMdStatus = agentsMdPath ? "AGENTS.md loaded" : "";
-  console.log(
-    `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
-  );
+  const jsonMode = isJsonMode();
+  const useInk = shouldUseInk();
+
+  if (!jsonMode) {
+    console.log(
+      `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
+    );
+  }
+
+  if (jsonMode) {
+    outputJson({ type: "user", content: prompt });
+  }
 
   try {
+    let accumulatedContent = "";
+    const thinkFilter = new ThinkingTagFilter();
+
     for await (const chunk of agent.runStream(prompt, model)) {
       if (chunk.content) {
-        process.stdout.write(chunk.content);
+        const filtered = thinkFilter.filter(chunk.content);
+        if (jsonMode) {
+          accumulatedContent += filtered;
+        } else if (filtered) {
+          process.stdout.write(filtered);
+        }
       }
 
       if (chunk.toolExecutions) {
-        process.stdout.write("\n  Tools:\n");
-        for (const te of chunk.toolExecutions) {
-          displayToolExecution(te);
-        }
-        if (!options.noTrackContext && chunk.contextStats) {
-          const ctx = chunk.contextStats;
-          process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
+        if (jsonMode) {
+          for (const te of chunk.toolExecutions) {
+            if (te.status !== "running") {
+              outputJson({
+                type: "tool",
+                content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
+                toolName: te.name,
+              });
+            }
+          }
+        } else {
+          if (!useInk) {
+            process.stdout.write("\n  Tools:\n");
+          }
+          for (const te of chunk.toolExecutions) {
+            displayToolExecution(te, useInk);
+          }
+          if (!options.noTrackContext && chunk.contextStats) {
+            const ctx = chunk.contextStats;
+            process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
+          }
         }
       }
     }
-    process.stdout.write("\n");
+
+    const remaining = thinkFilter.flush();
+    accumulatedContent += remaining;
+    if (remaining && !jsonMode) {
+      process.stdout.write(remaining);
+    }
+
+    if (jsonMode && accumulatedContent) {
+      outputJson({ type: "assistant", content: accumulatedContent });
+    } else if (!jsonMode) {
+      process.stdout.write("\n");
+    }
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -647,6 +898,8 @@ OPTIONS:
     --no-memory                        Disable memory (enabled by default)
     --no-track-context                 Disable context tracking (enabled by default)
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
+    --no-color                         Disable colored output (for pipes/non-TTY)
+    --json                             Output messages as JSON (for programmatic use)
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -792,6 +1045,14 @@ async function handleMemory(
 export async function main(): Promise<void> {
   try {
     const { command, args, options } = parseArgs();
+
+    if (options.noColor) {
+      setNoColor(true);
+    }
+
+    if (options.json) {
+      setJsonMode(true);
+    }
 
     if (options.help) {
       showHelp();

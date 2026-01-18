@@ -1,18 +1,79 @@
 # Ralph Progress Log
-Started: Tue Jan 13 17:34:31 +08 2026
+Started: Sat Jan 18 2026
 ---
 
-## 2026-01-13 - US-013
-- Implemented token counting and context window management
-- Files created: src/core/tokens.ts (countTokens, countMessagesTokens, truncateMessages)
-- Files modified:
-  - src/config/schema.ts (added maxContextTokens config option)
-  - src/config/loader.ts (added TINY_AGENT_MAX_CONTEXT_TOKENS env var override)
-  - src/core/agent.ts (integrated token counting and context management)
-  - src/cli/main.ts (passes maxContextTokens to Agent, displays in config output)
-- **Learnings for future iterations:**
-  - Token counting uses simple approximation: 4 characters per token
-  - truncateMessages removes oldest messages when exceeding context limit
-  - Reserve 1000 tokens for response when calculating available context
-  - Config options: `maxContextTokens` in config, `TINY_AGENT_MAX_CONTEXT_TOKENS` env var
+## Codebase Patterns
+- tsconfig.json already configured with `jsx: react-jsx` - no changes needed for JSX support
+- Use `src/ui/` for all Ink/React components, `src/ui/components/` for reusable UI pieces
+- Ink v6 uses React 19 - use functional components with proper React.ReactElement return types
+- Use src/ui/utils.ts for TTY/color detection: isTTY(), shouldUseInk(), setNoColor(), setJsonMode(), isJsonMode()
+- Ink components use hooks: useInput for keyboard, useStdout for terminal dimensions
+- CLI files with JSX must be .tsx extension (e.g., main.tsx)
+
 ---
+
+## 2026-01-18 - US-001
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Installed ink@6.6.0, react@19.2.3, @types/react@19.2.8
+- Created src/ui/App.tsx with basic App component and renderApp helper
+- Created src/ui/components/ directory for future components
+- **Learnings for future iterations:**
+  - tsconfig already had `jsx: react-jsx` configured from project setup
+  - Ink v6 is the latest version, works with React 19
+  - App component exports both the component and a renderApp() helper for easy rendering
+---
+
+## 2026-01-18 - US-002
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Created src/ui/utils.ts with TTY detection and mode helpers
+- Added --no-color CLI flag to main.ts
+- Updated help text to document --no-color flag
+- **Learnings for future iterations:**
+  - shouldUseInk() combines isTTY() check with noColor and jsonMode flags
+  - setNoColor() and setJsonMode() allow forcing plain output programmatically
+  - Check both stdout.isTTY and stdin.isTTY for full interactive detection
+---
+
+## 2026-01-18 - US-003
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Added ink-spinner@5.0.0 dependency
+- Created src/ui/components/Spinner.tsx with elapsed time tracking
+- **Learnings:** Spinner uses useState + useEffect for timer, clears on isLoading=false
+---
+
+## 2026-01-18 - US-004
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Created src/ui/components/Message.tsx for styled chat messages
+- User messages in blue, assistant in green with bold labels
+---
+
+## 2026-01-18 - US-005
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Added ink-box@2.0.0 dependency
+- Created src/ui/components/ToolOutput.tsx with bordered box and status icons
+---
+
+## 2026-01-18 - US-006
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Renamed src/cli/main.ts to main.tsx for JSX support
+- Integrated Spinner during LLM calls, ToolOutput for results
+- Created src/ui/index.ts and src/ui/components/index.ts barrel exports
+- **Learnings:** Files using JSX must have .tsx extension
+---
+
+## 2026-01-18 - US-007
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Enhanced ToolOutput with scrollable view for long outputs
+- Added keyboard navigation: ↑/↓/j/k and PgUp/PgDn
+- Line count indicator shows position in content
+- **Learnings:** useInput hook with isActive prop for conditional input handling
+---
+
+## 2026-01-18 - US-008
+Thread: https://ampcode.com/threads/T-019bccbd-8719-7208-ae4f-ba0b3dd51c45
+- Added --json CLI flag for NDJSON output
+- Format: {type: 'user'|'assistant'|'tool', content, toolName?}
+- Works in both chat and run modes
+- **Learnings:** Accumulate streamed content, output complete JSON at chunk.done
+---
+
