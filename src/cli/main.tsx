@@ -104,7 +104,13 @@ function displayToolExecutionInk(te: {
   const success = te.status === "complete";
   const outputPreview = te.output ? te.output.split("\n").slice(0, 6).join("\n") : undefined;
   const { unmount } = render(
-    <ToolOutput name={te.name} success={success} output={outputPreview} error={te.error} />,
+    <ToolOutput
+      name={te.name}
+      success={success}
+      output={outputPreview}
+      error={te.error}
+      args={te.args}
+    />,
   );
   unmount();
 }

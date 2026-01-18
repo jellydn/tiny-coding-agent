@@ -6,7 +6,16 @@ interface ToolOutputProps {
   success: boolean;
   output?: string;
   error?: string;
+  args?: Record<string, unknown>;
   maxVisibleLines?: number;
+}
+
+function formatArgValue(value: unknown, maxLen = 50): string {
+  const str = typeof value === "string" ? value : JSON.stringify(value);
+  if (str.length > maxLen) {
+    return str.slice(0, maxLen) + "...";
+  }
+  return str;
 }
 
 export function ToolOutput({
@@ -14,6 +23,7 @@ export function ToolOutput({
   success,
   output,
   error,
+  args,
   maxVisibleLines,
 }: ToolOutputProps): React.ReactElement {
   const statusIcon = success ? "✓" : "✗";
@@ -78,6 +88,17 @@ export function ToolOutput({
           </Text>
         )}
       </Box>
+      {args && Object.keys(args).length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {Object.entries(args)
+            .filter(([, v]) => v !== undefined)
+            .map(([key, value]) => (
+              <Text key={key} dimColor>
+                <Text color="cyan">{key}</Text>: {formatArgValue(value)}
+              </Text>
+            ))}
+        </Box>
+      )}
       {content && (
         <Box flexDirection="column" marginTop={1}>
           <Text wrap="wrap" dimColor={!success}>
