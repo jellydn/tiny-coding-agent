@@ -2,6 +2,8 @@
 
 <p align="center">
   <img src="docs/logo.svg" alt="Tiny Coding Agent Logo" width="120" height="120">
+  <br>
+  <a href="https://agents.md/"><img src="https://img.shields.io/badge/AGENTS.md-supported-green" alt="AGENTS.md supported"></a>
 </p>
 
 A lightweight, extensible coding agent built in TypeScript that helps developers with coding tasks across TypeScript, React, JavaScript, Node.js, Bash, and markdown/JSON.
@@ -347,7 +349,7 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for:
+This project follows the [AGENTS.md](https://agents.md/) standard for guiding coding agents. See [AGENTS.md](AGENTS.md) for:
 
 - Build commands: `bun run dev`, `bun run build`, `bun test`
 - TypeScript conventions and code style

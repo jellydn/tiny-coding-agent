@@ -102,12 +102,11 @@ function displayToolExecutionInk(te: {
     return;
   }
   const success = te.status === "complete";
-  const outputPreview = te.output ? te.output.split("\n").slice(0, 6).join("\n") : undefined;
   const { unmount } = render(
     <ToolOutput
       name={te.name}
       success={success}
-      output={outputPreview}
+      output={te.output}
       error={te.error}
       args={te.args}
     />,

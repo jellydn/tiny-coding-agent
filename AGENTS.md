@@ -95,15 +95,26 @@ describe("MemoryStore", () => {
   const tempFile = "/tmp/test-memory.json";
 
   beforeEach(() => {
-    try { unlinkSync(tempFile); } catch { /* ignore */ }
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
   });
   afterEach(() => {
-    try { unlinkSync(tempFile); } catch { /* ignore */ }
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
   });
 
   it("should evict oldest memories when over max limit", () => {
     const store = new MemoryStore({ filePath: tempFile, maxMemories: 3 });
-    store.add("1"); store.add("2"); store.add("3"); store.add("4");
+    store.add("1");
+    store.add("2");
+    store.add("3");
+    store.add("4");
     expect(store.count()).toBe(3);
   });
 });
