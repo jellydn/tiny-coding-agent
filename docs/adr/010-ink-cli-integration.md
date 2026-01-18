@@ -29,7 +29,7 @@ Integrate [Ink](https://github.com/vadimdemedes/ink) (React for CLIs) to provide
 
 ### Architecture
 
-```
+```text
 src/ui/
 ├── App.tsx              # Root Ink component
 ├── index.ts             # Barrel exports
@@ -52,7 +52,7 @@ src/ui/
 1. **JSX in CLI**: Renamed `src/cli/main.ts` → `main.tsx` to support JSX syntax
 2. **TTY Detection**: `shouldUseInk()` checks `process.stdout.isTTY` and mode flags
 3. **Spinner Lifecycle**: Rendered before LLM call, unmounted on first content chunk
-4. **Scrollable Output**: Uses `useInput` hook for keyboard navigation (↑/↓/j/k/PgUp/PgDn)
+4. **Scrollable Output**: `ToolOutput` component includes scrolling logic using `useInput` hook (↑/↓/j/k/PgUp/PgDn). Note: For true interactive scrolling, the Ink rendering architecture needs to be refactored to maintain a persistent app component rather than mounting/unmounting per tool.
 5. **JSON Format**: `{type: 'user'|'assistant'|'tool', content: string, toolName?: string}`
 
 ## Consequences

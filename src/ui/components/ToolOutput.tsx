@@ -11,7 +11,16 @@ interface ToolOutputProps {
 }
 
 function formatArgValue(value: unknown, maxLen = 50): string {
-  const str = typeof value === "string" ? value : JSON.stringify(value);
+  const str =
+    typeof value === "string"
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value) ?? String(value);
+          } catch {
+            return String(value);
+          }
+        })();
   return str.length > maxLen ? `${str.slice(0, maxLen)}...` : str;
 }
 
