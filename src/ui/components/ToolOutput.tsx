@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Text, Box, useInput, useStdout } from "ink";
+import { Text, Box, useInput, useStdout, type Key } from "ink";
 
 interface ToolOutputProps {
   name: string;
@@ -12,10 +12,7 @@ interface ToolOutputProps {
 
 function formatArgValue(value: unknown, maxLen = 50): string {
   const str = typeof value === "string" ? value : JSON.stringify(value);
-  if (str.length > maxLen) {
-    return str.slice(0, maxLen) + "...";
-  }
-  return str;
+  return str.length > maxLen ? `${str.slice(0, maxLen)}...` : str;
 }
 
 export function ToolOutput({
@@ -44,25 +41,23 @@ export function ToolOutput({
     setScrollOffset(0);
   }, [content]);
 
-  useInput(
-    (input, key) => {
-      // 'input' is used for vim-style j/k navigation
-      if (!needsScrolling) return;
+  const maxScroll = Math.max(0, totalLines - effectiveMaxLines);
 
-      if (key.downArrow || input === "j") {
-        setScrollOffset((prev) => Math.min(prev + 1, totalLines - effectiveMaxLines));
-      } else if (key.upArrow || input === "k") {
-        setScrollOffset((prev) => Math.max(prev - 1, 0));
-      } else if (key.pageDown) {
-        setScrollOffset((prev) =>
-          Math.min(prev + effectiveMaxLines, totalLines - effectiveMaxLines),
-        );
-      } else if (key.pageUp) {
-        setScrollOffset((prev) => Math.max(prev - effectiveMaxLines, 0));
-      }
-    },
-    { isActive: needsScrolling },
-  );
+  const handleScrollInput = (input: string, key: Key): void => {
+    if (!needsScrolling) return;
+
+    if (key.downArrow || input === "j") {
+      setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
+    } else if (key.upArrow || input === "k") {
+      setScrollOffset((prev) => Math.max(prev - 1, 0));
+    } else if (key.pageDown) {
+      setScrollOffset((prev) => Math.min(prev + effectiveMaxLines, maxScroll));
+    } else if (key.pageUp) {
+      setScrollOffset((prev) => Math.max(prev - effectiveMaxLines, 0));
+    }
+  };
+
+  useInput(handleScrollInput, { isActive: needsScrolling });
 
   const visibleLines = needsScrolling
     ? lines.slice(scrollOffset, scrollOffset + effectiveMaxLines)
