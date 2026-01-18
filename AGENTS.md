@@ -31,7 +31,8 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 ### TypeScript
 
 - ES modules with TypeScript 5+, strict mode
-- Compiler: `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`
+- Compiler: `verbatimModuleSyntax`, `noUncheckedIndexedAccess`, `noImplicitOverride`
+- Note: `noUnusedLocals: false`, `noUnusedParameters: false` (unused code allowed)
 - Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
 - Use `satisfies` for type narrowing with validation
 
@@ -85,7 +86,7 @@ export const tool: Tool = {
 
 ## Testing
 
-Use bun:test with `describe`, `it`, `expect`. Clean up resources:
+Use bun:test with `describe`, `it`, `expect`. Clean up resources in beforeEach/afterEach:
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -94,26 +95,15 @@ describe("MemoryStore", () => {
   const tempFile = "/tmp/test-memory.json";
 
   beforeEach(() => {
-    try {
-      unlinkSync(tempFile);
-    } catch {
-      /* ignore */
-    }
+    try { unlinkSync(tempFile); } catch { /* ignore */ }
   });
   afterEach(() => {
-    try {
-      unlinkSync(tempFile);
-    } catch {
-      /* ignore */
-    }
+    try { unlinkSync(tempFile); } catch { /* ignore */ }
   });
 
   it("should evict oldest memories when over max limit", () => {
     const store = new MemoryStore({ filePath: tempFile, maxMemories: 3 });
-    store.add("1");
-    store.add("2");
-    store.add("3");
-    store.add("4");
+    store.add("1"); store.add("2"); store.add("3"); store.add("4");
     expect(store.count()).toBe(3);
   });
 });
@@ -133,7 +123,7 @@ src/
   config/     # Configuration loading
 ```
 
-Dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `yaml`, `zod`.
+Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
 
 ## CLI Usage
 

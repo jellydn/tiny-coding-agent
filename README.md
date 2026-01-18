@@ -8,12 +8,14 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 ## Features
 
+- **Rich Terminal UI**: Ink-powered CLI with components for messages, spinners, and tool output
+- **TTY Detection**: Automatically adapts to terminal capabilities with plain text fallback
 - **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, and OpenCode
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
 - **Memory System**: User-initiated persistent storage with relevance-based retrieval
 - **Plugin System**: Extend the agent with custom tools
-- **CLI-First Design**: Simple commands for chat, run, and config
+- **JSON Output Mode**: Machine-readable output for tooling integration
 
 ## Quick Install
 
@@ -252,6 +254,7 @@ tiny-agent --provider opencode --model qwen3-coder "write a function"
 | ------------------- | ------------------------------------------------------- |
 | `--model <name>`    | Override default model                                  |
 | `--provider <name>` | Override provider (openai\|anthropic\|ollama\|opencode) |
+| `--json`            | Output in JSON format (for programmatic consumption)    |
 | `--verbose, -v`     | Enable verbose logging                                  |
 | `--save`            | Save conversation to file                               |
 | `--no-memory`       | Disable memory                                          |
@@ -324,6 +327,7 @@ src/
   providers/  # LLM clients (OpenAI, Anthropic, Ollama)
   mcp/        # MCP client
   cli/        # CLI interface
+  ui/         # Ink UI components (App, Message, Spinner, ToolOutput)
 ```
 
 ## Architecture
@@ -339,6 +343,7 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 007: Model Registry Pattern
 - 008: Memory System
 - 009: Tool Confirmation System
+- 010: Ink CLI Integration
 
 ## Development
 
