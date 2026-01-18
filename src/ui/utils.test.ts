@@ -62,6 +62,11 @@ describe("UI Utils", () => {
   });
 
   describe("setUIContext", () => {
+    beforeEach(() => {
+      process.stdout.isTTY = false;
+      process.stdin.isTTY = false;
+    });
+
     it("should set noColor flag", () => {
       setUIContext({ noColor: true });
       expect(shouldUseInk()).toBe(false);
@@ -168,6 +173,11 @@ describe("UI Utils", () => {
   });
 
   describe("resetUIContext", () => {
+    beforeEach(() => {
+      process.stdout.isTTY = false;
+      process.stdin.isTTY = false;
+    });
+
     it("should reset noColor flag", () => {
       setNoColor(true);
       resetUIContext();
