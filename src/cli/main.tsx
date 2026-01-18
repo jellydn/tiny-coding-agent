@@ -55,6 +55,66 @@ interface CliOptions {
   json?: boolean;
 }
 
+class ThinkingTagFilter {
+  private buffer = "";
+  private inThinkingBlock = false;
+
+  filter(chunk: string): string {
+    this.buffer += chunk;
+    let output = "";
+
+    while (this.buffer.length > 0) {
+      if (this.inThinkingBlock) {
+        const endIdx = this.buffer.indexOf("</think>");
+        if (endIdx !== -1) {
+          this.buffer = this.buffer.slice(endIdx + 8);
+          this.inThinkingBlock = false;
+        } else {
+          if (this.buffer.length > 100) {
+            this.buffer = this.buffer.slice(-20);
+          }
+          break;
+        }
+      } else {
+        const startIdx = this.buffer.indexOf("<think>");
+        if (startIdx !== -1) {
+          output += this.buffer.slice(0, startIdx);
+          this.buffer = this.buffer.slice(startIdx + 7);
+          this.inThinkingBlock = true;
+        } else {
+          const partialMatch = this.findPartialTag(this.buffer, "<think>");
+          if (partialMatch > 0) {
+            output += this.buffer.slice(0, this.buffer.length - partialMatch);
+            this.buffer = this.buffer.slice(-partialMatch);
+            break;
+          } else {
+            output += this.buffer;
+            this.buffer = "";
+          }
+        }
+      }
+    }
+
+    return output;
+  }
+
+  private findPartialTag(text: string, tag: string): number {
+    for (let i = 1; i < tag.length; i++) {
+      if (text.endsWith(tag.slice(0, i))) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  flush(): string {
+    const remaining = this.inThinkingBlock ? "" : this.buffer;
+    this.buffer = "";
+    this.inThinkingBlock = false;
+    return remaining;
+  }
+}
+
 function formatArgs(args: Record<string, unknown> | undefined): string {
   if (!args || Object.keys(args).length === 0) return "";
   const entries = Object.entries(args)
@@ -480,6 +540,7 @@ async function handleChat(
         };
 
         let accumulatedContent = "";
+        const thinkFilter = new ThinkingTagFilter();
 
         for await (const chunk of agent.runStream(userInput, sessionState.model, runtimeConfig)) {
           // Clear spinner on first content
@@ -489,10 +550,11 @@ async function handleChat(
           }
 
           if (chunk.content) {
+            const filtered = thinkFilter.filter(chunk.content);
             if (jsonMode) {
-              accumulatedContent += chunk.content;
-            } else {
-              process.stdout.write(chunk.content);
+              accumulatedContent += filtered;
+            } else if (filtered) {
+              process.stdout.write(filtered);
             }
             hasContent = true;
           }
@@ -528,6 +590,12 @@ async function handleChat(
           }
 
           if (chunk.done) {
+            const remaining = thinkFilter.flush();
+            if (remaining && !jsonMode) {
+              process.stdout.write(remaining);
+            }
+            accumulatedContent += remaining;
+
             if (jsonMode && accumulatedContent) {
               outputJson({ type: "assistant", content: accumulatedContent });
             } else if (!jsonMode) {
@@ -628,13 +696,15 @@ async function handleRun(
 
   try {
     let accumulatedContent = "";
+    const thinkFilter = new ThinkingTagFilter();
 
     for await (const chunk of agent.runStream(prompt, model)) {
       if (chunk.content) {
+        const filtered = thinkFilter.filter(chunk.content);
         if (jsonMode) {
-          accumulatedContent += chunk.content;
-        } else {
-          process.stdout.write(chunk.content);
+          accumulatedContent += filtered;
+        } else if (filtered) {
+          process.stdout.write(filtered);
         }
       }
 
@@ -662,6 +732,12 @@ async function handleRun(
           }
         }
       }
+    }
+
+    const remaining = thinkFilter.flush();
+    accumulatedContent += remaining;
+    if (remaining && !jsonMode) {
+      process.stdout.write(remaining);
     }
 
     if (jsonMode && accumulatedContent) {
