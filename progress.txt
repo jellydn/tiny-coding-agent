@@ -134,3 +134,19 @@
   - Error status is set briefly, then reset to ready after logging
 ---
 
+## 2026-01-20 14:00 - US-009
+- Session: https://opncd.ai/s/6op8q1
+- Tool execution updates were implemented as part of US-008
+- setTool() called when tool starts (status "running" in agent stream)
+- clearTool() called when tool completes (no running tools)
+- Tool elapsed time tracked via toolStartTime set in statusLineManager
+- Works for all built-in tools via agent stream integration
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Agent stream yields toolExecutions with status before and after execution
+  - Use chunk.toolExecutions.find((te) => te.status === "running") to detect active tool
+  - setTool automatically captures Date.now() as start time
+  - StatusLine component calculates elapsed time from toolStartTime
+---
+
