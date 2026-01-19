@@ -5,6 +5,10 @@
 - StatusLine class should be a singleton exported via `getStatusLine()` helper
 - Check `process.stdout.rows` to determine terminal bottom position
 - Always gracefully degrade when `!process.stdout.isTTY` (non-TTY environments)
+- Pre-commit hooks run lint and format:check - always run `bun run format` before committing
+- Use Box flexGrow={1} in Ink to push status line to bottom of terminal
+- StatusLine uses useStdout() hook to get terminal width automatically
+
 
 ## 2026-01-20 07:13 - US-001
 - Session: https://opncd.ai/s/3mkd4e
@@ -62,3 +66,36 @@
   - Clear interval on cleanup to prevent memory leaks
   - Props named toolStartTime are more accurate than elapsed for timer-based updates
 ---
+
+## 2026-01-20 11:30 - US-006
+- Session: https://opncd.ai/s/9pq1r2
+- Created StatusLineContext.tsx with StatusLineProvider and useStatusLine hook
+- Exports: StatusLineProvider, useStatusLine, StatusLineStatus type
+- Provider exposes setStatus, setModel, setContext, setTool, clearTool functions
+- setTool automatically captures start time using Date.now()
+- Updated src/ui/index.ts to export new context components
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use React's createContext with typed context value for type safety
+  - Throw error from hook if used outside provider (helps catch usage errors early)
+  - Export type alongside hook for consumers to use in their code
+  - setTool helper that combines setToolState and setToolStartTime for atomic updates
+  - Pre-commit hooks run format:check which requires running `bun run format` first
+---
+
+## 2026-01-20 12:00 - US-007
+- Session: https://opncd.ai/s/8rs3t4
+- Integrated StatusLine into App.tsx with StatusLineProvider wrapper
+- StatusLineWrapper component conditionally renders status line based on shouldUseInk()
+- Status line only shows when there is actual content to display
+- Updated src/ui/index.ts to export StatusLine component
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - StatusLine uses useStdout() hook to get terminal width automatically
+  - Box flexGrow={1} allows StatusLine to push to bottom of terminal
+  - Use conditional rendering based on context values to avoid empty status line
+  - shouldUseInk() checks noColor, jsonMode, and isTTY for proper fallback
+---
+

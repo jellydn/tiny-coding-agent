@@ -1,23 +1,42 @@
 import React from "react";
-import { Text, render } from "ink";
+import { Box, render } from "ink";
+import { shouldUseInk } from "./utils.js";
+import { StatusLineProvider, useStatusLine } from "./contexts/StatusLineContext.js";
+import { StatusLine } from "./components/StatusLine.js";
+
+interface StatusLineWrapperProps {
+  children?: React.ReactNode;
+}
+
+function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactElement {
+  const context = useStatusLine();
+  const showStatusLine =
+    shouldUseInk() &&
+    (context.status !== undefined ||
+      context.model !== undefined ||
+      context.tokensUsed !== undefined ||
+      context.tool !== undefined);
+
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      <Box flexGrow={1}>{children}</Box>
+      {showStatusLine && <StatusLine {...context} />}
+    </Box>
+  );
+}
 
 interface AppProps {
   children?: React.ReactNode;
 }
 
-/**
- * Root Ink component for the Tiny Agent CLI.
- * Currently serves as a placeholder for potential future use cases
- * where the entire chat session is managed within a single Ink app.
- */
 export function App({ children }: AppProps): React.ReactElement {
-  return <Text>{children ?? "Tiny Agent"}</Text>;
+  return (
+    <StatusLineProvider>
+      <StatusLineWrapper>{children ?? "Tiny Agent"}</StatusLineWrapper>
+    </StatusLineProvider>
+  );
 }
 
-/**
- * Helper to render Ink elements.
- * Useful for future persistent rendering patterns.
- */
 export function renderApp(element: React.ReactElement) {
   return render(element);
 }

@@ -6,3 +6,4 @@ export {
   useStatusLine,
   type StatusLineStatus,
 } from "./contexts/StatusLineContext.js";
+export { StatusLine } from "./components/StatusLine.js";
