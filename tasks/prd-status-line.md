@@ -34,10 +34,10 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Shows tokens used / max tokens (e.g., "Ctx: 12.5k/128k")
-- [ ] Updates after each message exchange
-- [ ] Uses compact number formatting (k for thousands)
-- [ ] Typecheck passes
+- [x] Shows tokens used / max tokens (e.g., "Ctx: 12.5k/128k")
+- [x] Updates after each message exchange
+- [x] Uses compact number formatting (k for thousands)
+- [x] Typecheck passes
 
 ### US-003: Display current model
 
@@ -56,11 +56,11 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Shows tool name when a tool is executing (e.g., "⚙ read_file")
-- [ ] Shows elapsed time for long-running calls (e.g., "⚙ read_file 3.2s")
-- [ ] Clears when tool completes
-- [ ] Shows nothing when no tool is active
-- [ ] Typecheck passes
+- [x] Shows tool name when a tool is executing (e.g., "⚙ read_file")
+- [x] Shows elapsed time for long-running calls (e.g., "⚙ read_file 3.2s")
+- [x] Clears when tool completes
+- [x] Shows nothing when no tool is active
+- [x] Typecheck passes
 
 ### US-005: Display agent status
 
@@ -68,11 +68,11 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Shows status indicator: "⏳ Thinking", "✓ Ready", "✗ Error"
-- [ ] Colorized: green for ready, yellow for thinking, red for error
-- [ ] Updates in real-time as state changes
-- [ ] Error status shows briefly before returning to ready
-- [ ] Typecheck passes
+- [x] Shows status indicator: "⏳ Thinking", "✓ Ready", "✗ Error"
+- [x] Colorized: green for ready, yellow for thinking, red for error
+- [x] Updates in real-time as state changes
+- [x] Error status shows briefly before returning to ready
+- [x] Typecheck passes
 
 ### US-006: Integrate status line with agent loop
 
@@ -80,11 +80,11 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Agent loop updates status on state changes
-- [ ] Tool executor updates status on tool start/end
-- [ ] Token tracker updates context display
-- [ ] Status line disabled in non-TTY environments
-- [ ] Typecheck passes
+- [x] Agent loop updates status on state changes
+- [x] Tool executor updates status on tool start/end
+- [x] Token tracker updates context display
+- [x] Status line disabled in non-TTY environments
+- [x] Typecheck passes
 
 ### US-007: Add --no-status flag
 
@@ -92,10 +92,10 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Add `--no-status` CLI flag
-- [ ] Status line hidden when flag is set
-- [ ] Default behavior shows status line
-- [ ] Typecheck passes
+- [x] Add `--no-status` CLI flag
+- [x] Status line hidden when flag is set
+- [x] Default behavior shows status line
+- [x] Typecheck passes
 
 ## Functional Requirements
 
