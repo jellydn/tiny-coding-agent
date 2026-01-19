@@ -20,3 +20,17 @@
   - Export types alongside classes from index files for consumers
   - Don't import unused modules (fs import was flagged by lint)
 ---
+
+## 2026-01-20 07:45 - US-002
+- Session: https://opncd.ai/s/2ab2f3
+- Implemented color-coded status display in `src/ui/components/StatusLine.tsx`
+- Added STATUS_LABELS and STATUS_COLORS maps for status styling
+- Status values: '⏳ Thinking' (yellow), '✓ Ready' (green), '✗ Error' (red)
+- Updated StatusLineProps to use typed status: "thinking" | "ready" | "error"
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Ink's Text component accepts color prop with string values like "yellow", "green", "red"
+  - StatusDisplay type in cli/status-line.ts defines the canonical status values to use
+  - Keep status types consistent between cli/status-line.ts and ui/components/StatusLine.tsx
+---

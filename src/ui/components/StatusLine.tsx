@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 
 interface StatusLineProps {
   status?: "thinking" | "ready" | "error";
@@ -7,6 +7,11 @@ interface StatusLineProps {
   context?: string;
   tool?: string;
   elapsed?: number;
+}
+
+function truncateModel(model: string, maxLength: number): string {
+  if (model.length <= maxLength) return model;
+  return model.slice(0, maxLength - 3) + "...";
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,6 +33,8 @@ export function StatusLine({
   tool,
   elapsed,
 }: StatusLineProps): React.ReactElement {
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns || 80;
   const elements: React.ReactNode[] = [];
 
   if (status) {
@@ -47,9 +54,11 @@ export function StatusLine({
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
+    const maxModelWidth = Math.max(20, terminalWidth - 35);
+    const truncatedModel = truncateModel(model, maxModelWidth);
     elements.push(
       <Text key="model">
-        <Text color="gray">Model:</Text> {model}
+        <Text color="gray">Model:</Text> {truncatedModel}
       </Text>,
     );
   }
