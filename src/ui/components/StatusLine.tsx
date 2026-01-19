@@ -4,9 +4,17 @@ import { Box, Text, useStdout } from "ink";
 interface StatusLineProps {
   status?: "thinking" | "ready" | "error";
   model?: string;
-  context?: string;
+  tokensUsed?: number;
+  tokensMax?: number;
   tool?: string;
   elapsed?: number;
+}
+
+function formatCompactNumber(num: number): string {
+  if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}k`;
+  }
+  return String(num);
 }
 
 function truncateModel(model: string, maxLength: number): string {
@@ -29,7 +37,8 @@ const STATUS_COLORS: Record<string, string | undefined> = {
 export function StatusLine({
   status,
   model,
-  context,
+  tokensUsed,
+  tokensMax,
   tool,
   elapsed,
 }: StatusLineProps): React.ReactElement {
@@ -63,13 +72,15 @@ export function StatusLine({
     );
   }
 
-  if (context) {
+  if (tokensUsed !== undefined && tokensMax !== undefined) {
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
+    const usedDisplay = formatCompactNumber(tokensUsed);
+    const maxDisplay = formatCompactNumber(tokensMax);
     elements.push(
       <Text key="context">
-        <Text color="gray">Ctx:</Text> {context}
+        <Text color="gray">Ctx:</Text> {usedDisplay}/{maxDisplay}
       </Text>,
     );
   }

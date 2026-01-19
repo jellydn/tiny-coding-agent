@@ -34,3 +34,16 @@
   - StatusDisplay type in cli/status-line.ts defines the canonical status values to use
   - Keep status types consistent between cli/status-line.ts and ui/components/StatusLine.tsx
 ---
+
+## 2026-01-20 09:00 - US-004
+- Session: https://opncd.ai/s/5mn6r3
+- Updated StatusLine.tsx to accept tokensUsed and tokensMax props
+- Added formatCompactNumber() helper for k-formatted numbers (e.g., 12.5k)
+- Context display shows "Ctx: used/max" with gray/dim label color
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - StatusLine.tsx uses separate props for tokensUsed/tokensMax instead of pre-formatted string
+  - Compact formatting: >= 1000 uses `toFixed(1)` with 'k' suffix
+  - Ink's Text color prop supports color names like "gray", "cyan", "yellow"
+---
