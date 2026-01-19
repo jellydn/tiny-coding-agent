@@ -1,0 +1,22 @@
+## Codebase Patterns
+- Use ANSI escape codes for terminal cursor positioning: `\x1b[s` (save), `\x1b[u` (restore), `\x1b[{row}H` (move to position)
+- Hide cursor with `\x1b[?25l`, show with `\x1b[?25h`
+- Clear line from cursor with `\x1b[K`
+- StatusLine class should be a singleton exported via `getStatusLine()` helper
+- Check `process.stdout.rows` to determine terminal bottom position
+- Always gracefully degrade when `!process.stdout.isTTY` (non-TTY environments)
+
+## 2026-01-20 07:13 - US-001
+- Session: https://opncd.ai/s/3mkd4e
+- Implemented StatusLine class in `src/cli/status-line.ts` with ANSI escape code rendering
+- Exports: StatusLine class, getStatusLine() singleton, StatusDisplay and StatusLineOptions types
+- Features: enable/disable, attach/detach, update(), clear(), format helpers for status/model/tokens/tool
+- Updated `src/cli/index.ts` to export new status line components
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - The codebase uses husky pre-commit hooks that run lint and format checks
+  - CLI uses Ink (React) for main rendering but StatusLine uses raw ANSI for non-scrolling updates
+  - Export types alongside classes from index files for consumers
+  - Don't import unused modules (fs import was flagged by lint)
+---

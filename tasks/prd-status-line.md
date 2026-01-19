@@ -20,11 +20,13 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Create `StatusLine` class in `src/cli/status-line.ts`
-- [ ] Renders a single line at terminal bottom using ANSI escape codes
-- [ ] Supports update without scrolling main content
-- [ ] Clears status line on exit
-- [ ] Typecheck passes
+- [x] Create `StatusLine` class in `src/cli/status-line.ts`
+- [x] Renders a single line at terminal bottom using ANSI escape codes
+- [x] Supports update without scrolling main content
+- [x] Clears status line on exit
+- [x] Typecheck passes
+
+---
 
 ### US-002: Display context/token usage
 
