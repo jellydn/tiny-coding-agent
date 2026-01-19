@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
 
 interface StatusLineProps {
@@ -7,7 +7,7 @@ interface StatusLineProps {
   tokensUsed?: number;
   tokensMax?: number;
   tool?: string;
-  elapsed?: number;
+  toolStartTime?: number;
 }
 
 function formatCompactNumber(num: number): string {
@@ -40,11 +40,24 @@ export function StatusLine({
   tokensUsed,
   tokensMax,
   tool,
-  elapsed,
+  toolStartTime,
 }: StatusLineProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns || 80;
   const elements: React.ReactNode[] = [];
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (tool && toolStartTime !== undefined) {
+      const updateElapsed = () => {
+        setElapsed((Date.now() - toolStartTime) / 1000);
+      };
+      updateElapsed();
+      const interval = setInterval(updateElapsed, 100);
+      return () => clearInterval(interval);
+    }
+    setElapsed(0);
+  }, [tool, toolStartTime]);
 
   if (status) {
     if (elements.length > 0) {
@@ -86,7 +99,7 @@ export function StatusLine({
   }
 
   if (tool) {
-    const timeStr = elapsed !== undefined ? `${elapsed.toFixed(1)}s` : "";
+    const timeStr = `${elapsed.toFixed(1)}s`;
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
