@@ -45,10 +45,10 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Shows provider and model (e.g., "anthropic:claude-3-5-sonnet")
-- [ ] Truncates long model names if needed
-- [ ] Updates when model changes
-- [ ] Typecheck passes
+- [x] Shows provider and model (e.g., "anthropic:claude-3-5-sonnet")
+- [x] Truncates long model names if needed
+- [x] Updates when model changes
+- [x] Typecheck passes
 
 ### US-004: Display active tool call
 

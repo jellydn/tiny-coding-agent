@@ -39,6 +39,20 @@
   - Keep status types consistent between cli/status-line.ts and ui/components/StatusLine.tsx
 ---
 
+## 2026-01-20 08:30 - US-003
+- Session: https://opncd.ai/s/4np5s7
+- Model display already implemented in StatusLine.tsx with truncateModel() helper
+- Shows "Model: provider:model" format with gray label color
+- Truncates long model names at 30 chars with ellipsis
+- Connected via StatusLineContext.setModel() for state updates
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Model display was implemented alongside other status line components
+  - Use Math.max to calculate truncation width based on terminal width
+  - Model prop accepts full "provider:model" format for display
+---
+
 ## 2026-01-20 09:00 - US-004
 - Session: https://opncd.ai/s/5mn6r3
 - Updated StatusLine.tsx to accept tokensUsed and tokensMax props
