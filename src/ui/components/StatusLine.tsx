@@ -2,12 +2,24 @@ import React from "react";
 import { Box, Text } from "ink";
 
 interface StatusLineProps {
-  status?: string;
+  status?: "thinking" | "ready" | "error";
   model?: string;
   context?: string;
   tool?: string;
   elapsed?: number;
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  thinking: "⏳ Thinking",
+  ready: "✓ Ready",
+  error: "✗ Error",
+};
+
+const STATUS_COLORS: Record<string, string | undefined> = {
+  thinking: "yellow",
+  ready: "green",
+  error: "red",
+};
 
 export function StatusLine({
   status,
@@ -22,7 +34,13 @@ export function StatusLine({
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
-    elements.push(<Text key={`status`}>{status}</Text>);
+    const statusLabel = STATUS_LABELS[status] || status;
+    const statusColor = STATUS_COLORS[status];
+    elements.push(
+      <Text key="status" color={statusColor}>
+        {statusLabel}
+      </Text>,
+    );
   }
 
   if (model) {
