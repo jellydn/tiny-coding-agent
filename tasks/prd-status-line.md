@@ -14,17 +14,19 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 ## User Stories
 
-### US-001: Create status line renderer
+### US-001: Create StatusLine Ink component
 
-**Description:** As a developer, I need a status line component that can render at the bottom of the terminal so other components can update it.
+**Description:** As a developer, I need a StatusLine component that can render at the bottom of the terminal so other components can update it.
 
 **Acceptance Criteria:**
 
-- [x] Create `StatusLine` class in `src/cli/status-line.ts`
-- [x] Renders a single line at terminal bottom using ANSI escape codes
-- [x] Supports update without scrolling main content
-- [x] Clears status line on exit
+- [x] Create `StatusLine` component in `src/ui/components/StatusLine.tsx`
+- [x] Accepts props: status, model, tokensUsed, tokensMax, tool, toolStartTime
+- [x] Renders single line with sections separated by ' | '
+- [x] Respects terminal width via useStdout
 - [x] Typecheck passes
+
+**Status:** ✅ DONE
 
 ---
 
@@ -35,9 +37,13 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 **Acceptance Criteria:**
 
 - [x] Shows tokens used / max tokens (e.g., "Ctx: 12.5k/128k")
-- [x] Updates after each message exchange
 - [x] Uses compact number formatting (k for thousands)
+- [x] Uses dim color for 'Ctx:' label
 - [x] Typecheck passes
+
+**Status:** ✅ DONE
+
+---
 
 ### US-003: Display current model
 
@@ -45,34 +51,75 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [x] Shows provider and model (e.g., "anthropic:claude-3-5-sonnet")
+- [x] Shows provider and model (e.g., "Model: anthropic:claude-3-5-sonnet")
 - [x] Truncates long model names if needed
-- [x] Updates when model changes
+- [x] Uses dim color for 'Model:' label
 - [x] Typecheck passes
 
-### US-004: Display active tool call
+**Status:** ✅ DONE
 
-**Description:** As a user, I want to see which tool is being called so I understand what the agent is doing.
+---
+
+### US-004: Display active tool call with elapsed time
+
+**Description:** As a user, I want to see which tool is being called and how long it's taking.
 
 **Acceptance Criteria:**
 
 - [x] Shows tool name when a tool is executing (e.g., "⚙ read_file")
-- [x] Shows elapsed time for long-running calls (e.g., "⚙ read_file 3.2s")
-- [x] Clears when tool completes
-- [x] Shows nothing when no tool is active
+- [x] Shows elapsed time (e.g., "⚙ read_file 3.2s")
+- [x] Elapsed time updates every 100ms
+- [x] Tool section hidden when no tool is active
+- [x] Uses cyan color for tool name
 - [x] Typecheck passes
 
-### US-005: Display agent status
+**Status:** ✅ DONE
 
-**Description:** As a user, I want to see the agent's current state (thinking, idle, error).
+---
+
+### US-005: Display agent status with colors
+
+**Description:** As a user, I want to see the agent's current state with color coding.
 
 **Acceptance Criteria:**
 
 - [x] Shows status indicator: "⏳ Thinking", "✓ Ready", "✗ Error"
 - [x] Colorized: green for ready, yellow for thinking, red for error
-- [x] Updates in real-time as state changes
-- [x] Error status shows briefly before returning to ready
+- [x] Status is first section in status line
 - [x] Typecheck passes
+
+**Status:** ✅ DONE
+
+---
+
+### US-005b: Create StatusLineProvider context
+
+**Description:** As a developer, I need a React context to update status line state from anywhere.
+
+**Acceptance Criteria:**
+
+- [x] Create `src/ui/contexts/StatusLineContext.tsx`
+- [x] Provide setStatus, setModel, setContext, setTool, clearTool functions
+- [x] useStatusLine hook for consuming components
+- [x] Export from src/ui/index.ts
+- [x] Typecheck passes
+
+**Status:** ✅ DONE
+
+---
+
+### US-005c: Integrate StatusLine into App
+
+**Description:** As a user, I want the status line to appear at the bottom of the terminal.
+
+**Acceptance Criteria:**
+
+- [x] Wrap App content with StatusLineProvider
+- [x] StatusLine component renders at bottom of App
+- [x] Status line hidden when shouldUseInk() returns false
+- [x] Typecheck passes
+
+**Status:** ✅ DONE
 
 ### US-006: Integrate status line with agent loop
 
@@ -80,11 +127,13 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [x] Agent loop updates status on state changes
-- [x] Tool executor updates status on tool start/end
-- [x] Token tracker updates context display
-- [x] Status line disabled in non-TTY environments
-- [x] Typecheck passes
+- [ ] Agent loop updates status on state changes (setStatus 'thinking'/'ready'/'error')
+- [ ] Tool executor updates status on tool start/end (setTool/clearTool)
+- [ ] Token tracker updates context display (setContext)
+- [x] Status line disabled in non-TTY environments (via shouldUseInk)
+- [ ] Typecheck passes
+
+**Status:** ❌ NOT STARTED - Components exist but not wired to agent loop in main.tsx
 
 ### US-007: Add --no-status flag
 
@@ -92,10 +141,12 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [x] Add `--no-status` CLI flag
-- [x] Status line hidden when flag is set
-- [x] Default behavior shows status line
-- [x] Typecheck passes
+- [ ] Add `--no-status` CLI flag
+- [ ] Status line hidden when flag is set
+- [ ] Default behavior shows status line
+- [ ] Typecheck passes
+
+**Status:** ❌ NOT STARTED - Flag not implemented
 
 ## Functional Requirements
 

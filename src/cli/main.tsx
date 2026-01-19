@@ -23,6 +23,7 @@ import {
   type ConfirmationResult,
 } from "../tools/confirmation.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
+import { statusLineManager } from "../ui/index.js";
 import { render } from "ink";
 import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
@@ -548,6 +549,10 @@ async function handleChat(
       let accumulatedContent = "";
       const thinkFilter = new ThinkingTagFilter();
 
+      // Set model and status for status line
+      statusLineManager.setModel(sessionState.model);
+      statusLineManager.setStatus("thinking");
+
       for await (const chunk of agent.runStream(prompt, sessionState.model, runtimeConfig)) {
         // Clear spinner on first content
         if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
@@ -566,6 +571,14 @@ async function handleChat(
         }
 
         if (chunk.toolExecutions) {
+          // Update status line with tool information
+          const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
+          if (runningTool) {
+            statusLineManager.setTool(runningTool.name);
+          } else {
+            statusLineManager.clearTool();
+          }
+
           if (jsonMode) {
             for (const te of chunk.toolExecutions) {
               if (te.status !== "running") {
@@ -585,6 +598,7 @@ async function handleChat(
             }
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
+              statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
               process.stdout.write(
                 `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
               );
@@ -608,6 +622,9 @@ async function handleChat(
             process.stdout.write("\n");
           }
 
+          // Update status to ready when done
+          statusLineManager.setStatus("ready");
+
           if (chunk.maxIterationsReached) {
             if (!jsonMode) {
               console.log(
@@ -627,8 +644,11 @@ async function handleChat(
         }
       }
     } catch (err) {
+      // Set error status briefly, then back to ready
+      statusLineManager.setStatus("error");
       const message = err instanceof Error ? err.message : String(err);
       console.error(`\nError: ${message}\n`);
+      statusLineManager.setStatus("ready");
     }
   };
 
@@ -718,6 +738,10 @@ async function handleRun(
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
+    // Set model and status for status line
+    statusLineManager.setModel(model);
+    statusLineManager.setStatus("thinking");
+
     for await (const chunk of agent.runStream(currentPrompt, model)) {
       if (chunk.content) {
         const filtered = thinkFilter.filter(chunk.content);
@@ -729,6 +753,14 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
+        // Update status line with tool information
+        const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
+        if (runningTool) {
+          statusLineManager.setTool(runningTool.name);
+        } else {
+          statusLineManager.clearTool();
+        }
+
         if (jsonMode) {
           for (const te of chunk.toolExecutions) {
             if (te.status !== "running") {
@@ -748,17 +780,23 @@ async function handleRun(
           }
           if (!options.noTrackContext && chunk.contextStats) {
             const ctx = chunk.contextStats;
+            statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
             process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
           }
         }
       }
 
-      if (chunk.done && chunk.maxIterationsReached) {
-        if (!jsonMode) {
-          console.log(`\n[Max iterations reached, continuing...]`);
+      if (chunk.done) {
+        // Update status to ready when done
+        statusLineManager.setStatus("ready");
+
+        if (chunk.maxIterationsReached) {
+          if (!jsonMode) {
+            console.log(`\n[Max iterations reached, continuing...]`);
+          }
+          await runPrompt("continue");
+          return;
         }
-        await runPrompt("continue");
-        return;
       }
     }
 
@@ -779,8 +817,10 @@ async function handleRun(
     await runPrompt(prompt);
     process.exit(0);
   } catch (err) {
+    statusLineManager.setStatus("error");
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
+    statusLineManager.setStatus("ready");
     process.exit(1);
   }
 }

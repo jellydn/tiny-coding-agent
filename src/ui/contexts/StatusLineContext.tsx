@@ -1,15 +1,11 @@
-import React, { createContext, useContext, useState, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import {
+  statusLineManager,
+  subscribeToStatusLine,
+  type StatusLineState,
+} from "../status-line-manager.js";
 
 export type StatusLineStatus = "thinking" | "ready" | "error";
-
-interface StatusLineState {
-  status?: StatusLineStatus;
-  model?: string;
-  tokensUsed?: number;
-  tokensMax?: number;
-  tool?: string;
-  toolStartTime?: number;
-}
 
 interface StatusLineContextValue extends StatusLineState {
   setStatus: (status?: StatusLineStatus) => void;
@@ -34,35 +30,42 @@ interface StatusLineProviderProps {
 }
 
 export function StatusLineProvider({ children }: StatusLineProviderProps): React.ReactElement {
-  const [status, setStatus] = useState<StatusLineStatus | undefined>();
+  const [status, setStatusState] = useState<StatusLineStatus | undefined>();
   const [model, setModelState] = useState<string | undefined>();
-  const [tokensUsed, setTokensUsed] = useState<number | undefined>();
-  const [tokensMax, setTokensMax] = useState<number | undefined>();
+  const [tokensUsed, setTokensUsedState] = useState<number | undefined>();
+  const [tokensMax, setTokensMaxState] = useState<number | undefined>();
   const [tool, setToolState] = useState<string | undefined>();
-  const [toolStartTime, setToolStartTime] = useState<number | undefined>();
+  const [toolStartTime, setToolStartTimeState] = useState<number | undefined>();
+
+  useEffect(() => {
+    return subscribeToStatusLine((newState: StatusLineState) => {
+      if (newState.status !== undefined) setStatusState(newState.status);
+      if (newState.model !== undefined) setModelState(newState.model);
+      if (newState.tokensUsed !== undefined) setTokensUsedState(newState.tokensUsed);
+      if (newState.tokensMax !== undefined) setTokensMaxState(newState.tokensMax);
+      if (newState.tool !== undefined) setToolState(newState.tool);
+      if (newState.toolStartTime !== undefined) setToolStartTimeState(newState.toolStartTime);
+    });
+  }, []);
+
+  const setStatus = (newStatus?: StatusLineStatus) => {
+    statusLineManager.setStatus(newStatus);
+  };
 
   const setModel = (newModel?: string) => {
-    setModelState(newModel);
+    statusLineManager.setModel(newModel);
   };
 
   const setContext = (used?: number, max?: number) => {
-    setTokensUsed(used);
-    setTokensMax(max);
+    statusLineManager.setContext(used, max);
   };
 
   const setTool = (newTool?: string) => {
-    if (newTool) {
-      setToolState(newTool);
-      setToolStartTime(Date.now());
-    } else {
-      setToolState(undefined);
-      setToolStartTime(undefined);
-    }
+    statusLineManager.setTool(newTool);
   };
 
   const clearTool = () => {
-    setToolState(undefined);
-    setToolStartTime(undefined);
+    statusLineManager.clearTool();
   };
 
   return (

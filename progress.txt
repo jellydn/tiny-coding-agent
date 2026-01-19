@@ -8,6 +8,8 @@
 - Pre-commit hooks run lint and format:check - always run `bun run format` before committing
 - Use Box flexGrow={1} in Ink to push status line to bottom of terminal
 - StatusLine uses useStdout() hook to get terminal width automatically
+- Use statusLineManager singleton for updating status line from non-React code
+- React context subscribes to statusLineManager for reactive updates
 
 
 ## 2026-01-20 07:13 - US-001
@@ -111,5 +113,24 @@
   - Box flexGrow={1} allows StatusLine to push to bottom of terminal
   - Use conditional rendering based on context values to avoid empty status line
   - shouldUseInk() checks noColor, jsonMode, and isTTY for proper fallback
+---
+
+## 2026-01-20 13:30 - US-008
+- Session: https://opncd.ai/s/6op8q1
+- Created status-line-manager.ts for non-React status updates
+- Updated StatusLineContext.tsx to subscribe to statusLineManager
+- Integrated status updates in handleChat: set 'thinking' at start, 'ready' on completion, 'error' on error
+- Integrated status updates in handleRun: same pattern as handleChat
+- Updates context usage via setContext() when contextStats available
+- Updates tool state via setTool()/clearTool() during tool execution
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Created statusLineManager singleton that both React and non-React code can use
+  - React context subscribes to manager updates via useEffect for reactivity
+  - TypeScript's bare `catch {}` syntax may not work in all configurations - use `catch (e) {}` instead
+  - statusLineManager.notify() calls all listeners after any state change
+  - Outer try-catch handles errors for the entire runPrompt/handleRun function
+  - Error status is set briefly, then reset to ready after logging
 ---
 
