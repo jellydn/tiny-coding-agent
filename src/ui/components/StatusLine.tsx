@@ -22,6 +22,11 @@ function truncateModel(model: string, maxLength: number): string {
   return model.slice(0, maxLength - 3) + "...";
 }
 
+function truncateModel(model: string, maxLength: number): string {
+  if (model.length <= maxLength) return model;
+  return model.slice(0, maxLength - 3) + "...";
+}
+
 const STATUS_LABELS: Record<string, string> = {
   thinking: "⏳ Thinking",
   ready: "✓ Ready",
