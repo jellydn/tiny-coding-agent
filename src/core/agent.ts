@@ -47,6 +47,7 @@ export interface AgentStreamChunk {
   toolCalls?: string[];
   toolExecutions?: ToolExecution[];
   contextStats?: ContextStats;
+  maxIterationsReached?: boolean;
 }
 
 export interface AgentResponse {
@@ -453,7 +454,17 @@ export class Agent {
       return;
     }
 
-    throw new Error(`Agent reached max iterations (${this._maxIterations}) without finishing`);
+    if (this._verbose) {
+      console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
+    }
+
+    yield {
+      content: "",
+      iterations: iteration,
+      done: true,
+      maxIterationsReached: true,
+      contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+    };
   }
 
   async run(userPrompt: string, model: string): Promise<AgentResponse> {

@@ -515,101 +515,121 @@ async function handleChat(
         return;
       }
 
-      try {
-        const useInk = shouldUseInk();
-        const jsonMode = isJsonMode();
-
-        if (jsonMode) {
-          outputJson({ type: "user", content: userInput });
-        } else {
-          process.stdout.write("\n");
-        }
-
-        let hasContent = false;
-
-        // Show spinner while waiting for LLM response
-        let spinnerInstance: { unmount: () => void } | null = null;
-        if (useInk) {
-          spinnerInstance = render(<Spinner isLoading={true} />);
-        }
-
-        // Build runtime config from session state
-        const runtimeConfig: RuntimeConfig = {
-          model: sessionState.model !== initialModel ? sessionState.model : undefined,
-          thinking: sessionState.thinking,
-        };
-
-        let accumulatedContent = "";
-        const thinkFilter = new ThinkingTagFilter();
-
-        for await (const chunk of agent.runStream(userInput, sessionState.model, runtimeConfig)) {
-          // Clear spinner on first content
-          if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
-            spinnerInstance.unmount();
-            spinnerInstance = null;
-          }
-
-          if (chunk.content) {
-            const filtered = thinkFilter.filter(chunk.content);
-            if (jsonMode) {
-              accumulatedContent += filtered;
-            } else if (filtered) {
-              process.stdout.write(filtered);
-            }
-            hasContent = true;
-          }
-
-          if (chunk.toolExecutions) {
-            if (jsonMode) {
-              for (const te of chunk.toolExecutions) {
-                if (te.status !== "running") {
-                  outputJson({
-                    type: "tool",
-                    content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
-                    toolName: te.name,
-                  });
-                }
-              }
-            } else {
-              if (!useInk) {
-                process.stdout.write("\n  Tools:\n");
-              }
-              for (const te of chunk.toolExecutions) {
-                displayToolExecution(te, useInk);
-              }
-              if (!options.noTrackContext && chunk.contextStats) {
-                const ctx = chunk.contextStats;
-                process.stdout.write(
-                  `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
-                );
-              }
-              if (!hasContent) {
-                process.stdout.write("Agent: ");
-              }
-            }
-          }
-
-          if (chunk.done) {
-            const remaining = thinkFilter.flush();
-            if (remaining && !jsonMode) {
-              process.stdout.write(remaining);
-            }
-            accumulatedContent += remaining;
-
-            if (jsonMode && accumulatedContent) {
-              outputJson({ type: "assistant", content: accumulatedContent });
-            } else if (!jsonMode) {
-              process.stdout.write("\n");
-            }
-          }
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`\nError: ${message}\n`);
-      }
-
+      await runAgentPrompt(userInput);
       askQuestion();
     });
+  };
+
+  const runAgentPrompt = async (prompt: string): Promise<void> => {
+    try {
+      const useInk = shouldUseInk();
+      const jsonMode = isJsonMode();
+
+      if (jsonMode) {
+        outputJson({ type: "user", content: prompt });
+      } else {
+        process.stdout.write("\n");
+      }
+
+      let hasContent = false;
+
+      // Show spinner while waiting for LLM response
+      let spinnerInstance: { unmount: () => void } | null = null;
+      if (useInk) {
+        spinnerInstance = render(<Spinner isLoading={true} />);
+      }
+
+      // Build runtime config from session state
+      const runtimeConfig: RuntimeConfig = {
+        model: sessionState.model !== initialModel ? sessionState.model : undefined,
+        thinking: sessionState.thinking,
+      };
+
+      let accumulatedContent = "";
+      const thinkFilter = new ThinkingTagFilter();
+
+      for await (const chunk of agent.runStream(prompt, sessionState.model, runtimeConfig)) {
+        // Clear spinner on first content
+        if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
+          spinnerInstance.unmount();
+          spinnerInstance = null;
+        }
+
+        if (chunk.content) {
+          const filtered = thinkFilter.filter(chunk.content);
+          if (jsonMode) {
+            accumulatedContent += filtered;
+          } else if (filtered) {
+            process.stdout.write(filtered);
+          }
+          hasContent = true;
+        }
+
+        if (chunk.toolExecutions) {
+          if (jsonMode) {
+            for (const te of chunk.toolExecutions) {
+              if (te.status !== "running") {
+                outputJson({
+                  type: "tool",
+                  content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
+                  toolName: te.name,
+                });
+              }
+            }
+          } else {
+            if (!useInk) {
+              process.stdout.write("\n  Tools:\n");
+            }
+            for (const te of chunk.toolExecutions) {
+              displayToolExecution(te, useInk);
+            }
+            if (!options.noTrackContext && chunk.contextStats) {
+              const ctx = chunk.contextStats;
+              process.stdout.write(
+                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
+              );
+            }
+            if (!hasContent) {
+              process.stdout.write("Agent: ");
+            }
+          }
+        }
+
+        if (chunk.done) {
+          const remaining = thinkFilter.flush();
+          if (remaining && !jsonMode) {
+            process.stdout.write(remaining);
+          }
+          accumulatedContent += remaining;
+
+          if (jsonMode && accumulatedContent) {
+            outputJson({ type: "assistant", content: accumulatedContent });
+          } else if (!jsonMode) {
+            process.stdout.write("\n");
+          }
+
+          if (chunk.maxIterationsReached) {
+            if (!jsonMode) {
+              console.log(
+                `\nAgent reached max iterations (${chunk.iterations}) without finishing.`,
+              );
+            }
+            const shouldContinue = await new Promise<boolean>((resolve) => {
+              rl.question("Continue? (y/N): ", (answer) => {
+                resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+              });
+            });
+            if (shouldContinue) {
+              await runAgentPrompt("continue");
+            }
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nError: ${message}\n`);
+    }
   };
 
   askQuestion();
@@ -694,11 +714,11 @@ async function handleRun(
     outputJson({ type: "user", content: prompt });
   }
 
-  try {
+  const runPrompt = async (currentPrompt: string): Promise<void> => {
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
-    for await (const chunk of agent.runStream(prompt, model)) {
+    for await (const chunk of agent.runStream(currentPrompt, model)) {
       if (chunk.content) {
         const filtered = thinkFilter.filter(chunk.content);
         if (jsonMode) {
@@ -732,6 +752,14 @@ async function handleRun(
           }
         }
       }
+
+      if (chunk.done && chunk.maxIterationsReached) {
+        if (!jsonMode) {
+          console.log(`\n[Max iterations reached, continuing...]`);
+        }
+        await runPrompt("continue");
+        return;
+      }
     }
 
     const remaining = thinkFilter.flush();
@@ -745,6 +773,10 @@ async function handleRun(
     } else if (!jsonMode) {
       process.stdout.write("\n");
     }
+  };
+
+  try {
+    await runPrompt(prompt);
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
