@@ -47,3 +47,18 @@
   - Compact formatting: >= 1000 uses `toFixed(1)` with 'k' suffix
   - Ink's Text color prop supports color names like "gray", "cyan", "yellow"
 ---
+
+## 2026-01-20 10:30 - US-005
+- Session: https://opncd.ai/s/7jk8l2
+- Implemented timer in StatusLine.tsx using useState and useEffect
+- Added toolStartTime prop instead of elapsed (tracks from tool start)
+- Timer updates elapsed every 100ms while tool is active
+- StatusLine shows "⚙ tool_name X.Xs" with cyan color
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use useEffect with setInterval for real-time updates in Ink components
+  - Store start timestamp (Date.now()) rather than passing elapsed to allow continuous updates
+  - Clear interval on cleanup to prevent memory leaks
+  - Props named toolStartTime are more accurate than elapsed for timer-based updates
+---
