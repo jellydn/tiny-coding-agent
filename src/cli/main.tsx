@@ -49,6 +49,7 @@ interface CliOptions {
   help?: boolean;
   noMemory?: boolean;
   noTrackContext?: boolean;
+  noStatus?: boolean;
   memoryFile?: string;
   agentsMd?: string;
   allowAll?: boolean;
@@ -238,6 +239,8 @@ function parseArgs(): {
       options.noMemory = true;
     } else if (arg === "--no-track-context") {
       options.noTrackContext = true;
+    } else if (arg === "--no-status") {
+      options.noStatus = true;
     } else if (arg === "--agents-md" && i + 1 < args.length) {
       options.agentsMd = args[i + 1];
       i++;
@@ -969,6 +972,7 @@ OPTIONS:
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
     --no-track-context                 Disable context tracking (enabled by default)
+    --no-status                        Disable status line
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
@@ -1124,6 +1128,10 @@ export async function main(): Promise<void> {
 
     if (options.json) {
       setJsonMode(true);
+    }
+
+    if (options.noStatus) {
+      statusLineManager.setShowStatusLine(false);
     }
 
     if (options.help) {

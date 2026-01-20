@@ -11,6 +11,7 @@ interface StatusLineWrapperProps {
 function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactElement {
   const context = useStatusLine();
   const showStatusLine =
+    context.showStatusLine &&
     shouldUseInk() &&
     (context.status !== undefined ||
       context.model !== undefined ||

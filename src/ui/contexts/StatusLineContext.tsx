@@ -13,6 +13,7 @@ interface StatusLineContextValue extends StatusLineState {
   setContext: (used?: number, max?: number) => void;
   setTool: (tool?: string) => void;
   clearTool: () => void;
+  showStatusLine: boolean;
 }
 
 const StatusLineContext = createContext<StatusLineContextValue | null>(null);
@@ -36,6 +37,7 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
   const [tokensMax, setTokensMaxState] = useState<number | undefined>();
   const [tool, setToolState] = useState<string | undefined>();
   const [toolStartTime, setToolStartTimeState] = useState<number | undefined>();
+  const [showStatusLine, setShowStatusLineState] = useState(true);
 
   useEffect(() => {
     return subscribeToStatusLine((newState: StatusLineState) => {
@@ -45,6 +47,12 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
       if (newState.tokensMax !== undefined) setTokensMaxState(newState.tokensMax);
       if (newState.tool !== undefined) setToolState(newState.tool);
       if (newState.toolStartTime !== undefined) setToolStartTimeState(newState.toolStartTime);
+    });
+  }, []);
+
+  useEffect(() => {
+    return subscribeToStatusLine(() => {
+      setShowStatusLineState(statusLineManager.showStatusLine);
     });
   }, []);
 
@@ -82,6 +90,7 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
         setContext,
         setTool,
         clearTool,
+        showStatusLine,
       }}
     >
       {children}

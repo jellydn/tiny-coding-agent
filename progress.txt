@@ -150,3 +150,18 @@
   - StatusLine component calculates elapsed time from toolStartTime
 ---
 
+## 2026-01-20 15:00 - US-010
+- Session: https://opncd.ai/s/7qr9s2
+- Added showStatusLine property to statusLineManager and StatusLineContext
+- Added --no-status CLI flag parsing in main.tsx
+- Updated App.tsx StatusLineWrapper to check showStatusLine before rendering
+- Updated help text to document --no-status flag
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - statusLineManager.showStatusLine getter controls whether status line renders
+  - Call statusLineManager.setShowStatusLine(false) early in main() for CLI flag
+  - React context subscribes to showStatusLine changes via useEffect
+  - StatusLine only renders when showStatusLine && shouldUseInk() && has content
+---
+

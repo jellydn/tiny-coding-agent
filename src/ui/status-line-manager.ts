@@ -14,9 +14,14 @@ type StatusLineListener = (state: StatusLineState) => void;
 class StatusLineManager {
   private state: StatusLineState = {};
   private listeners: Set<StatusLineListener> = new Set();
+  private _showStatusLine = true;
 
   getState(): StatusLineState {
     return { ...this.state };
+  }
+
+  get showStatusLine(): boolean {
+    return this._showStatusLine;
   }
 
   subscribe(listener: StatusLineListener): () => void {
@@ -30,6 +35,11 @@ class StatusLineManager {
     for (const listener of this.listeners) {
       listener(this.state);
     }
+  }
+
+  setShowStatusLine(show: boolean): void {
+    this._showStatusLine = show;
+    this.notify();
   }
 
   setStatus(status?: StatusLineStatus): void {
