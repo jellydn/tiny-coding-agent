@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, type ReactNode } from "react";
+import type { ToolExecution } from "../../core/agent.js";
 
 export type MessageRole = "user" | "assistant";
 
 export interface ChatMessage {
   role: MessageRole;
   content: string;
+  toolExecutions?: ToolExecution[];
 }
 
 interface ChatContextValue {

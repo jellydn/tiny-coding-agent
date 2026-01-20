@@ -322,3 +322,20 @@
   - TextInput shows CommandMenu when value.startsWith('/') is true
   - Filter passed to CommandMenu is text after '/' (value.slice(1))
 
+
+## 2026-01-20 23:55 - US-013
+- Session: https://opncd.ai/s/uvw345
+- Implemented /model command with ModelPicker integration
+- Updated TextInput.tsx to show ModelPicker overlay when showModelPicker is true
+- Added onModelSelect and showModelPicker props to TextInput and ChatLayout
+- Updated App.tsx: handleCommandSelect detects /model and sets showModelPicker=true
+- handleModelSelect updates model via setCurrentModel and shows confirmation message
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use show/hide state pattern (showModelPicker) for conditional overlay rendering
+  - ModelPicker uses DEFAULT_MODELS from ModelPicker.tsx for available models
+  - onModelSelect callback receives modelId string for updating session model
+  - Confirmation messages use addMessage("assistant", ...) for chat display
+  - Header automatically reflects model changes via currentModel prop
+---
