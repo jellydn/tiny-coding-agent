@@ -51,6 +51,12 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
     });
   }, []);
 
+  useEffect(() => {
+    return subscribeToStatusLine(() => {
+      setShowStatusLineState(statusLineManager.showStatusLine);
+    });
+  }, []);
+
   const setStatus = (newStatus?: StatusLineStatus) => {
     statusLineManager.setStatus(newStatus);
   };
