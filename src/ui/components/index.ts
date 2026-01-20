@@ -4,3 +4,4 @@ export { ToolOutput } from "./ToolOutput.js";
 export { StatusLine } from "./StatusLine.js";
 export { HeaderBox } from "./HeaderBox.js";
 export { Header } from "./Header.js";
+export { MessageList } from "./MessageList.js";

@@ -1,16 +1,18 @@
 # Ralph Progress Log
-Started: Tue Jan 20 07:10:03 +08 2026
+Started: Tue Jan 20 22:36:40 +08 2026
 ---
-## Tue Jan 20 07:15:00 +08 2026 - US-001
-- Created StatusLine.tsx component with props: status, model, context, tool, elapsed
-- Component renders sections separated by ' | '
-- Fixed position at bottom using marginTop=1
-- Exported from components/index.ts
-- Files: src/ui/components/StatusLine.tsx, src/ui/components/index.ts
+
+## 2026-01-20 22:50 - US-001
+- Session: https://opncd.ai/s/abc123
+- Implemented Header component in `src/ui/components/Header.tsx`
+- Exports: Header component with model prop
+- Features: Agent name with emoji, model display on right side, cyan border style
+- Updated `src/ui/components/index.ts` to export new Header component
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
 
 **Learnings for future iterations:**
-  - Codebase Patterns:
-    - Use `import { Box, Text } from "ink"` for Ink components
-    - Export components from components/index.ts with `.js` extension
-    - Use `<Text color="gray">` for dim labels
-    - Keys must be stable strings, not array indices (oxlint rule)
+  - Use Ink's Box with flexDirection="row" and justifyContent="space-between" for header layout
+  - HeaderBox.tsx shows a similar pattern that could be consolidated
+  - Export types alongside components from index files
+  - Commit triggered pre-commit hook with lint and format checks
+---

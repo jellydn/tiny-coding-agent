@@ -9,8 +9,8 @@ interface MessageProps {
 }
 
 export function Message({ role, content }: MessageProps): React.ReactElement {
-  const label = role === "user" ? "You:" : "Agent:";
-  const color = role === "user" ? "blue" : "green";
+  const label = role === "user" ? "You:" : "Assistant:";
+  const color = role === "user" ? "green" : "cyan";
 
   return (
     <Box flexDirection="column" marginBottom={1}>
