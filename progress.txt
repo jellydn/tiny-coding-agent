@@ -172,3 +172,32 @@
   - StatusLine only renders when showStatusLine && shouldUseInk() && has content
 ---
 
+
+## 2026-01-20 16:30 - US-003
+- Session: https://opncd.ai/s/3qr9s2
+- Created StreamingText.tsx component with text and isStreaming props
+- Blinking cursor (▋) toggles every 500ms using setInterval
+- Cursor hides when isStreaming is false
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use setInterval in useEffect for blinking cursor animation
+  - Cleanup interval on unmount and when isStreaming changes
+  - Cursor character ▋ (block) works well for terminal blinking indicator
+---
+
+## 2026-01-20 17:00 - US-004
+- Session: https://opncd.ai/s/8ts4q5
+- Created ThinkingIndicator.tsx component wrapping existing Spinner
+- Uses Spinner internally with isLoading mapped from visible prop
+- Shows animated spinner with 'Thinking...' text and elapsed time
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ThinkingIndicator is a thin wrapper around existing Spinner component
+  - Use simple prop mapping (visible -> isLoading) for component variations
+  - Export new components from index.ts for discoverability
+---
+

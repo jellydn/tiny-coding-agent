@@ -6,3 +6,4 @@ export { HeaderBox } from "./HeaderBox.js";
 export { Header } from "./Header.js";
 export { MessageList } from "./MessageList.js";
 export { StreamingText } from "./StreamingText.js";
+export { ThinkingIndicator } from "./ThinkingIndicator.js";
