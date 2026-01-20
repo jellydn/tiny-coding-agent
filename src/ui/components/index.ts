@@ -7,3 +7,4 @@ export { Header } from "./Header.js";
 export { MessageList } from "./MessageList.js";
 export { StreamingText } from "./StreamingText.js";
 export { ThinkingIndicator } from "./ThinkingIndicator.js";
+export { ContextStatus } from "./ContextStatus.js";

@@ -199,5 +199,20 @@
   - ThinkingIndicator is a thin wrapper around existing Spinner component
   - Use simple prop mapping (visible -> isLoading) for component variations
   - Export new components from index.ts for discoverability
----
+ ---
+
+## 2026-01-20 17:30 - US-005
+- Session: https://opncd.ai/s/9uv0w3
+- Created ContextStatus.tsx component with tokensUsed and tokensMax props
+- Shows 'Ctx: used/max (percentage%)' format with compact number formatting (e.g., 12.5k)
+- Percentage colored: gray by default, yellow when >80%, red when >95%
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Reuse formatCompactNumber pattern from StatusLine.tsx for consistent number formatting
+  - Return empty Box instead of null to satisfy React.ReactElement type
+  - Use nested Text components with color prop for partial text coloring
+  - Export new components from index.ts for discoverability
+ ---
 
