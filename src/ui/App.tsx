@@ -31,7 +31,8 @@ function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactEle
 
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
-  const { messages, addMessage, isThinking, currentModel } = useChatContext();
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const { messages, addMessage, isThinking, currentModel, setCurrentModel } = useChatContext();
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
@@ -49,9 +50,24 @@ export function ChatApp(): React.ReactElement {
 
   const handleCommandSelect = useCallback(
     (command: Command) => {
-      addMessage("assistant", `Selected command: ${command.name}`);
+      if (command.name === "/model") {
+        setShowModelPicker(true);
+      } else {
+        addMessage("assistant", `Selected command: ${command.name}`);
+      }
     },
     [addMessage],
+  );
+
+  const handleModelSelect = useCallback(
+    (modelId: string) => {
+      if (modelId && modelId !== currentModel) {
+        setCurrentModel(modelId);
+        addMessage("assistant", `Model changed to: ${modelId}`);
+      }
+      setShowModelPicker(false);
+    },
+    [addMessage, currentModel, setCurrentModel],
   );
 
   return (
@@ -62,7 +78,9 @@ export function ChatApp(): React.ReactElement {
       onInputChange={handleInputChange}
       onInputSubmit={handleInputSubmit}
       onCommandSelect={handleCommandSelect}
+      onModelSelect={handleModelSelect}
       inputDisabled={isThinking}
+      showModelPicker={showModelPicker}
     />
   );
 }

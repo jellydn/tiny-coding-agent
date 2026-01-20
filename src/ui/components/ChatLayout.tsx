@@ -15,8 +15,10 @@ interface ChatLayoutProps {
   onInputChange: (value: string) => void;
   onInputSubmit: (value: string) => void;
   onCommandSelect?: (command: Command) => void;
+  onModelSelect?: (modelId: string) => void;
   inputPlaceholder?: string;
   inputDisabled?: boolean;
+  showModelPicker?: boolean;
 }
 
 export function ChatLayout({
@@ -28,8 +30,10 @@ export function ChatLayout({
   onInputChange,
   onInputSubmit,
   onCommandSelect,
+  onModelSelect,
   inputPlaceholder,
   inputDisabled,
+  showModelPicker = false,
 }: ChatLayoutProps): React.ReactElement {
   return (
     <Box flexDirection="column" height="100%">
@@ -48,8 +52,11 @@ export function ChatLayout({
           onChange={onInputChange}
           onSubmit={onInputSubmit}
           onCommandSelect={onCommandSelect}
+          onModelSelect={onModelSelect}
           placeholder={inputPlaceholder}
           disabled={inputDisabled}
+          showModelPicker={showModelPicker}
+          currentModel={currentModel}
         />
       </Box>
     </Box>

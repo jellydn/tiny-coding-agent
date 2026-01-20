@@ -1,14 +1,18 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { CommandMenu, type Command } from "./CommandMenu.js";
+import { ModelPicker, DEFAULT_MODELS } from "./ModelPicker.js";
 
 interface TextInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
   onCommandSelect?: (command: Command) => void;
+  onModelSelect?: (modelId: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  showModelPicker?: boolean;
+  currentModel?: string;
 }
 
 export function TextInput({
@@ -16,8 +20,11 @@ export function TextInput({
   onChange,
   onSubmit,
   onCommandSelect,
+  onModelSelect,
   placeholder = "",
   disabled = false,
+  showModelPicker = false,
+  currentModel,
 }: TextInputProps): React.ReactElement {
   const [cursorPosition, setCursorPosition] = useState(value.length);
   const showCommandMenu = !disabled && value.startsWith("/");
@@ -81,6 +88,16 @@ export function TextInput({
 
   return (
     <Box flexDirection="column">
+      {showModelPicker && onModelSelect && (
+        <Box marginBottom={1}>
+          <ModelPicker
+            models={DEFAULT_MODELS}
+            currentModel={currentModel ?? ""}
+            onSelect={onModelSelect}
+            onClose={() => onModelSelect("")}
+          />
+        </Box>
+      )}
       {showCommandMenu && (
         <Box marginBottom={1}>
           <CommandMenu
