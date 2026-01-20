@@ -221,3 +221,20 @@
 ---
 
 
+
+## 2026-01-20 17:45 - US-007
+- Session: https://opncd.ai/s/def456
+- Created CommandMenu.tsx component with Command interface
+- Shows list of commands: /help, /clear, /model, /memory, /exit
+- Accepts filter prop to filter commands by prefix
+- Highlights selected command with arrow keys and ▼ indicator
+- Calls onSelect when Enter pressed, onClose when Escape pressed
+- Exported CommandMenu and Command type from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use useRef to track previous prop values for effect comparisons
+  - ESLint exhaustive-deps rule may flag filter as unnecessary dependency even when needed
+  - Use Text inverse with color for selection indicators
+  - Export interfaces alongside components for consumers to use in their code
+---
