@@ -23,11 +23,13 @@ import {
   type ConfirmationResult,
 } from "../tools/confirmation.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
-import { statusLineManager } from "../ui/index.js";
+import { statusLineManager, subscribeToStatusLine, type StatusLineState } from "../ui/index.js";
+import { getStatusLine, type StatusDisplay } from "./status-line.js";
 import { render } from "ink";
 import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
+import { HeaderBox } from "../ui/components/HeaderBox.js";
 // Import provider classes for instanceof checks in handleStatus
 
 /**
@@ -458,21 +460,53 @@ async function handleChat(
     });
   }
 
+  const toolCount = toolRegistry.list().length;
+
+  // Display header box
+  if (shouldUseInk()) {
+    const { unmount } = render(
+      <HeaderBox
+        model={initialModel}
+        toolCount={toolCount}
+        memoryEnabled={enableMemory}
+        agentsMdLoaded={!!agentsMdPath}
+      />,
+    );
+    unmount();
+  } else {
+    console.log(`Tiny Coding Agent (model: ${initialModel})`);
+    const memoryStatus = enableMemory ? "enabled" : "disabled";
+    const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
+    console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
+    console.log("Use Ctrl+D or /bye to exit");
+    console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
+    console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")');
+  }
+  console.log();
+
+  // Initialize status line rendering
+  const useInkForStatusLine = shouldUseInk();
+  const statusLine = getStatusLine({ enabled: statusLineManager.showStatusLine && useInkForStatusLine });
+  const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
+    if (!statusLineManager.showStatusLine || !useInkForStatusLine) return;
+    const display: StatusDisplay = {
+      status: state.status ?? "ready",
+      model: state.model,
+      tokensUsed: state.tokensUsed,
+      tokensMax: state.tokensMax,
+      toolName: state.tool,
+      toolElapsed: state.toolStartTime ? (Date.now() - state.toolStartTime) / 1000 : undefined,
+    };
+    statusLine.update(display);
+  });
+
   // Handle Ctrl+D (EOF) for graceful exit
   rl.on("close", () => {
+    statusLine.clear();
+    unsubscribeStatusLine();
     console.log("\nGoodbye!");
     process.exit(0);
   });
-
-  console.log(`Tiny Coding Agent (model: ${initialModel})`);
-
-  const toolCount = toolRegistry.list().length;
-  const memoryStatus = enableMemory ? "enabled" : "disabled";
-  const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
-  console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
-  console.log("Use Ctrl+D or /bye to exit");
-  console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
-  console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")\n');
 
   agent.startChatSession();
 
@@ -602,9 +636,6 @@ async function handleChat(
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
               statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
-              process.stdout.write(
-                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
-              );
             }
             if (!hasContent) {
               process.stdout.write("Agent: ");
@@ -784,7 +815,6 @@ async function handleRun(
           if (!options.noTrackContext && chunk.contextStats) {
             const ctx = chunk.contextStats;
             statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
-            process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
           }
         }
       }

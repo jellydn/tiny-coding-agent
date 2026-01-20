@@ -127,13 +127,15 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Agent loop updates status on state changes (setStatus 'thinking'/'ready'/'error')
-- [ ] Tool executor updates status on tool start/end (setTool/clearTool)
-- [ ] Token tracker updates context display (setContext)
+- [x] Agent loop updates status on state changes (setStatus 'thinking'/'ready'/'error')
+- [x] Tool executor updates status on tool start/end (setTool/clearTool)
+- [x] Token tracker updates context display (setContext)
 - [x] Status line disabled in non-TTY environments (via shouldUseInk)
-- [ ] Typecheck passes
+- [x] Typecheck passes
 
-**Status:** ❌ NOT STARTED - Components exist but not wired to agent loop in main.tsx
+**Status:** ✅ DONE
+
+---
 
 ### US-007: Add --no-status flag
 
@@ -141,12 +143,12 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Add `--no-status` CLI flag
-- [ ] Status line hidden when flag is set
-- [ ] Default behavior shows status line
-- [ ] Typecheck passes
+- [x] Add `--no-status` CLI flag
+- [x] Status line hidden when flag is set
+- [x] Default behavior shows status line
+- [x] Typecheck passes
 
-**Status:** ❌ NOT STARTED - Flag not implemented
+**Status:** ✅ DONE
 
 ## Functional Requirements
 

@@ -3,7 +3,7 @@ const RESTORE_CURSOR = "\x1b[u";
 const CLEAR_LINE = "\x1b[K";
 const HIDE_CURSOR = "\x1b[?25l";
 const SHOW_CURSOR = "\x1b[?25h";
-const MOVE_TO_BOTTOM = "\x1b[{row}H";
+const MOVE_TO_ROW = (row: number) => `\x1b[${row};1H`;
 
 export interface StatusLineOptions {
   enabled?: boolean;
@@ -63,7 +63,7 @@ export class StatusLine {
     const rows = process.stdout.rows || 24;
     process.stdout.write(
       SAVE_CURSOR +
-        MOVE_TO_BOTTOM.replace("{row", String(rows)) +
+        MOVE_TO_ROW(rows) +
         CLEAR_LINE +
         line +
         RESTORE_CURSOR,
@@ -75,7 +75,7 @@ export class StatusLine {
     this.lastLine = "";
     const rows = process.stdout.rows || 24;
     process.stdout.write(
-      SAVE_CURSOR + MOVE_TO_BOTTOM.replace("{row", String(rows)) + CLEAR_LINE + RESTORE_CURSOR,
+      SAVE_CURSOR + MOVE_TO_ROW(rows) + CLEAR_LINE + RESTORE_CURSOR,
     );
   }
 
