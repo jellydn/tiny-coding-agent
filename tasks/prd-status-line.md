@@ -143,12 +143,12 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Acceptance Criteria:**
 
-- [ ] Add `--no-status` CLI flag
-- [ ] Status line hidden when flag is set
-- [ ] Default behavior shows status line
-- [ ] Typecheck passes
+- [x] Add `--no-status` CLI flag
+- [x] Status line hidden when flag is set
+- [x] Default behavior shows status line
+- [x] Typecheck passes
 
-**Status:** ❌ NOT STARTED - Flag not implemented
+**Status:** ✅ DONE
 
 **Status:** ✅ DONE
 
