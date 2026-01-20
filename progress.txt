@@ -256,3 +256,37 @@
   - DEFAULT_MODELS provides a curated list of popular models across providers
   - Follow CommandMenu pattern for selection UI (▼ indicator, inverse blue for selected)
 ---
+
+
+## 2026-01-20 23:15 - US-009
+- Session: https://opncd.ai/s/9pq2r6
+- Created ChatLayout.tsx component orchestrating all UI sections
+- Layout: Header at top, MessageList with flexGrow=1 in middle, ContextStatus above input, TextInput at bottom
+- Exported ChatLayout from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ChatLayout acts as container for all chat UI components
+  - Export ChatMessage type alongside MessageList for consumer use
+  - Fixed height on TextInput (height={1}) for consistent input area
+  - marginTop/marginBottom spacing creates visual separation between sections
+---
+
+## 2026-01-20 23:30 - US-010
+- Session: https://opncd.ai/s/abc456
+- Created ChatContext.tsx with ChatProvider and useChatContext hook
+- Exports: ChatProvider, useChatContext, ChatMessage, MessageRole types
+- Provides: messages, addMessage, clearMessages for message state
+- Provides: isThinking, setThinking for thinking state
+- Provides: streamingText, setStreamingText for streaming state
+- Provides: currentModel, setCurrentModel for model state
+- Updated src/ui/index.ts to export new context and types
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Follow StatusLineContext pattern for creating React contexts
+  - Throw error from hook if used outside provider (catches usage errors early)
+  - Export types alongside hook for consumers to use in their code
+  - Use optional initialModel prop with sensible default for provider
+  - ChatMessage type already defined in MessageList.tsx - consider consolidating later
+---

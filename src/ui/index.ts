@@ -6,6 +6,12 @@ export {
   useStatusLine,
   type StatusLineStatus,
 } from "./contexts/StatusLineContext.js";
+export {
+  ChatProvider,
+  useChatContext,
+  type ChatMessage,
+  type MessageRole,
+} from "./contexts/ChatContext.js";
 export { StatusLine } from "./components/StatusLine.js";
 export {
   statusLineManager,
