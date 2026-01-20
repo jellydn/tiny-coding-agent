@@ -238,3 +238,21 @@
   - Use Text inverse with color for selection indicators
   - Export interfaces alongside components for consumers to use in their code
 ---
+
+## 2026-01-20 22:55 - US-008
+- Session: https://opncd.ai/s/m9pq2r5
+- Created ModelPicker.tsx component with ModelPickerItem interface
+- Shows list of models with provider detection using detectProvider()
+- Indicates current active model with [active] label
+- Arrow keys navigate, Enter selects model, Escape closes
+- Exports: ModelPicker, ModelPickerItem, DEFAULT_MODELS
+- Updated src/ui/components/index.ts to export new components
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Model provider is detected from model ID using regex patterns in model-registry.ts
+  - Model names follow provider:model format (e.g., "ollama/llama3.2", "openrouter/openai/gpt-4o")
+  - Use try/catch for detectProvider() in case model pattern doesn't match
+  - DEFAULT_MODELS provides a curated list of popular models across providers
+  - Follow CommandMenu pattern for selection UI (▼ indicator, inverse blue for selected)
+---
