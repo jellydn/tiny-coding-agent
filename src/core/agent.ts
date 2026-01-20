@@ -127,10 +127,13 @@ export class Agent {
       messages = this._conversationHistory;
     }
 
-    if (messages.length === 0) {
-      messages = [{ role: "user", content: userPrompt }];
-    } else {
-      messages.push({ role: "user", content: userPrompt });
+    const isContinuation = userPrompt === "continue";
+    if (!isContinuation) {
+      if (messages.length === 0) {
+        messages = [{ role: "user", content: userPrompt }];
+      } else {
+        messages.push({ role: "user", content: userPrompt });
+      }
     }
 
     const updateContextStats = (memoryTokens: number, truncationApplied: boolean): ContextStats => {
@@ -458,6 +461,8 @@ export class Agent {
       console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
     }
 
+    this._updateConversationHistory(messages);
+
     yield {
       content: "",
       iterations: iteration,
@@ -468,7 +473,6 @@ export class Agent {
   }
 
   async run(userPrompt: string, model: string): Promise<AgentResponse> {
-    const messages: Message[] = [];
     let fullContent = "";
     let iterations = 0;
 
@@ -482,7 +486,7 @@ export class Agent {
     return {
       content: fullContent,
       iterations,
-      messages,
+      messages: this._conversationHistory,
     };
   }
 

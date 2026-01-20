@@ -73,6 +73,41 @@ Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 
 Use Map with CRUD: `register`, `unregister`, `get`, `list`, `clear`.
 
+### React Context Pattern
+
+```typescript
+// contexts/MyContext.tsx
+import React, { createContext, useContext, useState, type ReactNode } from "react";
+
+interface MyContextValue {
+  value: string;
+  setValue: (v: string) => void;
+}
+
+const MyContext = createContext<MyContextValue | null>(null);
+
+export function useMyContext(): MyContextValue {
+  const context = useContext(MyContext);
+  if (!context) {
+    throw new Error("useMyContext must be used within a MyProvider");
+  }
+  return context;
+}
+
+export function MyProvider({ children }: { children: ReactNode }) {
+  const [value, setValue] = useState("");
+  return (
+    <MyContext.Provider value={{ value, setValue }}>
+      {children}
+    </MyContext.Provider>
+  );
+}
+```
+
+- Throw error if hook used outside provider (catches usage errors early)
+- Export types alongside hooks for consumers
+- Use helper functions that combine multiple state setters for atomic updates
+
 ### Tool Pattern
 
 ```typescript

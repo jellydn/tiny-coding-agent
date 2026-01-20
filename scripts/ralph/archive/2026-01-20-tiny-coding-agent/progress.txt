@@ -1,0 +1,14 @@
+# Ralph Progress Log
+Started: Mon Jan 20 2026
+---
+
+## Codebase Patterns
+- tsconfig.json already configured with `jsx: react-jsx` - no changes needed for JSX support
+- Use `src/ui/` for all Ink/React components, `src/ui/components/` for reusable UI pieces
+- Ink v6 uses React 19 - use functional components with proper React.ReactElement return types
+- Use src/ui/utils.ts for TTY/color detection: isTTY(), shouldUseInk(), setNoColor(), setJsonMode(), isJsonMode()
+- Ink components use hooks: useInput for keyboard, useStdout for terminal dimensions
+- CLI files with JSX must be .tsx extension (e.g., main.tsx)
+- Barrel exports: src/ui/index.ts and src/ui/components/index.ts
+
+---

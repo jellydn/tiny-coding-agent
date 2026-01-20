@@ -23,22 +23,23 @@ import {
   type ConfirmationResult,
 } from "../tools/confirmation.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
+import { statusLineManager, subscribeToStatusLine, type StatusLineState } from "../ui/index.js";
+import { getStatusLine } from "./status-line.js";
 import { render } from "ink";
-import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
-// Import provider classes for instanceof checks in handleStatus
+import { HeaderBox } from "../ui/components/HeaderBox.js";
+import { OpenAIProvider } from "../providers/openai.js";
+import { AnthropicProvider } from "../providers/anthropic.js";
+import { OllamaProvider } from "../providers/ollama.js";
+import { OpenRouterProvider } from "../providers/openrouter.js";
+import { OpenCodeProvider } from "../providers/opencode.js";
 
 /**
  * Configuration for tool output preview in plain text mode.
  * Can be overridden via TINY_AGENT_TOOL_PREVIEW_LINES environment variable.
  */
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
-import { OpenAIProvider } from "../providers/openai.js";
-import { AnthropicProvider } from "../providers/anthropic.js";
-import { OllamaProvider } from "../providers/ollama.js";
-import { OpenRouterProvider } from "../providers/openrouter.js";
-import { OpenCodeProvider } from "../providers/opencode.js";
 
 interface CliOptions {
   model?: string;
@@ -48,6 +49,7 @@ interface CliOptions {
   help?: boolean;
   noMemory?: boolean;
   noTrackContext?: boolean;
+  noStatus?: boolean;
   memoryFile?: string;
   agentsMd?: string;
   allowAll?: boolean;
@@ -237,6 +239,8 @@ function parseArgs(): {
       options.noMemory = true;
     } else if (arg === "--no-track-context") {
       options.noTrackContext = true;
+    } else if (arg === "--no-status") {
+      options.noStatus = true;
     } else if (arg === "--agents-md" && i + 1 < args.length) {
       options.agentsMd = args[i + 1];
       i++;
@@ -454,21 +458,97 @@ async function handleChat(
     });
   }
 
-  // Handle Ctrl+D (EOF) for graceful exit
+  const toolCount = toolRegistry.list().length;
+
+  const getProviderDisplayName = (
+    client: LLMClient,
+    cfg: ReturnType<typeof loadConfig>,
+  ): string => {
+    if (client instanceof OpenCodeProvider) {
+      const baseUrl = cfg.providers.opencode?.baseUrl ?? "https://opencode.ai/zen/v1";
+      return `OpenCode (${baseUrl})`;
+    }
+    if (client instanceof OpenAIProvider) {
+      const baseUrl = cfg.providers.openai?.baseUrl;
+      return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
+    }
+    if (client instanceof AnthropicProvider) return "Anthropic";
+    if (client instanceof OllamaProvider) {
+      const baseUrl = cfg.providers.ollama?.baseUrl ?? "http://localhost:11434";
+      return `Ollama (${baseUrl})`;
+    }
+    if (client instanceof OpenRouterProvider) {
+      const baseUrl = cfg.providers.openrouter?.baseUrl ?? "https://openrouter.ai/api/v1";
+      return `OpenRouter (${baseUrl})`;
+    }
+    return "Unknown";
+  };
+
+  const providerDisplayName = getProviderDisplayName(llmClient, config);
+
+  // Display header box
+  if (shouldUseInk()) {
+    const { unmount } = render(
+      <HeaderBox
+        model={initialModel}
+        provider={providerDisplayName}
+        toolCount={toolCount}
+        memoryEnabled={enableMemory}
+        agentsMdLoaded={!!agentsMdPath}
+      />,
+    );
+    unmount();
+  } else {
+    console.log(`Tiny Coding Agent (model: ${initialModel}, ${providerDisplayName})`);
+    const memoryStatus = enableMemory ? "enabled" : "disabled";
+    const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
+    console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
+    console.log("Use Ctrl+D or /bye to exit");
+    console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
+    console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")');
+  }
+  console.log();
+
+  const useInkForStatusLine = shouldUseInk();
+  const statusLineEnabled = statusLineManager.showStatusLine && useInkForStatusLine;
+  const statusLine = getStatusLine({ enabled: statusLineEnabled });
+  let currentStatusState: StatusLineState = {};
+
+  const updateDisplay = (): void => {
+    if (!statusLineEnabled) return;
+    const toolElapsed =
+      currentStatusState.toolStartTime !== undefined
+        ? (Date.now() - currentStatusState.toolStartTime) / 1000
+        : undefined;
+
+    statusLine.update({
+      status: currentStatusState.status ?? "ready",
+      model: currentStatusState.model,
+      tokensUsed: currentStatusState.tokensUsed,
+      tokensMax: currentStatusState.tokensMax,
+      toolName: currentStatusState.tool,
+      toolElapsed,
+    });
+  };
+
+  const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
+    currentStatusState = state;
+    updateDisplay();
+  });
+
+  const statusTimer = setInterval(() => {
+    if (currentStatusState.tool) {
+      updateDisplay();
+    }
+  }, 100);
+
   rl.on("close", () => {
+    clearInterval(statusTimer);
+    statusLine.clear();
+    unsubscribeStatusLine();
     console.log("\nGoodbye!");
     process.exit(0);
   });
-
-  console.log(`Tiny Coding Agent (model: ${initialModel})`);
-
-  const toolCount = toolRegistry.list().length;
-  const memoryStatus = enableMemory ? "enabled" : "disabled";
-  const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
-  console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
-  console.log("Use Ctrl+D or /bye to exit");
-  console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
-  console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")\n');
 
   agent.startChatSession();
 
@@ -548,8 +628,10 @@ async function handleChat(
       let accumulatedContent = "";
       const thinkFilter = new ThinkingTagFilter();
 
+      statusLineManager.setModel(sessionState.model);
+      statusLineManager.setStatus("thinking");
+
       for await (const chunk of agent.runStream(prompt, sessionState.model, runtimeConfig)) {
-        // Clear spinner on first content
         if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
           spinnerInstance.unmount();
           spinnerInstance = null;
@@ -566,6 +648,13 @@ async function handleChat(
         }
 
         if (chunk.toolExecutions) {
+          const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
+          if (runningTool) {
+            statusLineManager.setTool(runningTool.name);
+          } else {
+            statusLineManager.clearTool();
+          }
+
           if (jsonMode) {
             for (const te of chunk.toolExecutions) {
               if (te.status !== "running") {
@@ -585,9 +674,7 @@ async function handleChat(
             }
             if (!options.noTrackContext && chunk.contextStats) {
               const ctx = chunk.contextStats;
-              process.stdout.write(
-                `  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`,
-              );
+              statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
             }
             if (!hasContent) {
               process.stdout.write("Agent: ");
@@ -608,6 +695,8 @@ async function handleChat(
             process.stdout.write("\n");
           }
 
+          statusLineManager.setStatus("ready");
+
           if (chunk.maxIterationsReached) {
             if (!jsonMode) {
               console.log(
@@ -627,8 +716,10 @@ async function handleChat(
         }
       }
     } catch (err) {
+      statusLineManager.setStatus("error");
       const message = err instanceof Error ? err.message : String(err);
       console.error(`\nError: ${message}\n`);
+      statusLineManager.setStatus("ready");
     }
   };
 
@@ -718,6 +809,9 @@ async function handleRun(
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
+    statusLineManager.setModel(model);
+    statusLineManager.setStatus("thinking");
+
     for await (const chunk of agent.runStream(currentPrompt, model)) {
       if (chunk.content) {
         const filtered = thinkFilter.filter(chunk.content);
@@ -729,6 +823,13 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
+        const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
+        if (runningTool) {
+          statusLineManager.setTool(runningTool.name);
+        } else {
+          statusLineManager.clearTool();
+        }
+
         if (jsonMode) {
           for (const te of chunk.toolExecutions) {
             if (te.status !== "running") {
@@ -748,17 +849,21 @@ async function handleRun(
           }
           if (!options.noTrackContext && chunk.contextStats) {
             const ctx = chunk.contextStats;
-            process.stdout.write(`  Context: ${ctx.totalTokens}/${ctx.maxContextTokens} tokens\n`);
+            statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
           }
         }
       }
 
-      if (chunk.done && chunk.maxIterationsReached) {
-        if (!jsonMode) {
-          console.log(`\n[Max iterations reached, continuing...]`);
+      if (chunk.done) {
+        statusLineManager.setStatus("ready");
+
+        if (chunk.maxIterationsReached) {
+          if (!jsonMode) {
+            console.log(`\n[Max iterations reached, continuing...]`);
+          }
+          await runPrompt("continue");
+          return;
         }
-        await runPrompt("continue");
-        return;
       }
     }
 
@@ -779,8 +884,10 @@ async function handleRun(
     await runPrompt(prompt);
     process.exit(0);
   } catch (err) {
+    statusLineManager.setStatus("error");
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
+    statusLineManager.setStatus("ready");
     process.exit(1);
   }
 }
@@ -929,6 +1036,7 @@ OPTIONS:
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
     --no-track-context                 Disable context tracking (enabled by default)
+    --no-status                        Disable status line
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
@@ -1084,6 +1192,10 @@ export async function main(): Promise<void> {
 
     if (options.json) {
       setJsonMode(true);
+    }
+
+    if (options.noStatus) {
+      statusLineManager.setShowStatusLine(false);
     }
 
     if (options.help) {
