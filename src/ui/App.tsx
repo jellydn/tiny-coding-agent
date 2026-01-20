@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { Box, render } from "ink";
 import { shouldUseInk } from "./utils.js";
 import { StatusLineProvider, useStatusLine } from "./contexts/StatusLineContext.js";
 import { StatusLine } from "./components/StatusLine.js";
+import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
+import { ChatLayout } from "./components/ChatLayout.js";
 
 interface StatusLineWrapperProps {
   children?: React.ReactNode;
@@ -26,6 +28,36 @@ function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactEle
   );
 }
 
+export function ChatApp(): React.ReactElement {
+  const [inputValue, setInputValue] = useState("");
+  const { messages, addMessage, isThinking, currentModel } = useChatContext();
+
+  const handleInputChange = useCallback((value: string) => {
+    setInputValue(value);
+  }, []);
+
+  const handleInputSubmit = useCallback(
+    (value: string) => {
+      if (value.trim() && !isThinking) {
+        addMessage("user", value.trim());
+        setInputValue("");
+      }
+    },
+    [addMessage, isThinking],
+  );
+
+  return (
+    <ChatLayout
+      messages={messages}
+      currentModel={currentModel}
+      inputValue={inputValue}
+      onInputChange={handleInputChange}
+      onInputSubmit={handleInputSubmit}
+      inputDisabled={isThinking}
+    />
+  );
+}
+
 interface AppProps {
   children?: React.ReactNode;
 }
@@ -33,7 +65,9 @@ interface AppProps {
 export function App({ children }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
-      <StatusLineWrapper>{children ?? "Tiny Agent"}</StatusLineWrapper>
+      <StatusLineWrapper>
+        <ChatProvider>{children ?? <ChatApp />}</ChatProvider>
+      </StatusLineWrapper>
     </StatusLineProvider>
   );
 }
