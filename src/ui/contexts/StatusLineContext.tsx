@@ -41,17 +41,12 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
 
   useEffect(() => {
     return subscribeToStatusLine((newState: StatusLineState) => {
-      if (newState.status !== undefined) setStatusState(newState.status);
-      if (newState.model !== undefined) setModelState(newState.model);
-      if (newState.tokensUsed !== undefined) setTokensUsedState(newState.tokensUsed);
-      if (newState.tokensMax !== undefined) setTokensMaxState(newState.tokensMax);
-      if (newState.tool !== undefined) setToolState(newState.tool);
-      if (newState.toolStartTime !== undefined) setToolStartTimeState(newState.toolStartTime);
-    });
-  }, []);
-
-  useEffect(() => {
-    return subscribeToStatusLine(() => {
+      if ("status" in newState) setStatusState(newState.status);
+      if ("model" in newState) setModelState(newState.model);
+      if ("tokensUsed" in newState) setTokensUsedState(newState.tokensUsed);
+      if ("tokensMax" in newState) setTokensMaxState(newState.tokensMax);
+      if ("tool" in newState) setToolState(newState.tool);
+      if ("toolStartTime" in newState) setToolStartTimeState(newState.toolStartTime);
       setShowStatusLineState(statusLineManager.showStatusLine);
     });
   }, []);

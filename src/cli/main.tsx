@@ -460,11 +460,38 @@ async function handleChat(
 
   const toolCount = toolRegistry.list().length;
 
+  const getProviderDisplayName = (
+    client: LLMClient,
+    cfg: ReturnType<typeof loadConfig>,
+  ): string => {
+    if (client instanceof OpenCodeProvider) {
+      const baseUrl = cfg.providers.opencode?.baseUrl ?? "https://opencode.ai/zen/v1";
+      return `OpenCode (${baseUrl})`;
+    }
+    if (client instanceof OpenAIProvider) {
+      const baseUrl = cfg.providers.openai?.baseUrl;
+      return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
+    }
+    if (client instanceof AnthropicProvider) return "Anthropic";
+    if (client instanceof OllamaProvider) {
+      const baseUrl = cfg.providers.ollama?.baseUrl ?? "http://localhost:11434";
+      return `Ollama (${baseUrl})`;
+    }
+    if (client instanceof OpenRouterProvider) {
+      const baseUrl = cfg.providers.openrouter?.baseUrl ?? "https://openrouter.ai/api/v1";
+      return `OpenRouter (${baseUrl})`;
+    }
+    return "Unknown";
+  };
+
+  const providerDisplayName = getProviderDisplayName(llmClient, config);
+
   // Display header box
   if (shouldUseInk()) {
     const { unmount } = render(
       <HeaderBox
         model={initialModel}
+        provider={providerDisplayName}
         toolCount={toolCount}
         memoryEnabled={enableMemory}
         agentsMdLoaded={!!agentsMdPath}
@@ -472,7 +499,7 @@ async function handleChat(
     );
     unmount();
   } else {
-    console.log(`Tiny Coding Agent (model: ${initialModel})`);
+    console.log(`Tiny Coding Agent (model: ${initialModel}, ${providerDisplayName})`);
     const memoryStatus = enableMemory ? "enabled" : "disabled";
     const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
     console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
@@ -485,24 +512,38 @@ async function handleChat(
   const useInkForStatusLine = shouldUseInk();
   const statusLineEnabled = statusLineManager.showStatusLine && useInkForStatusLine;
   const statusLine = getStatusLine({ enabled: statusLineEnabled });
+  let currentStatusState: StatusLineState = {};
 
-  const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
+  const updateDisplay = (): void => {
     if (!statusLineEnabled) return;
-
     const toolElapsed =
-      state.toolStartTime !== undefined ? (Date.now() - state.toolStartTime) / 1000 : undefined;
+      currentStatusState.toolStartTime !== undefined
+        ? (Date.now() - currentStatusState.toolStartTime) / 1000
+        : undefined;
 
     statusLine.update({
-      status: state.status ?? "ready",
-      model: state.model,
-      tokensUsed: state.tokensUsed,
-      tokensMax: state.tokensMax,
-      toolName: state.tool,
+      status: currentStatusState.status ?? "ready",
+      model: currentStatusState.model,
+      tokensUsed: currentStatusState.tokensUsed,
+      tokensMax: currentStatusState.tokensMax,
+      toolName: currentStatusState.tool,
       toolElapsed,
     });
+  };
+
+  const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
+    currentStatusState = state;
+    updateDisplay();
   });
 
+  const statusTimer = setInterval(() => {
+    if (currentStatusState.tool) {
+      updateDisplay();
+    }
+  }, 100);
+
   rl.on("close", () => {
+    clearInterval(statusTimer);
     statusLine.clear();
     unsubscribeStatusLine();
     console.log("\nGoodbye!");

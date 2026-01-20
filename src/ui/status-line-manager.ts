@@ -33,7 +33,7 @@ class StatusLineManager {
 
   private notify(): void {
     for (const listener of this.listeners) {
-      listener(this.state);
+      listener(this.getState());
     }
   }
 

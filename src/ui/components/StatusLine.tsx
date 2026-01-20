@@ -54,7 +54,10 @@ export function StatusLine({
       };
       updateElapsed();
       const interval = setInterval(updateElapsed, 100);
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        setElapsed(0);
+      };
     }
     setElapsed(0);
   }, [tool, toolStartTime]);

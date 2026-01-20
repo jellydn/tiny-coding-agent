@@ -92,7 +92,7 @@ export class StatusLine {
       parts.push(toolDisplay);
     }
 
-    return parts.join(" ");
+    return parts.join(" | ");
   }
 
   private formatStatus(status: StatusDisplay["status"]): string {
@@ -129,10 +129,28 @@ export class StatusLine {
 }
 
 let globalStatusLine: StatusLine | null = null;
+let globalStatusLineOptions: StatusLineOptions | undefined;
+
+function statusLineOptionsDiffer(
+  a: StatusLineOptions | undefined,
+  b: StatusLineOptions | undefined,
+): boolean {
+  if (a === b) {
+    return false;
+  }
+  const aEnabled = a?.enabled;
+  const bEnabled = b?.enabled;
+  return aEnabled !== bEnabled;
+}
 
 export function getStatusLine(options?: StatusLineOptions): StatusLine {
   if (!globalStatusLine) {
     globalStatusLine = new StatusLine(options);
+    globalStatusLineOptions = options;
+  } else if (statusLineOptionsDiffer(globalStatusLineOptions, options)) {
+    console.warn(
+      "getStatusLine was called with different options after initialization; new options are being ignored.",
+    );
   }
   return globalStatusLine;
 }
