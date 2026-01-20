@@ -9,3 +9,4 @@ export { StreamingText } from "./StreamingText.js";
 export { ThinkingIndicator } from "./ThinkingIndicator.js";
 export { ContextStatus } from "./ContextStatus.js";
 export { TextInput } from "./TextInput.js";
+export { CommandMenu, type Command } from "./CommandMenu.js";
