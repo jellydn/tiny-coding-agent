@@ -18,12 +18,7 @@ export function HeaderBox({
   const agentsMdStatus = agentsMdLoaded ? "AGENTS.md loaded" : "no AGENTS.md";
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="cyan"
-      paddingX={1}
-    >
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
       <Text bold color="cyan">
         Tiny Coding Agent
       </Text>
@@ -31,14 +26,11 @@ export function HeaderBox({
         <Text color="gray">Model:</Text> <Text color="green">{model}</Text>
       </Text>
       <Text>
-        <Text color="gray">Tools:</Text> {toolCount}{" "}
-        <Text color="gray">| Memory:</Text> {memoryStatus}{" "}
-        <Text color="gray">|</Text> {agentsMdStatus}
+        <Text color="gray">Tools:</Text> {toolCount} <Text color="gray">| Memory:</Text>{" "}
+        {memoryStatus} <Text color="gray">|</Text> {agentsMdStatus}
       </Text>
       <Text color="gray">Use Ctrl+D or /bye to exit</Text>
-      <Text color="gray">
-        Commands: /model, /thinking on|off, /effort low|medium|high
-      </Text>
+      <Text color="gray">Commands: /model, /thinking on|off, /effort low|medium|high</Text>
     </Box>
   );
 }

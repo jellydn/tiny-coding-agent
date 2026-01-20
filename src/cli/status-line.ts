@@ -61,22 +61,14 @@ export class StatusLine {
     this.lastLine = line;
 
     const rows = process.stdout.rows || 24;
-    process.stdout.write(
-      SAVE_CURSOR +
-        MOVE_TO_ROW(rows) +
-        CLEAR_LINE +
-        line +
-        RESTORE_CURSOR,
-    );
+    process.stdout.write(SAVE_CURSOR + MOVE_TO_ROW(rows) + CLEAR_LINE + line + RESTORE_CURSOR);
   }
 
   clear(): void {
     if (!this.enabled) return;
     this.lastLine = "";
     const rows = process.stdout.rows || 24;
-    process.stdout.write(
-      SAVE_CURSOR + MOVE_TO_ROW(rows) + CLEAR_LINE + RESTORE_CURSOR,
-    );
+    process.stdout.write(SAVE_CURSOR + MOVE_TO_ROW(rows) + CLEAR_LINE + RESTORE_CURSOR);
   }
 
   private format(display: StatusDisplay): string {

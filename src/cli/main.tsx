@@ -24,24 +24,22 @@ import {
 } from "../tools/confirmation.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
 import { statusLineManager, subscribeToStatusLine, type StatusLineState } from "../ui/index.js";
-import { getStatusLine, type StatusDisplay } from "./status-line.js";
+import { getStatusLine } from "./status-line.js";
 import { render } from "ink";
-import React from "react";
 import { Spinner } from "../ui/components/Spinner.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { HeaderBox } from "../ui/components/HeaderBox.js";
-// Import provider classes for instanceof checks in handleStatus
+import { OpenAIProvider } from "../providers/openai.js";
+import { AnthropicProvider } from "../providers/anthropic.js";
+import { OllamaProvider } from "../providers/ollama.js";
+import { OpenRouterProvider } from "../providers/openrouter.js";
+import { OpenCodeProvider } from "../providers/opencode.js";
 
 /**
  * Configuration for tool output preview in plain text mode.
  * Can be overridden via TINY_AGENT_TOOL_PREVIEW_LINES environment variable.
  */
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
-import { OpenAIProvider } from "../providers/openai.js";
-import { AnthropicProvider } from "../providers/anthropic.js";
-import { OllamaProvider } from "../providers/ollama.js";
-import { OpenRouterProvider } from "../providers/openrouter.js";
-import { OpenCodeProvider } from "../providers/opencode.js";
 
 interface CliOptions {
   model?: string;
@@ -484,23 +482,26 @@ async function handleChat(
   }
   console.log();
 
-  // Initialize status line rendering
   const useInkForStatusLine = shouldUseInk();
-  const statusLine = getStatusLine({ enabled: statusLineManager.showStatusLine && useInkForStatusLine });
+  const statusLineEnabled = statusLineManager.showStatusLine && useInkForStatusLine;
+  const statusLine = getStatusLine({ enabled: statusLineEnabled });
+
   const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
-    if (!statusLineManager.showStatusLine || !useInkForStatusLine) return;
-    const display: StatusDisplay = {
+    if (!statusLineEnabled) return;
+
+    const toolElapsed =
+      state.toolStartTime !== undefined ? (Date.now() - state.toolStartTime) / 1000 : undefined;
+
+    statusLine.update({
       status: state.status ?? "ready",
       model: state.model,
       tokensUsed: state.tokensUsed,
       tokensMax: state.tokensMax,
       toolName: state.tool,
-      toolElapsed: state.toolStartTime ? (Date.now() - state.toolStartTime) / 1000 : undefined,
-    };
-    statusLine.update(display);
+      toolElapsed,
+    });
   });
 
-  // Handle Ctrl+D (EOF) for graceful exit
   rl.on("close", () => {
     statusLine.clear();
     unsubscribeStatusLine();
@@ -586,12 +587,10 @@ async function handleChat(
       let accumulatedContent = "";
       const thinkFilter = new ThinkingTagFilter();
 
-      // Set model and status for status line
       statusLineManager.setModel(sessionState.model);
       statusLineManager.setStatus("thinking");
 
       for await (const chunk of agent.runStream(prompt, sessionState.model, runtimeConfig)) {
-        // Clear spinner on first content
         if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
           spinnerInstance.unmount();
           spinnerInstance = null;
@@ -608,7 +607,6 @@ async function handleChat(
         }
 
         if (chunk.toolExecutions) {
-          // Update status line with tool information
           const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
           if (runningTool) {
             statusLineManager.setTool(runningTool.name);
@@ -656,7 +654,6 @@ async function handleChat(
             process.stdout.write("\n");
           }
 
-          // Update status to ready when done
           statusLineManager.setStatus("ready");
 
           if (chunk.maxIterationsReached) {
@@ -678,7 +675,6 @@ async function handleChat(
         }
       }
     } catch (err) {
-      // Set error status briefly, then back to ready
       statusLineManager.setStatus("error");
       const message = err instanceof Error ? err.message : String(err);
       console.error(`\nError: ${message}\n`);
@@ -772,7 +768,6 @@ async function handleRun(
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
-    // Set model and status for status line
     statusLineManager.setModel(model);
     statusLineManager.setStatus("thinking");
 
@@ -787,7 +782,6 @@ async function handleRun(
       }
 
       if (chunk.toolExecutions) {
-        // Update status line with tool information
         const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
         if (runningTool) {
           statusLineManager.setTool(runningTool.name);
@@ -820,7 +814,6 @@ async function handleRun(
       }
 
       if (chunk.done) {
-        // Update status to ready when done
         statusLineManager.setStatus("ready");
 
         if (chunk.maxIterationsReached) {
