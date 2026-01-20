@@ -200,7 +200,26 @@
   - ThinkingIndicator is a thin wrapper around existing Spinner component
   - Use simple prop mapping (visible -> isLoading) for component variations
   - Export new components from index.ts for discoverability
- ---
+---
+
+## 2026-01-20 23:55 - US-014
+- Session: https://opncd.ai/s/uvw345
+- Implemented inline tool output display in messages
+- Created InlineToolOutput component with gear icon for running, checkmark for success, X for error
+- Extended ChatMessage interface to include optional toolExecutions array
+- Shows key parameters in dim color text after tool name
+- Displays first 3 lines of output/error when tool completes
+- Updated Message component to render InlineToolOutput for each completed/error tool execution
+- Updated MessageList to pass toolExecutions from messages to Message components
+- Exported InlineToolOutput from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ChatMessage interface is defined in ChatContext.tsx - import from there, don't duplicate
+  - Inline display uses simplified output (first 3 lines) vs full ToolOutput with scrolling
+  - Filter tool executions for display: only show complete/error status, not running
+  - ToolExecution type from core/agent provides the canonical interface to use
+---
 
 ## 2026-01-20 17:30 - US-006
 - Session: https://opncd.ai/s/abc123

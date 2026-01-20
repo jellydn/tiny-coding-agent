@@ -38,7 +38,7 @@ interface ChatProviderProps {
 
 export function ChatProvider({
   children,
-  initialModel = "claude-3-5-sonnet",
+  initialModel = "",
 }: ChatProviderProps): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setThinkingState] = useState(false);

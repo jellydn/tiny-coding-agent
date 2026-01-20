@@ -87,13 +87,14 @@ export function ChatApp(): React.ReactElement {
 
 interface AppProps {
   children?: React.ReactNode;
+  initialModel?: string;
 }
 
-export function App({ children }: AppProps): React.ReactElement {
+export function App({ children, initialModel }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
       <StatusLineWrapper>
-        <ChatProvider>{children ?? <ChatApp />}</ChatProvider>
+        <ChatProvider initialModel={initialModel}>{children ?? <ChatApp />}</ChatProvider>
       </StatusLineWrapper>
     </StatusLineProvider>
   );

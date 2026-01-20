@@ -643,7 +643,7 @@ async function handleInteractiveChat(
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
-  const { waitUntilExit } = renderApp(<InkApp />);
+  const { waitUntilExit } = renderApp(<InkApp initialModel={_initialModel} />);
 
   await waitUntilExit();
 }

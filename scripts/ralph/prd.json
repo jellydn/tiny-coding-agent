@@ -4,6 +4,38 @@
   "description": "Redesign the CLI interface with structured layout: header at top, streaming messages in middle, context status, and enhanced input with command/model selection.",
   "userStories": [
     {
+      "id": "US-000A",
+      "title": "Fix Header to show provider and actual model from config",
+      "description": "As a user, I want to see the correct model and provider in the header.",
+      "acceptanceCriteria": [
+        "Header shows provider:model format (e.g., 'anthropic:claude-sonnet-4')",
+        "Model comes from config.defaultModel or --model flag, not hardcoded",
+        "App component accepts initialModel prop and passes to ChatProvider",
+        "handleInteractiveChat passes model to InkApp",
+        "Typecheck passes"
+      ],
+      "priority": 0,
+      "passes": false,
+      "notes": "BUG: Currently shows hardcoded 'claude-3-5-sonnet', no provider"
+    },
+    {
+      "id": "US-000B",
+      "title": "Wire TextInput to agent for LLM calls",
+      "description": "As a user, I want my input to be sent to the LLM and see streaming responses.",
+      "acceptanceCriteria": [
+        "App component accepts agent prop",
+        "handleInteractiveChat passes agent to InkApp",
+        "handleInputSubmit calls agent.runStream with user message",
+        "Streaming response updates ChatContext streamingText",
+        "Final response added to messages via addMessage",
+        "isThinking set true during LLM call, false when done",
+        "Typecheck passes"
+      ],
+      "priority": 0,
+      "passes": false,
+      "notes": "BUG: Input adds to UI state but never calls agent"
+    },
+    {
       "id": "US-001",
       "title": "Create Header component",
       "description": "As a user, I want to see a header at the top of the CLI so I know which agent/session I'm in.",
