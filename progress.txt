@@ -11,6 +11,7 @@
 - Use statusLineManager singleton for updating status line from non-React code
 - React context subscribes to statusLineManager for reactive updates
 - For list keys, use `${property}:${value.slice(0, N)}` pattern instead of index
+- TextInput components: use useInput with `{ isActive: !disabled }`, track cursorPosition separately, use Text inverse for cursor
 
 
 ## 2026-01-20 07:13 - US-001
@@ -201,18 +202,22 @@
   - Export new components from index.ts for discoverability
  ---
 
-## 2026-01-20 17:30 - US-005
-- Session: https://opncd.ai/s/9uv0w3
-- Created ContextStatus.tsx component with tokensUsed and tokensMax props
-- Shows 'Ctx: used/max (percentage%)' format with compact number formatting (e.g., 12.5k)
-- Percentage colored: gray by default, yellow when >80%, red when >95%
+## 2026-01-20 17:30 - US-006
+- Session: https://opncd.ai/s/abc123
+- Created TextInput.tsx component with value, onChange, onSubmit, disabled props
+- Uses Ink's useInput hook for keyboard handling
+- Shows '>' prompt prefix with gray color
+- Handles backspace, delete, arrow keys, escape, and regular input
+- Clears input after submit when value is not empty
 - Exported from src/ui/components/index.ts
 - Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
 
 **Learnings for future iterations:**
-  - Reuse formatCompactNumber pattern from StatusLine.tsx for consistent number formatting
-  - Return empty Box instead of null to satisfy React.ReactElement type
-  - Use nested Text components with color prop for partial text coloring
+  - Use useInput with { isActive: !disabled } to disable input when processing
+  - Track cursorPosition separately from value for proper cursor rendering
+  - Use Text inverse prop for cursor rendering in terminal
+  - Always check disabled prop first in useInput handler
   - Export new components from index.ts for discoverability
- ---
+---
+
 
