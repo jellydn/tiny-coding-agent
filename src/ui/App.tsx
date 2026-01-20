@@ -6,6 +6,7 @@ import { StatusLine } from "./components/StatusLine.js";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { Command } from "./components/CommandMenu.js";
+import type { Agent } from "@/core/index.js";
 
 interface StatusLineWrapperProps {
   children?: React.ReactNode;
@@ -29,23 +30,60 @@ function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactEle
   );
 }
 
-export function ChatApp(): React.ReactElement {
+interface ChatAppProps {
+  agent?: Agent;
+}
+
+export function ChatApp({ agent }: ChatAppProps): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
-  const { messages, addMessage, isThinking, currentModel, setCurrentModel } = useChatContext();
+  const {
+    messages,
+    addMessage,
+    isThinking,
+    setThinking,
+    currentModel,
+    setCurrentModel,
+    setStreamingText,
+  } = useChatContext();
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
   }, []);
 
   const handleInputSubmit = useCallback(
-    (value: string) => {
-      if (value.trim() && !isThinking) {
-        addMessage("user", value.trim());
+    async (value: string) => {
+      if (value.trim() && !isThinking && agent) {
+        const userMessage = value.trim();
+        addMessage("user", userMessage);
         setInputValue("");
+        setThinking(true);
+        setStreamingText("");
+
+        let accumulatedContent = "";
+        try {
+          for await (const chunk of agent.runStream(userMessage, currentModel)) {
+            if (chunk.content) {
+              accumulatedContent += chunk.content;
+              setStreamingText(accumulatedContent);
+            }
+            if (chunk.done) {
+              if (accumulatedContent.trim()) {
+                addMessage("assistant", accumulatedContent);
+              }
+              setStreamingText("");
+            }
+          }
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          addMessage("assistant", `Error: ${errorMessage}`);
+          setStreamingText("");
+        } finally {
+          setThinking(false);
+        }
       }
     },
-    [addMessage, isThinking],
+    [addMessage, agent, isThinking, currentModel, setThinking, setStreamingText],
   );
 
   const handleCommandSelect = useCallback(
@@ -88,13 +126,16 @@ export function ChatApp(): React.ReactElement {
 interface AppProps {
   children?: React.ReactNode;
   initialModel?: string;
+  agent?: Agent;
 }
 
-export function App({ children, initialModel }: AppProps): React.ReactElement {
+export function App({ children, initialModel, agent }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
       <StatusLineWrapper>
-        <ChatProvider initialModel={initialModel}>{children ?? <ChatApp />}</ChatProvider>
+        <ChatProvider initialModel={initialModel}>
+          {children ?? <ChatApp agent={agent} />}
+        </ChatProvider>
       </StatusLineWrapper>
     </StatusLineProvider>
   );

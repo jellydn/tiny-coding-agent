@@ -627,7 +627,7 @@ async function handleInteractiveChat(
     options.agentsMd ??
     (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
 
-  const _agent = new Agent(llmClient, toolRegistry, {
+  const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
     systemPrompt: config.systemPrompt,
     conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
@@ -643,7 +643,7 @@ async function handleInteractiveChat(
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
-  const { waitUntilExit } = renderApp(<InkApp initialModel={_initialModel} />);
+  const { waitUntilExit } = renderApp(<InkApp initialModel={_initialModel} agent={agent} />);
 
   await waitUntilExit();
 }

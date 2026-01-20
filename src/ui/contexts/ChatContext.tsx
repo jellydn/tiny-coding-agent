@@ -16,7 +16,7 @@ interface ChatContextValue {
   isThinking: boolean;
   setThinking: (thinking: boolean) => void;
   streamingText: string;
-  setStreamingText: (text: string) => void;
+  setStreamingText: (text: string | ((prev: string) => string)) => void;
   currentModel: string;
   setCurrentModel: (model: string) => void;
 }
@@ -57,8 +57,9 @@ export function ChatProvider({
     setThinkingState(thinking);
   };
 
-  const setStreamingText = (text: string) => {
-    setStreamingTextState(text);
+  const setStreamingText = (text: string | ((prev: string) => string)) => {
+    const value = typeof text === "function" ? text(streamingText) : text;
+    setStreamingTextState(value);
   };
 
   const setCurrentModel = (model: string) => {

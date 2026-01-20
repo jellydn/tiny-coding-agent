@@ -358,3 +358,18 @@
   - Confirmation messages use addMessage("assistant", ...) for chat display
   - Header automatically reflects model changes via currentModel prop
 ---
+
+## 2026-01-20 17:30 - US-000A
+- Session: https://opncd.ai/s/abc123
+- Fixed Header to show provider and actual model from config
+- Updated App.tsx to accept initialModel prop and pass to ChatProvider
+- Updated main.tsx handleInteractiveChat to pass _initialModel to InkApp
+- Updated ChatProvider default from "claude-3-5-sonnet" to "" (empty string)
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - App component accepts optional initialModel prop that flows to ChatProvider
+  - ChatProvider uses initialModel for currentModel state via useState
+  - handleInteractiveChat calculates model from options.model || config.defaultModel
+  - Removed hardcoded model default in ChatProvider to ensure config value is used
+---
