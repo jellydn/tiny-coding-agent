@@ -10,6 +10,7 @@
 - StatusLine uses useStdout() hook to get terminal width automatically
 - Use statusLineManager singleton for updating status line from non-React code
 - React context subscribes to statusLineManager for reactive updates
+- For list keys, use `${property}:${value.slice(0, N)}` pattern instead of index
 
 
 ## 2026-01-20 07:13 - US-001
@@ -27,13 +28,19 @@
   - Don't import unused modules (fs import was flagged by lint)
 ---
 
-## 2026-01-20 07:45 - US-002
-- Session: https://opncd.ai/s/2ab2f3
-- Implemented color-coded status display in `src/ui/components/StatusLine.tsx`
-- Added STATUS_LABELS and STATUS_COLORS maps for status styling
-- Status values: '⏳ Thinking' (yellow), '✓ Ready' (green), '✗ Error' (red)
-- Updated StatusLineProps to use typed status: "thinking" | "ready" | "error"
+## 2026-01-20 15:30 - US-002
+- Session: https://opncd.ai/s/3qr9s2
+- Created MessageList.tsx component with messages prop accepting ChatMessage[]
+- MessageList uses flexGrow=1 to fill available vertical space
+- Updated Message.tsx to show "You:" in green for user, "Assistant:" in cyan for assistant
+- Exported MessageList from src/ui/components/index.ts
 - Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Reuse existing Message component for individual message rendering
+  - Use `${role}:${content.slice(0, 50)}` pattern for stable list keys instead of index
+  - Follow acceptance criteria for label text and colors (override existing patterns if needed)
+---
 
 **Learnings for future iterations:**
   - Ink's Text component accepts color prop with string values like "yellow", "green", "red"
