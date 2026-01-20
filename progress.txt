@@ -290,3 +290,35 @@
   - Use optional initialModel prop with sensible default for provider
   - ChatMessage type already defined in MessageList.tsx - consider consolidating later
 ---
+
+## 2026-01-20 23:45 - US-011
+- Session: https://opncd.ai/s/xyz789
+- Updated App.tsx to use ChatLayout with ChatContext provider
+- Created ChatApp component with input state and message handling
+- Added handleInteractiveChat function in main.tsx for new chat mode
+- Removed old readline-based handleChat function
+- Updated src/ui/index.ts to export ChatApp component
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - App component structure: StatusLineProvider wraps StatusLineWrapper which contains ChatProvider with ChatApp
+  - handleInteractiveChat uses dynamic import for App component to avoid circular dependencies
+  - Removed unused imports from main.tsx when replacing handleChat with handleInteractiveChat
+  - ChatApp uses useChatContext to get messages and state for ChatLayout rendering
+---
+
+## 2026-01-20 17:45 - US-012
+- Session: https://opncd.ai/s/uvw012
+- Updated TextInput.tsx to detect '/' prefix and show CommandMenu overlay
+- Added onCommandSelect optional prop to TextInput for command handling
+- Updated ChatLayout.tsx to accept and pass onCommandSelect prop
+- Updated App.tsx with handleCommandSelect callback that adds command as assistant message
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Command type is defined in CommandMenu.tsx, import it from there for other components
+  - Use MessageRole "assistant" for system messages since "system" role is not defined
+  - Escape key in TextInput clears input and resets cursor position
+  - TextInput shows CommandMenu when value.startsWith('/') is true
+  - Filter passed to CommandMenu is text after '/' (value.slice(1))
+

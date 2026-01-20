@@ -5,6 +5,7 @@ import { StatusLineProvider, useStatusLine } from "./contexts/StatusLineContext.
 import { StatusLine } from "./components/StatusLine.js";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
+import type { Command } from "./components/CommandMenu.js";
 
 interface StatusLineWrapperProps {
   children?: React.ReactNode;
@@ -46,6 +47,13 @@ export function ChatApp(): React.ReactElement {
     [addMessage, isThinking],
   );
 
+  const handleCommandSelect = useCallback(
+    (command: Command) => {
+      addMessage("assistant", `Selected command: ${command.name}`);
+    },
+    [addMessage],
+  );
+
   return (
     <ChatLayout
       messages={messages}
@@ -53,6 +61,7 @@ export function ChatApp(): React.ReactElement {
       inputValue={inputValue}
       onInputChange={handleInputChange}
       onInputSubmit={handleInputSubmit}
+      onCommandSelect={handleCommandSelect}
       inputDisabled={isThinking}
     />
   );
