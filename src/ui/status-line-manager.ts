@@ -6,7 +6,6 @@ export interface StatusLineState {
   tokensUsed?: number;
   tokensMax?: number;
   tool?: string;
-  toolStartTime?: number;
 }
 
 type StatusLineListener = (state: StatusLineState) => void;
@@ -61,17 +60,14 @@ class StatusLineManager {
   setTool(tool?: string): void {
     if (tool) {
       this.state.tool = tool;
-      this.state.toolStartTime = Date.now();
     } else {
       this.state.tool = undefined;
-      this.state.toolStartTime = undefined;
     }
     this.notify();
   }
 
   clearTool(): void {
     this.state.tool = undefined;
-    this.state.toolStartTime = undefined;
     this.notify();
   }
 

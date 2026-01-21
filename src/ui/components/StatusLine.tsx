@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useStdout } from "ink";
 import { TIMING, FORMATTING, STATUS_CONFIG, LAYOUT } from "../config/constants.js";
 import type { StatusType } from "../types/enums.js";
@@ -9,7 +9,6 @@ interface StatusLineProps {
   tokensUsed?: number;
   tokensMax?: number;
   tool?: string;
-  toolStartTime?: number;
 }
 
 function formatCompactNumber(num: number): string {
@@ -54,17 +53,21 @@ export function StatusLine({
   tokensUsed,
   tokensMax,
   tool,
-  toolStartTime,
 }: StatusLineProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns || 80;
   const elements: React.ReactNode[] = [];
   const [elapsed, setElapsed] = useState(0);
+  const startTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
-    if (tool && toolStartTime !== undefined) {
+    startTimeRef.current = Date.now();
+  }, [status, tool]);
+
+  useEffect(() => {
+    if ((status === "thinking" || tool) && startTimeRef.current) {
       const updateElapsed = () => {
-        setElapsed((Date.now() - toolStartTime) / 1000);
+        setElapsed((Date.now() - startTimeRef.current) / 1000);
       };
       updateElapsed();
       const interval = setInterval(updateElapsed, TIMING.TOOL_TIMER_UPDATE);
@@ -74,7 +77,7 @@ export function StatusLine({
       };
     }
     setElapsed(0);
-  }, [tool, toolStartTime]);
+  }, [status, tool]);
 
   if (status) {
     if (elements.length > 0) {
@@ -126,6 +129,16 @@ export function StatusLine({
     elements.push(
       <Text key="tool" color="cyan">
         ⚙ {tool} {timeStr}
+      </Text>,
+    );
+  } else if (status === "thinking") {
+    const timeStr = `${elapsed.toFixed(1)}s`;
+    if (elements.length > 0) {
+      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
+    }
+    elements.push(
+      <Text key="thinking" color="yellow">
+        ⏳ {timeStr}
       </Text>,
     );
   }

@@ -6,7 +6,6 @@ import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
 import { CommandMenu, type Command } from "./CommandMenu.js";
 import { ModelPicker, DEFAULT_MODELS } from "./ModelPicker.js";
-import { ThinkingIndicator } from "./ThinkingIndicator.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
 
 interface ChatLayoutProps {
@@ -20,7 +19,6 @@ interface ChatLayoutProps {
   inputPlaceholder?: string;
   inputDisabled?: boolean;
   showModelPicker?: boolean;
-  isThinking?: boolean;
 }
 
 function WelcomeMessage(): React.ReactElement {
@@ -52,7 +50,6 @@ export function ChatLayout({
   inputPlaceholder,
   inputDisabled,
   showModelPicker = false,
-  isThinking = false,
 }: ChatLayoutProps): React.ReactElement {
   const statusContext = useStatusLine();
   const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
@@ -75,13 +72,8 @@ export function ChatLayout({
     <Box flexDirection="column" height="100%">
       <Header model={currentModel} />
 
-      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+      <Box flexDirection="column" flexGrow={1}>
         {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}
-        {isThinking && messages.length > 0 && (
-          <Box marginTop={1}>
-            <ThinkingIndicator visible={true} />
-          </Box>
-        )}
       </Box>
 
       <Box flexShrink={0} borderStyle="single" borderColor="gray" paddingX={1}>
@@ -91,7 +83,6 @@ export function ChatLayout({
           tokensUsed={statusContext.tokensUsed}
           tokensMax={statusContext.tokensMax}
           tool={statusContext.tool}
-          toolStartTime={statusContext.toolStartTime}
         />
       </Box>
 

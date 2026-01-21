@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { Box, render } from "ink";
+import React, { useState, useCallback, useRef, useEffect } from "react";
+import { Box, render, useInput } from "ink";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
@@ -11,10 +11,13 @@ import { MessageRole } from "./types/enums.js";
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [cancelCount, setCancelCount] = useState(0);
+  const cancelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const {
     messages,
     addMessage,
     isThinking,
+    setThinking,
     currentModel,
     setCurrentModel,
     streamingText,
@@ -28,6 +31,41 @@ export function ChatApp(): React.ReactElement {
     onSetShowModelPicker: setShowModelPicker,
     onExit: () => process.exit(0),
   });
+
+  useEffect(() => {
+    if (cancelCount === 2) {
+      if (cancelTimeoutRef.current) {
+        clearTimeout(cancelTimeoutRef.current);
+        cancelTimeoutRef.current = null;
+      }
+      setCancelCount(0);
+      if (isThinking) {
+        setThinking(false);
+        addMessage(MessageRole.ASSISTANT, "\nCancelled. Type a new message or /exit to quit.");
+      } else {
+        setInputValue("");
+        addMessage(MessageRole.ASSISTANT, "Cancelled.");
+      }
+    } else if (cancelCount === 1) {
+      cancelTimeoutRef.current = setTimeout(() => {
+        setCancelCount(0);
+      }, 300);
+    }
+    return () => {
+      if (cancelTimeoutRef.current) {
+        clearTimeout(cancelTimeoutRef.current);
+      }
+    };
+  }, [cancelCount, isThinking, setThinking, addMessage]);
+
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        setCancelCount((prev) => prev + 1);
+      }
+    },
+    { isActive: isThinking },
+  );
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
@@ -65,7 +103,7 @@ export function ChatApp(): React.ReactElement {
     ? [
         ...messages,
         {
-          id: `streaming-${Date.now()}`,
+          id: "streaming",
           role: MessageRole.ASSISTANT,
           content: streamingText || "...",
         },
@@ -85,9 +123,10 @@ export function ChatApp(): React.ReactElement {
         inputDisabled={isThinking}
         showModelPicker={showModelPicker}
         inputPlaceholder={
-          isThinking ? "Waiting for response..." : "Type a message... (/ for commands)"
+          isThinking
+            ? "Waiting for response... (ESC twice to cancel)"
+            : "Type a message... (/ for commands)"
         }
-        isThinking={isThinking}
       />
     </Box>
   );
