@@ -12,6 +12,7 @@ import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
 import { statusLineManager } from "../ui/index.js";
+import { StatusType } from "../ui/types/enums.js";
 import { render } from "ink";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { OpenAIProvider } from "../providers/openai.js";
@@ -424,7 +425,7 @@ async function handleRun(
     const thinkFilter = new ThinkingTagFilter();
 
     statusLineManager.setModel(model);
-    statusLineManager.setStatus("thinking");
+    statusLineManager.setStatus(StatusType.THINKING);
 
     for await (const chunk of agent.runStream(currentPrompt, model)) {
       if (chunk.content) {
@@ -469,7 +470,7 @@ async function handleRun(
       }
 
       if (chunk.done) {
-        statusLineManager.setStatus("ready");
+        statusLineManager.setStatus(StatusType.READY);
 
         if (chunk.maxIterationsReached) {
           if (!jsonMode) {
@@ -498,10 +499,10 @@ async function handleRun(
     await runPrompt(prompt);
     process.exit(0);
   } catch (err) {
-    statusLineManager.setStatus("error");
+    statusLineManager.setStatus(StatusType.ERROR);
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
-    statusLineManager.setStatus("ready");
+    statusLineManager.setStatus(StatusType.READY);
     process.exit(1);
   }
 }
@@ -618,7 +619,7 @@ async function handleInteractiveChat(
 ): Promise<void> {
   const llmClient = await createLLMClient(config, options);
   const toolRegistry = await setupTools(config);
-  const _initialModel = options.model || config.defaultModel;
+  const initialModel = options.model || config.defaultModel;
 
   const enableMemory = !options.noMemory || config.memoryFile !== undefined;
   const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
@@ -643,7 +644,7 @@ async function handleInteractiveChat(
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
-  const { waitUntilExit } = renderApp(<InkApp initialModel={_initialModel} agent={agent} />);
+  const { waitUntilExit } = renderApp(<InkApp initialModel={initialModel} agent={agent} />);
 
   await waitUntilExit();
 }

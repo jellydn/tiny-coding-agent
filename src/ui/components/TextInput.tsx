@@ -1,118 +1,93 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { CommandMenu, type Command } from "./CommandMenu.js";
-import { ModelPicker, DEFAULT_MODELS } from "./ModelPicker.js";
 
 interface TextInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
-  onCommandSelect?: (command: Command) => void;
-  onModelSelect?: (modelId: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  showModelPicker?: boolean;
-  currentModel?: string;
 }
 
 export function TextInput({
   value,
   onChange,
   onSubmit,
-  onCommandSelect,
-  onModelSelect,
-  placeholder = "",
+  placeholder = "Type a message...",
   disabled = false,
-  showModelPicker = false,
-  currentModel,
 }: TextInputProps): React.ReactElement {
   const [cursorPosition, setCursorPosition] = useState(value.length);
-  const showCommandMenu = !disabled && value.startsWith("/");
-  const commandFilter = showCommandMenu ? value.slice(1) : "";
+
+  useEffect(() => {
+    setCursorPosition(value.length);
+  }, [value.length]);
 
   useInput(
     (input, key) => {
       if (disabled) return;
 
-      if (showCommandMenu) {
-        if (key.escape) {
-          onChange("");
-          setCursorPosition(0);
-        }
-        return;
-      }
-
       if (key.return) {
         if (value.trim()) {
           onSubmit(value);
         }
-      } else if (key.ctrl || key.meta) {
         return;
-      } else if (key.backspace || key.delete) {
-        if (key.backspace) {
-          if (cursorPosition > 0) {
-            const newValue = value.slice(0, cursorPosition - 1) + value.slice(cursorPosition);
-            onChange(newValue);
-            setCursorPosition(cursorPosition - 1);
-          }
-        } else if (key.delete && cursorPosition < value.length) {
-          const newValue = value.slice(0, cursorPosition) + value.slice(cursorPosition + 1);
-          onChange(newValue);
-        }
-      } else if (key.leftArrow) {
-        setCursorPosition((prev) => Math.max(0, prev - 1));
-      } else if (key.rightArrow) {
-        setCursorPosition((prev) => Math.min(value.length, prev + 1));
-      } else if (key.escape) {
+      }
+
+      if (key.escape) {
         onChange("");
         setCursorPosition(0);
-      } else if (input) {
+        return;
+      }
+
+      if (key.leftArrow) {
+        setCursorPosition((prev) => Math.max(0, prev - 1));
+        return;
+      }
+
+      if (key.rightArrow) {
+        setCursorPosition((prev) => Math.min(value.length, prev + 1));
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        if (cursorPosition > 0) {
+          const newValue = value.slice(0, cursorPosition - 1) + value.slice(cursorPosition);
+          onChange(newValue);
+          setCursorPosition((prev) => Math.max(0, prev - 1));
+        }
+        return;
+      }
+
+      if (key.ctrl || key.meta) {
+        return;
+      }
+
+      if (input && !key.ctrl && !key.meta) {
         const newValue = value.slice(0, cursorPosition) + input + value.slice(cursorPosition);
         onChange(newValue);
-        setCursorPosition(cursorPosition + 1);
+        setCursorPosition((prev) => prev + input.length);
       }
     },
     { isActive: !disabled },
   );
 
-  const handleCommandSelect = (command: Command) => {
-    if (onCommandSelect) {
-      onCommandSelect(command);
-    }
-    onChange("");
-    setCursorPosition(0);
-  };
-
   const displayValue = value || placeholder;
-  const showCursor = !disabled && cursorPosition <= displayValue.length;
+  const isPlaceholder = !value;
 
   return (
-    <Box flexDirection="column">
-      {showModelPicker && onModelSelect && (
-        <Box marginBottom={1}>
-          <ModelPicker
-            models={DEFAULT_MODELS}
-            currentModel={currentModel ?? ""}
-            onSelect={onModelSelect}
-            onClose={() => onModelSelect("")}
-          />
-        </Box>
+    <Box>
+      <Text color="green" bold>
+        {"❯ "}
+      </Text>
+      {isPlaceholder ? (
+        <Text color="gray">{placeholder}</Text>
+      ) : (
+        <>
+          <Text>{displayValue.slice(0, cursorPosition)}</Text>
+          <Text inverse>{displayValue[cursorPosition] ?? " "}</Text>
+          <Text>{displayValue.slice(cursorPosition + 1)}</Text>
+        </>
       )}
-      {showCommandMenu && (
-        <Box marginBottom={1}>
-          <CommandMenu
-            filter={commandFilter}
-            onSelect={handleCommandSelect}
-            onClose={() => onChange("")}
-          />
-        </Box>
-      )}
-      <Box>
-        <Text color="gray">{"> "}</Text>
-        <Text>{displayValue.slice(0, cursorPosition)}</Text>
-        {showCursor && <Text inverse>{displayValue[cursorPosition] ?? " "}</Text>}
-        <Text>{displayValue.slice(cursorPosition + 1)}</Text>
-      </Box>
     </Box>
   );
 }

@@ -10,8 +10,8 @@ export {
   ChatProvider,
   useChatContext,
   type ChatMessage,
-  type MessageRole,
 } from "./contexts/ChatContext.js";
+export { MessageRole } from "./types/enums.js";
 export { StatusLine } from "./components/StatusLine.js";
 export {
   statusLineManager,

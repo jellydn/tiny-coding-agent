@@ -10,14 +10,18 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages }: MessageListProps): React.ReactElement {
+  const visibleMessages = messages.slice(-30);
+
   return (
-    <Box flexDirection="column" flexGrow={1}>
-      {messages.map((msg) => (
+    <Box flexDirection="column">
+      {visibleMessages.map((msg) => (
         <Message
-          key={`${msg.role}:${msg.content.slice(0, 50)}`}
+          key={msg.id}
           role={msg.role}
           content={msg.content}
-          toolExecutions={msg.toolExecutions}
+          toolName={msg.toolName}
+          toolStatus={msg.toolStatus}
+          toolArgs={msg.toolArgs}
         />
       ))}
     </Box>

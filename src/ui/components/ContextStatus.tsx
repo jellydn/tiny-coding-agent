@@ -15,7 +15,11 @@ function formatCompactNumber(num: number): string {
 
 export function ContextStatus({ tokensUsed, tokensMax }: ContextStatusProps): React.ReactElement {
   if (tokensUsed === undefined || tokensMax === undefined) {
-    return <Box />;
+    return (
+      <Box>
+        <Text color="gray">Context: Ready</Text>
+      </Box>
+    );
   }
 
   const percentage = Math.round((tokensUsed / tokensMax) * 100);

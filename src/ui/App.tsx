@@ -1,51 +1,33 @@
 import React, { useState, useCallback } from "react";
 import { Box, render } from "ink";
-import { shouldUseInk } from "./utils.js";
-import { StatusLineProvider, useStatusLine } from "./contexts/StatusLineContext.js";
-import { StatusLine } from "./components/StatusLine.js";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
+import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
-import type { Command } from "./components/CommandMenu.js";
-import type { Agent } from "@/core/index.js";
 
-interface StatusLineWrapperProps {
-  children?: React.ReactNode;
-}
+import type { Agent } from "@/core/agent.js";
+import { useCommandHandler } from "./hooks/useCommandHandler.js";
+import { MessageRole } from "./types/enums.js";
 
-function StatusLineWrapper({ children }: StatusLineWrapperProps): React.ReactElement {
-  const context = useStatusLine();
-  const showStatusLine =
-    context.showStatusLine &&
-    shouldUseInk() &&
-    (context.status !== undefined ||
-      context.model !== undefined ||
-      context.tokensUsed !== undefined ||
-      context.tool !== undefined);
-
-  return (
-    <Box flexDirection="column" flexGrow={1}>
-      <Box flexGrow={1}>{children}</Box>
-      {showStatusLine && <StatusLine {...context} />}
-    </Box>
-  );
-}
-
-interface ChatAppProps {
-  agent?: Agent;
-}
-
-export function ChatApp({ agent }: ChatAppProps): React.ReactElement {
+export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const {
     messages,
     addMessage,
     isThinking,
-    setThinking,
     currentModel,
     setCurrentModel,
-    setStreamingText,
+    streamingText,
+    sendMessage,
+    clearMessages,
   } = useChatContext();
+
+  const { handleCommandSelect } = useCommandHandler({
+    onAddMessage: addMessage,
+    onClearMessages: clearMessages,
+    onSetShowModelPicker: setShowModelPicker,
+    onExit: () => process.exit(0),
+  });
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
@@ -53,73 +35,67 @@ export function ChatApp({ agent }: ChatAppProps): React.ReactElement {
 
   const handleInputSubmit = useCallback(
     async (value: string) => {
-      if (value.trim() && !isThinking && agent) {
-        const userMessage = value.trim();
-        addMessage("user", userMessage);
+      const trimmed = value.trim();
+      if (!trimmed || isThinking) return;
+
+      if (trimmed.startsWith("/")) {
         setInputValue("");
-        setThinking(true);
-        setStreamingText("");
-
-        let accumulatedContent = "";
-        try {
-          for await (const chunk of agent.runStream(userMessage, currentModel)) {
-            if (chunk.content) {
-              accumulatedContent += chunk.content;
-              setStreamingText(accumulatedContent);
-            }
-            if (chunk.done) {
-              if (accumulatedContent.trim()) {
-                addMessage("assistant", accumulatedContent);
-              }
-              setStreamingText("");
-            }
-          }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          addMessage("assistant", `Error: ${errorMessage}`);
-          setStreamingText("");
-        } finally {
-          setThinking(false);
+        const commandName = trimmed.split(" ")[0];
+        if (commandName === "/clear") {
+          clearMessages();
+        } else if (commandName === "/exit") {
+          process.exit(0);
+        } else if (commandName === "/help") {
+          process.stdout.write(
+            "Available commands:\n/help - Show this help\n/clear - Clear conversation\n/model - Switch model\n/exit - Exit\n",
+          );
+        } else if (commandName === "/model") {
+          setShowModelPicker(true);
         }
+        return;
       }
+
+      setInputValue("");
+      await sendMessage(trimmed);
     },
-    [addMessage, agent, isThinking, currentModel, setThinking, setStreamingText],
+    [isThinking, sendMessage, clearMessages],
   );
 
-  const handleCommandSelect = useCallback(
-    (command: Command) => {
-      if (command.name === "/model") {
-        setShowModelPicker(true);
-      } else {
-        addMessage("assistant", `Selected command: ${command.name}`);
-      }
-    },
-    [addMessage],
-  );
+  
 
   const handleModelSelect = useCallback(
     (modelId: string) => {
       if (modelId && modelId !== currentModel) {
         setCurrentModel(modelId);
-        addMessage("assistant", `Model changed to: ${modelId}`);
+        addMessage(MessageRole.ASSISTANT, `Model changed to: ${modelId}`);
       }
       setShowModelPicker(false);
     },
     [addMessage, currentModel, setCurrentModel],
   );
 
+  const displayMessages = isThinking
+    ? [...messages, { role: MessageRole.ASSISTANT, content: streamingText || "..." }]
+    : messages;
+
   return (
-    <ChatLayout
-      messages={messages}
-      currentModel={currentModel}
-      inputValue={inputValue}
-      onInputChange={handleInputChange}
-      onInputSubmit={handleInputSubmit}
-      onCommandSelect={handleCommandSelect}
-      onModelSelect={handleModelSelect}
-      inputDisabled={isThinking}
-      showModelPicker={showModelPicker}
-    />
+    <Box flexDirection="column" height="100%">
+      <ChatLayout
+        messages={displayMessages}
+        currentModel={currentModel}
+        inputValue={inputValue}
+        onInputChange={handleInputChange}
+        onInputSubmit={handleInputSubmit}
+        onCommandSelect={handleCommandSelect}
+        onModelSelect={handleModelSelect}
+        inputDisabled={isThinking}
+        showModelPicker={showModelPicker}
+        inputPlaceholder={
+          isThinking ? "Waiting for response..." : "Type a message... (/ for commands)"
+        }
+        isThinking={isThinking}
+      />
+    </Box>
   );
 }
 
@@ -132,11 +108,9 @@ interface AppProps {
 export function App({ children, initialModel, agent }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
-      <StatusLineWrapper>
-        <ChatProvider initialModel={initialModel}>
-          {children ?? <ChatApp agent={agent} />}
-        </ChatProvider>
-      </StatusLineWrapper>
+      <ChatProvider initialModel={initialModel} agent={agent}>
+        {children ?? <ChatApp />}
+      </ChatProvider>
     </StatusLineProvider>
   );
 }

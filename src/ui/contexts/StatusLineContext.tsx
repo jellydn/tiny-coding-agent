@@ -4,8 +4,9 @@ import {
   subscribeToStatusLine,
   type StatusLineState,
 } from "../status-line-manager.js";
+import { StatusType } from "../types/enums.js";
 
-export type StatusLineStatus = "thinking" | "ready" | "error";
+export type StatusLineStatus = StatusType;
 
 interface StatusLineContextValue extends StatusLineState {
   setStatus: (status?: StatusLineStatus) => void;

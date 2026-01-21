@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
+import { TIMING, FORMATTING, STATUS_CONFIG, LAYOUT } from "../config/constants.js";
+import type { StatusType } from "../types/enums.js";
 
 interface StatusLineProps {
-  status?: "thinking" | "ready" | "error";
+  status?: StatusType;
   model?: string;
   tokensUsed?: number;
   tokensMax?: number;
@@ -11,8 +13,8 @@ interface StatusLineProps {
 }
 
 function formatCompactNumber(num: number): string {
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1)}k`;
+  if (num >= FORMATTING.COMPACT_NUMBER_THRESHOLD) {
+    return `${(num / 1000).toFixed(FORMATTING.COMPACT_NUMBER_DECIMALS)}k`;
   }
   return String(num);
 }
@@ -65,7 +67,7 @@ export function StatusLine({
         setElapsed((Date.now() - toolStartTime) / 1000);
       };
       updateElapsed();
-      const interval = setInterval(updateElapsed, 100);
+      const interval = setInterval(updateElapsed, TIMING.TOOL_TIMER_UPDATE);
       return () => {
         clearInterval(interval);
         setElapsed(0);
@@ -78,8 +80,8 @@ export function StatusLine({
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
-    const statusLabel = STATUS_LABELS[status] || status;
-    const statusColor = STATUS_COLORS[status];
+    const statusLabel = STATUS_CONFIG.LABELS[status] || status;
+    const statusColor = STATUS_CONFIG.COLORS[status];
     elements.push(
       <Text key="status" color={statusColor}>
         {statusLabel}
@@ -91,7 +93,7 @@ export function StatusLine({
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
-    const maxModelWidth = Math.max(20, terminalWidth - 35);
+    const maxModelWidth = Math.max(LAYOUT.CONTEXT_MAX_MODEL_WIDTH, terminalWidth - LAYOUT.TERMINAL_WIDTH_BUFFER);
     const truncatedModel = truncateModel(model, maxModelWidth);
     elements.push(
       <Text key="model">
@@ -126,12 +128,14 @@ export function StatusLine({
   }
 
   if (elements.length === 0) {
-    return <Box marginTop={1} />;
+    return (
+      <Box flexDirection="row">
+        <Text color="green">✓ Ready</Text>
+        <Text> | </Text>
+        <Text color="gray">Type a message to start</Text>
+      </Box>
+    );
   }
 
-  return (
-    <Box marginTop={1} flexDirection="row">
-      {elements}
-    </Box>
-  );
+  return <Box flexDirection="row">{elements}</Box>;
 }

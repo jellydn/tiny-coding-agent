@@ -1,16 +1,17 @@
-import React from "react";
-import { Box } from "ink";
+import type React from "react";
+import { Box, Text } from "ink";
 import { Header } from "./Header.js";
 import { MessageList, type ChatMessage } from "./MessageList.js";
-import { ContextStatus } from "./ContextStatus.js";
+import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
-import type { Command } from "./CommandMenu.js";
+import { CommandMenu, type Command } from "./CommandMenu.js";
+import { ModelPicker, DEFAULT_MODELS } from "./ModelPicker.js";
+import { ThinkingIndicator } from "./ThinkingIndicator.js";
+import { useStatusLine } from "../contexts/StatusLineContext.js";
 
 interface ChatLayoutProps {
   messages: ChatMessage[];
   currentModel?: string;
-  tokensUsed?: number;
-  tokensMax?: number;
   inputValue: string;
   onInputChange: (value: string) => void;
   onInputSubmit: (value: string) => void;
@@ -19,13 +20,30 @@ interface ChatLayoutProps {
   inputPlaceholder?: string;
   inputDisabled?: boolean;
   showModelPicker?: boolean;
+  isThinking?: boolean;
+}
+
+function WelcomeMessage(): React.ReactElement {
+  return (
+    <Box flexDirection="column" paddingX={2}>
+      <Text bold color="cyan">
+        {`
+░▀▀█▀▀░░▀░░█▀▀▄░█░░█░░░█▀▀▄░█▀▀▀░█▀▀░█▀▀▄░▀█▀
+░░▒█░░░░█▀░█░▒█░█▄▄█░░▒█▄▄█░█░▀▄░█▀▀░█░▒█░░█░
+░░▒█░░░▀▀▀░▀░░▀░▄▄▄▀░░▒█░▒█░▀▀▀▀░▀▀▀░▀░░▀░░▀░
+
+`}
+      </Text>
+      <Text dimColor>by ITMan.fyi</Text>
+      <Text>Type a message or / for commands</Text>
+      <Text>/model - Switch model /clear - Clear /exit - Exit</Text>
+    </Box>
+  );
 }
 
 export function ChatLayout({
   messages,
   currentModel,
-  tokensUsed,
-  tokensMax,
   inputValue,
   onInputChange,
   onInputSubmit,
@@ -34,30 +52,74 @@ export function ChatLayout({
   inputPlaceholder,
   inputDisabled,
   showModelPicker = false,
+  isThinking = false,
 }: ChatLayoutProps): React.ReactElement {
+  const statusContext = useStatusLine();
+  const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
+  const commandFilter = showCommandMenu ? inputValue.slice(1) : "";
+
+  const handleCommandSelect = (command: Command) => {
+    if (onCommandSelect) {
+      onCommandSelect(command);
+    }
+    onInputChange("");
+  };
+
+  const handleModelSelect = (modelId: string) => {
+    if (onModelSelect) {
+      onModelSelect(modelId);
+    }
+  };
+
   return (
     <Box flexDirection="column" height="100%">
-      <Box marginBottom={0}>
-        <Header model={currentModel} />
+      <Header model={currentModel} />
+
+      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+        {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}
+        {isThinking && messages.length > 0 && (
+          <Box marginTop={1}>
+            <ThinkingIndicator visible={true} />
+          </Box>
+        )}
       </Box>
-      <Box flexDirection="column" flexGrow={1}>
-        <MessageList messages={messages} />
-      </Box>
-      <Box marginTop={1}>
-        <ContextStatus tokensUsed={tokensUsed} tokensMax={tokensMax} />
-      </Box>
-      <Box height={1} marginTop={0}>
-        <TextInput
-          value={inputValue}
-          onChange={onInputChange}
-          onSubmit={onInputSubmit}
-          onCommandSelect={onCommandSelect}
-          onModelSelect={onModelSelect}
-          placeholder={inputPlaceholder}
-          disabled={inputDisabled}
-          showModelPicker={showModelPicker}
-          currentModel={currentModel}
+
+      <Box flexShrink={0} borderStyle="single" borderColor="gray" paddingX={1}>
+        <StatusLine
+          status={statusContext.status}
+          model={statusContext.model}
+          tokensUsed={statusContext.tokensUsed}
+          tokensMax={statusContext.tokensMax}
+          tool={statusContext.tool}
+          toolStartTime={statusContext.toolStartTime}
         />
+      </Box>
+
+      <Box flexShrink={0}>
+        {showCommandMenu && (
+          <CommandMenu
+            filter={commandFilter}
+            onSelect={handleCommandSelect}
+            onClose={() => onInputChange("")}
+          />
+        )}
+        {showModelPicker && (
+          <ModelPicker
+            models={DEFAULT_MODELS}
+            currentModel={currentModel ?? ""}
+            onSelect={handleModelSelect}
+            onClose={() => onModelSelect?.("")}
+          />
+        )}
+        {!showCommandMenu && !showModelPicker && (
+          <TextInput
+            value={inputValue}
+            onChange={onInputChange}
+            onSubmit={onInputSubmit}
+            placeholder={inputPlaceholder}
+            disabled={inputDisabled}
+          />
+        )}
       </Box>
     </Box>
   );

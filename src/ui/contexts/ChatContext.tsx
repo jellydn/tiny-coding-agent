@@ -1,17 +1,45 @@
-import React, { createContext, useContext, useState, type ReactNode } from "react";
-import type { ToolExecution } from "../../core/agent.js";
-
-export type MessageRole = "user" | "assistant";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from "react";
+import type { Agent, ToolExecution } from "../../core/agent.js";
+import { statusLineManager } from "../status-line-manager.js";
+import { StatusType } from "../types/enums.js";
+import { MessageRole, ToolStatus } from "../types/enums.js";
+import { 
+  AgentNotInitializedError, 
+  MessageEmptyError, 
+  StreamError 
+} from "../errors/chat-errors.js";
 
 export interface ChatMessage {
+  id: string;
   role: MessageRole;
   content: string;
-  toolExecutions?: ToolExecution[];
+  toolName?: string;
+  toolStatus?: ToolStatus;
+  toolArgs?: Record<string, unknown>;
+}
+
+function generateMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 interface ChatContextValue {
   messages: ChatMessage[];
-  addMessage: (role: MessageRole, content: string) => void;
+  addMessage: (
+    role: MessageRole,
+    content: string,
+    options?: {
+      toolName?: string;
+      toolStatus?: ToolStatus;
+      toolArgs?: Record<string, unknown>;
+    },
+  ) => void;
   clearMessages: () => void;
   isThinking: boolean;
   setThinking: (thinking: boolean) => void;
@@ -19,6 +47,8 @@ interface ChatContextValue {
   setStreamingText: (text: string | ((prev: string) => string)) => void;
   currentModel: string;
   setCurrentModel: (model: string) => void;
+  sendMessage: (content: string) => Promise<void>;
+  currentToolExecutions: ToolExecution[];
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -34,37 +64,183 @@ export function useChatContext(): ChatContextValue {
 interface ChatProviderProps {
   children: ReactNode;
   initialModel?: string;
+  agent?: Agent;
 }
 
 export function ChatProvider({
   children,
   initialModel = "",
+  agent,
 }: ChatProviderProps): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setThinkingState] = useState(false);
   const [streamingText, setStreamingTextState] = useState("");
   const [currentModel, setCurrentModelState] = useState(initialModel);
+  const [currentToolExecutions, setCurrentToolExecutions] = useState<ToolExecution[]>([]);
+  const seenToolsRef = useRef<Set<string>>(new Set());
 
-  const addMessage = (role: MessageRole, content: string) => {
-    setMessages((prev) => [...prev, { role, content }]);
-  };
+  const addMessage = useCallback(
+    (
+      role: MessageRole,
+      content: string,
+      options?: {
+        toolName?: string;
+        toolStatus?: ToolStatus;
+        toolArgs?: Record<string, unknown>;
+      },
+    ) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: generateMessageId(), role, content, ...options },
+      ]);
+    },
+    [],
+  );
 
-  const clearMessages = () => {
+  const clearMessages = useCallback(() => {
     setMessages([]);
-  };
+  }, []);
 
-  const setThinking = (thinking: boolean) => {
+  const setThinking = useCallback((thinking: boolean) => {
     setThinkingState(thinking);
-  };
+  }, []);
 
-  const setStreamingText = (text: string | ((prev: string) => string)) => {
-    const value = typeof text === "function" ? text(streamingText) : text;
-    setStreamingTextState(value);
-  };
+  const setStreamingText = useCallback((text: string | ((prev: string) => string)) => {
+    setStreamingTextState(text);
+  }, []);
 
-  const setCurrentModel = (model: string) => {
+  const setCurrentModel = useCallback((model: string) => {
     setCurrentModelState(model);
-  };
+  }, []);
+
+  const formatToolCall = useCallback((te: ToolExecution): string => {
+    const argsStr = te.args
+      ? Object.entries(te.args)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => {
+            const str = typeof v === "string" ? v : JSON.stringify(v);
+            return `${k}=${str.length > 40 ? str.slice(0, 40) + "..." : str}`;
+          })
+          .join(" ")
+      : "";
+    return `🔧 ${te.name}${argsStr ? ` ${argsStr}` : ""}`;
+  }, []);
+
+  const formatToolOutput = useCallback((te: ToolExecution): string => {
+    const output = te.error || te.output || "";
+    if (!output) return "";
+    const lines = output.split("\n").slice(0, 10);
+    const prefix = te.error ? "✗" : "✓";
+    return `\n${prefix} ${lines.join("\n  ")}${lines.length < output.split("\n").length ? "\n  ..." : ""}`;
+  }, []);
+
+  const handleChatError = useCallback((err: unknown): void => {
+    let errorMsg: string;
+
+    if (
+      err instanceof AgentNotInitializedError ||
+      err instanceof MessageEmptyError ||
+      err instanceof StreamError
+    ) {
+      errorMsg = err.message;
+    } else {
+      errorMsg = `Unexpected error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    addMessage(MessageRole.ASSISTANT, `Error: ${errorMsg}`);
+    statusLineManager.setStatus(StatusType.ERROR);
+  }, [addMessage]);
+
+  const sendMessage = useCallback(
+    async (content: string) => {
+      try {
+        if (!agent) {
+          throw new AgentNotInitializedError();
+        }
+
+        if (!content.trim()) {
+          throw new MessageEmptyError();
+        }
+
+        addMessage(MessageRole.USER, content);
+        setThinking(true);
+        setStreamingText("");
+        setCurrentToolExecutions([]);
+        seenToolsRef.current.clear();
+        statusLineManager.setStatus(StatusType.THINKING);
+        statusLineManager.setModel(currentModel);
+
+        let accumulatedContent = "";
+
+        try {
+          for await (const chunk of agent.runStream(content, currentModel)) {
+            if (chunk.content) {
+              accumulatedContent += chunk.content;
+              setStreamingText(accumulatedContent);
+            }
+
+            if (chunk.toolExecutions) {
+              setCurrentToolExecutions([...chunk.toolExecutions]);
+
+              for (const te of chunk.toolExecutions) {
+                const toolKey = `${te.name}-${te.status}`;
+
+                if (te.status === ToolStatus.RUNNING) {
+                  statusLineManager.setTool(te.name);
+                  if (!seenToolsRef.current.has(toolKey)) {
+                    seenToolsRef.current.add(toolKey);
+                    accumulatedContent += `\n${formatToolCall(te)}`;
+                    setStreamingText(accumulatedContent);
+                  }
+                } else if (te.status === ToolStatus.COMPLETE || te.status === ToolStatus.ERROR) {
+                  statusLineManager.clearTool();
+                  if (!seenToolsRef.current.has(toolKey)) {
+                    seenToolsRef.current.add(toolKey);
+                    accumulatedContent += formatToolOutput(te);
+                    setStreamingText(accumulatedContent);
+                  }
+                }
+              }
+            }
+
+            if (chunk.contextStats) {
+              statusLineManager.setContext(
+                chunk.contextStats.totalTokens,
+                chunk.contextStats.maxContextTokens,
+              );
+            }
+
+            if (chunk.done) {
+              break;
+            }
+          }
+
+          if (accumulatedContent) {
+            addMessage(MessageRole.ASSISTANT, accumulatedContent);
+          }
+          statusLineManager.setStatus(StatusType.READY);
+        } catch (streamErr) {
+          throw new StreamError(streamErr);
+        }
+      } catch (err) {
+        handleChatError(err);
+      } finally {
+        setThinking(false);
+        setStreamingText("");
+        setCurrentToolExecutions([]);
+      }
+    },
+    [
+      agent,
+      currentModel,
+      addMessage,
+      setThinking,
+      setStreamingText,
+      formatToolCall,
+      formatToolOutput,
+      handleChatError,
+    ],
+  );
 
   return (
     <ChatContext.Provider
@@ -78,6 +254,8 @@ export function ChatProvider({
         setStreamingText,
         currentModel,
         setCurrentModel,
+        sendMessage,
+        currentToolExecutions,
       }}
     >
       {children}
