@@ -12,6 +12,9 @@ export const TRUNCATE_LIMITS = {
 } as const;
 
 // Layout constants
+// CONTEXT_MAX_MODEL_WIDTH: Minimum width reserved for model name display
+// TERMINAL_WIDTH_BUFFER: Buffer for other status line elements (status, context, tool)
+// This ensures model name gets at least 20 chars, but more if terminal is wider
 export const LAYOUT = {
   CONTEXT_MAX_MODEL_WIDTH: 20,
   TERMINAL_WIDTH_BUFFER: 35,

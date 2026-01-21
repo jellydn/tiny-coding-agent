@@ -10,11 +10,7 @@ import type { Agent, ToolExecution } from "../../core/agent.js";
 import { statusLineManager } from "../status-line-manager.js";
 import { StatusType } from "../types/enums.js";
 import { MessageRole, ToolStatus } from "../types/enums.js";
-import { 
-  AgentNotInitializedError, 
-  MessageEmptyError, 
-  StreamError 
-} from "../errors/chat-errors.js";
+import { AgentNotInitializedError, MessageEmptyError, StreamError } from "../errors/chat-errors.js";
 
 export interface ChatMessage {
   id: string;
@@ -89,10 +85,7 @@ export function ChatProvider({
         toolArgs?: Record<string, unknown>;
       },
     ) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: generateMessageId(), role, content, ...options },
-      ]);
+      setMessages((prev) => [...prev, { id: generateMessageId(), role, content, ...options }]);
     },
     [],
   );
@@ -134,22 +127,25 @@ export function ChatProvider({
     return `\n${prefix} ${lines.join("\n  ")}${lines.length < output.split("\n").length ? "\n  ..." : ""}`;
   }, []);
 
-  const handleChatError = useCallback((err: unknown): void => {
-    let errorMsg: string;
+  const handleChatError = useCallback(
+    (err: unknown): void => {
+      let errorMsg: string;
 
-    if (
-      err instanceof AgentNotInitializedError ||
-      err instanceof MessageEmptyError ||
-      err instanceof StreamError
-    ) {
-      errorMsg = err.message;
-    } else {
-      errorMsg = `Unexpected error: ${err instanceof Error ? err.message : String(err)}`;
-    }
+      if (
+        err instanceof AgentNotInitializedError ||
+        err instanceof MessageEmptyError ||
+        err instanceof StreamError
+      ) {
+        errorMsg = err.message;
+      } else {
+        errorMsg = `Unexpected error: ${err instanceof Error ? err.message : String(err)}`;
+      }
 
-    addMessage(MessageRole.ASSISTANT, `Error: ${errorMsg}`);
-    statusLineManager.setStatus(StatusType.ERROR);
-  }, [addMessage]);
+      addMessage(MessageRole.ASSISTANT, `Error: ${errorMsg}`);
+      statusLineManager.setStatus(StatusType.ERROR);
+    },
+    [addMessage],
+  );
 
   const sendMessage = useCallback(
     async (content: string) => {

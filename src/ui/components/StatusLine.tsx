@@ -93,7 +93,10 @@ export function StatusLine({
     if (elements.length > 0) {
       elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
     }
-    const maxModelWidth = Math.max(LAYOUT.CONTEXT_MAX_MODEL_WIDTH, terminalWidth - LAYOUT.TERMINAL_WIDTH_BUFFER);
+    const maxModelWidth = Math.max(
+      LAYOUT.CONTEXT_MAX_MODEL_WIDTH,
+      terminalWidth - LAYOUT.TERMINAL_WIDTH_BUFFER,
+    );
     const truncatedModel = truncateModel(model, maxModelWidth);
     elements.push(
       <Text key="model">

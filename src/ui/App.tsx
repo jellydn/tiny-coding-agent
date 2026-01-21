@@ -22,7 +22,7 @@ export function ChatApp(): React.ReactElement {
     clearMessages,
   } = useChatContext();
 
-  const { handleCommandSelect } = useCommandHandler({
+  const { handleCommandSelect, handleSlashCommand } = useCommandHandler({
     onAddMessage: addMessage,
     onClearMessages: clearMessages,
     onSetShowModelPicker: setShowModelPicker,
@@ -40,28 +40,15 @@ export function ChatApp(): React.ReactElement {
 
       if (trimmed.startsWith("/")) {
         setInputValue("");
-        const commandName = trimmed.split(" ")[0];
-        if (commandName === "/clear") {
-          clearMessages();
-        } else if (commandName === "/exit") {
-          process.exit(0);
-        } else if (commandName === "/help") {
-          process.stdout.write(
-            "Available commands:\n/help - Show this help\n/clear - Clear conversation\n/model - Switch model\n/exit - Exit\n",
-          );
-        } else if (commandName === "/model") {
-          setShowModelPicker(true);
-        }
+        handleSlashCommand(trimmed);
         return;
       }
 
       setInputValue("");
       await sendMessage(trimmed);
     },
-    [isThinking, sendMessage, clearMessages],
+    [isThinking, sendMessage, handleSlashCommand],
   );
-
-  
 
   const handleModelSelect = useCallback(
     (modelId: string) => {
@@ -75,7 +62,14 @@ export function ChatApp(): React.ReactElement {
   );
 
   const displayMessages = isThinking
-    ? [...messages, { role: MessageRole.ASSISTANT, content: streamingText || "..." }]
+    ? [
+        ...messages,
+        {
+          id: `streaming-${Date.now()}`,
+          role: MessageRole.ASSISTANT,
+          content: streamingText || "...",
+        },
+      ]
     : messages;
 
   return (

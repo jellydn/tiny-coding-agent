@@ -16,7 +16,7 @@
       ],
       "priority": 0,
       "passes": true,
-      "notes": "BUG: Currently shows hardcoded 'claude-3-5-sonnet', no provider"
+      "notes": "Fixed: Header uses detectProvider(), App accepts initialModel prop"
     },
     {
       "id": "US-000B",
@@ -33,7 +33,7 @@
       ],
       "priority": 0,
       "passes": true,
-      "notes": "BUG: Input adds to UI state but never calls agent"
+      "notes": "Fixed: ChatContext.sendMessage calls agent.runStream, handles streaming"
     },
     {
       "id": "US-001",

@@ -5,13 +5,13 @@
 
 export enum StatusType {
   THINKING = "thinking",
-  READY = "ready", 
+  READY = "ready",
   ERROR = "error",
 }
 
 export enum MessageRole {
   USER = "user",
-  ASSISTANT = "assistant", 
+  ASSISTANT = "assistant",
   TOOL = "tool",
 }
 

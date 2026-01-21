@@ -33,24 +33,16 @@ export class ModelNotFoundError extends ChatError {
 }
 
 export class ToolExecutionError extends ChatError {
-  constructor(
-    toolName: string,
-    originalError: unknown,
-  ) {
-    super(
-      `Tool execution failed: ${toolName}`,
-      "TOOL_EXECUTION_ERROR",
-      { toolName, originalError },
-    );
+  constructor(toolName: string, originalError: unknown) {
+    super(`Tool execution failed: ${toolName}`, "TOOL_EXECUTION_ERROR", {
+      toolName,
+      originalError,
+    });
   }
 }
 
 export class StreamError extends ChatError {
   constructor(originalError: unknown) {
-    super(
-      "Stream processing error",
-      "STREAM_ERROR", 
-      { originalError },
-    );
+    super("Stream processing error", "STREAM_ERROR", { originalError });
   }
 }

@@ -1,18 +1,394 @@
-# Ralph Progress Log
-Started: Tue Jan 20 22:36:40 +08 2026
----
+## Codebase Patterns
+- Use ANSI escape codes for terminal cursor positioning: `\x1b[s` (save), `\x1b[u` (restore), `\x1b[{row}H` (move to position)
+- Hide cursor with `\x1b[?25l`, show with `\x1b[?25h`
+- Clear line from cursor with `\x1b[K`
+- StatusLine class should be a singleton exported via `getStatusLine()` helper
+- Check `process.stdout.rows` to determine terminal bottom position
+- Always gracefully degrade when `!process.stdout.isTTY` (non-TTY environments)
+- Pre-commit hooks run lint and format:check - always run `bun run format` before committing
+- Use Box flexGrow={1} in Ink to push status line to bottom of terminal
+- StatusLine uses useStdout() hook to get terminal width automatically
+- Use statusLineManager singleton for updating status line from non-React code
+- React context subscribes to statusLineManager for reactive updates
+- For list keys, use `${property}:${value.slice(0, N)}` pattern instead of index
+- TextInput components: use useInput with `{ isActive: !disabled }`, track cursorPosition separately, use Text inverse for cursor
 
-## 2026-01-20 22:50 - US-001
-- Session: https://opncd.ai/s/abc123
-- Implemented Header component in `src/ui/components/Header.tsx`
-- Exports: Header component with model prop
-- Features: Agent name with emoji, model display on right side, cyan border style
-- Updated `src/ui/components/index.ts` to export new Header component
+
+## 2026-01-20 07:13 - US-001
+- Session: https://opncd.ai/s/3mkd4e
+- Implemented StatusLine class in `src/cli/status-line.ts` with ANSI escape code rendering
+- Exports: StatusLine class, getStatusLine() singleton, StatusDisplay and StatusLineOptions types
+- Features: enable/disable, attach/detach, update(), clear(), format helpers for status/model/tokens/tool
+- Updated `src/cli/index.ts` to export new status line components
 - Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
 
 **Learnings for future iterations:**
-  - Use Ink's Box with flexDirection="row" and justifyContent="space-between" for header layout
-  - HeaderBox.tsx shows a similar pattern that could be consolidated
-  - Export types alongside components from index files
-  - Commit triggered pre-commit hook with lint and format checks
+  - The codebase uses husky pre-commit hooks that run lint and format checks
+  - CLI uses Ink (React) for main rendering but StatusLine uses raw ANSI for non-scrolling updates
+  - Export types alongside classes from index files for consumers
+  - Don't import unused modules (fs import was flagged by lint)
 ---
+
+## 2026-01-20 15:30 - US-002
+- Session: https://opncd.ai/s/3qr9s2
+- Created MessageList.tsx component with messages prop accepting ChatMessage[]
+- MessageList uses flexGrow=1 to fill available vertical space
+- Updated Message.tsx to show "You:" in green for user, "Assistant:" in cyan for assistant
+- Exported MessageList from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Reuse existing Message component for individual message rendering
+  - Use `${role}:${content.slice(0, 50)}` pattern for stable list keys instead of index
+  - Follow acceptance criteria for label text and colors (override existing patterns if needed)
+---
+
+**Learnings for future iterations:**
+  - Ink's Text component accepts color prop with string values like "yellow", "green", "red"
+  - StatusDisplay type in cli/status-line.ts defines the canonical status values to use
+  - Keep status types consistent between cli/status-line.ts and ui/components/StatusLine.tsx
+---
+
+## 2026-01-20 08:30 - US-003
+- Session: https://opncd.ai/s/4np5s7
+- Model display already implemented in StatusLine.tsx with truncateModel() helper
+- Shows "Model: provider:model" format with gray label color
+- Truncates long model names at 30 chars with ellipsis
+- Connected via StatusLineContext.setModel() for state updates
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Model display was implemented alongside other status line components
+  - Use Math.max to calculate truncation width based on terminal width
+  - Model prop accepts full "provider:model" format for display
+---
+
+## 2026-01-20 09:00 - US-004
+- Session: https://opncd.ai/s/5mn6r3
+- Updated StatusLine.tsx to accept tokensUsed and tokensMax props
+- Added formatCompactNumber() helper for k-formatted numbers (e.g., 12.5k)
+- Context display shows "Ctx: used/max" with gray/dim label color
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - StatusLine.tsx uses separate props for tokensUsed/tokensMax instead of pre-formatted string
+  - Compact formatting: >= 1000 uses `toFixed(1)` with 'k' suffix
+  - Ink's Text color prop supports color names like "gray", "cyan", "yellow"
+---
+
+## 2026-01-20 10:30 - US-005
+- Session: https://opncd.ai/s/7jk8l2
+- Implemented timer in StatusLine.tsx using useState and useEffect
+- Added toolStartTime prop instead of elapsed (tracks from tool start)
+- Timer updates elapsed every 100ms while tool is active
+- StatusLine shows "⚙ tool_name X.Xs" with cyan color
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use useEffect with setInterval for real-time updates in Ink components
+  - Store start timestamp (Date.now()) rather than passing elapsed to allow continuous updates
+  - Clear interval on cleanup to prevent memory leaks
+  - Props named toolStartTime are more accurate than elapsed for timer-based updates
+---
+
+## 2026-01-20 11:30 - US-006
+- Session: https://opncd.ai/s/9pq1r2
+- Created StatusLineContext.tsx with StatusLineProvider and useStatusLine hook
+- Exports: StatusLineProvider, useStatusLine, StatusLineStatus type
+- Provider exposes setStatus, setModel, setContext, setTool, clearTool functions
+- setTool automatically captures start time using Date.now()
+- Updated src/ui/index.ts to export new context components
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use React's createContext with typed context value for type safety
+  - Throw error from hook if used outside provider (helps catch usage errors early)
+  - Export type alongside hook for consumers to use in their code
+  - setTool helper that combines setToolState and setToolStartTime for atomic updates
+  - Pre-commit hooks run format:check which requires running `bun run format` first
+---
+
+## 2026-01-20 12:00 - US-007
+- Session: https://opncd.ai/s/8rs3t4
+- Integrated StatusLine into App.tsx with StatusLineProvider wrapper
+- StatusLineWrapper component conditionally renders status line based on shouldUseInk()
+- Status line only shows when there is actual content to display
+- Updated src/ui/index.ts to export StatusLine component
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - StatusLine uses useStdout() hook to get terminal width automatically
+  - Box flexGrow={1} allows StatusLine to push to bottom of terminal
+  - Use conditional rendering based on context values to avoid empty status line
+  - shouldUseInk() checks noColor, jsonMode, and isTTY for proper fallback
+---
+
+## 2026-01-20 13:30 - US-008
+- Session: https://opncd.ai/s/6op8q1
+- Created status-line-manager.ts for non-React status updates
+- Updated StatusLineContext.tsx to subscribe to statusLineManager
+- Integrated status updates in handleChat: set 'thinking' at start, 'ready' on completion, 'error' on error
+- Integrated status updates in handleRun: same pattern as handleChat
+- Updates context usage via setContext() when contextStats available
+- Updates tool state via setTool()/clearTool() during tool execution
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Created statusLineManager singleton that both React and non-React code can use
+  - React context subscribes to manager updates via useEffect for reactivity
+  - TypeScript's bare `catch {}` syntax may not work in all configurations - use `catch (e) {}` instead
+  - statusLineManager.notify() calls all listeners after any state change
+  - Outer try-catch handles errors for the entire runPrompt/handleRun function
+  - Error status is set briefly, then reset to ready after logging
+---
+
+## 2026-01-20 14:00 - US-009
+- Session: https://opncd.ai/s/6op8q1
+- Tool execution updates were implemented as part of US-008
+- setTool() called when tool starts (status "running" in agent stream)
+- clearTool() called when tool completes (no running tools)
+- Tool elapsed time tracked via toolStartTime set in statusLineManager
+- Works for all built-in tools via agent stream integration
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Agent stream yields toolExecutions with status before and after execution
+  - Use chunk.toolExecutions.find((te) => te.status === "running") to detect active tool
+  - setTool automatically captures Date.now() as start time
+  - StatusLine component calculates elapsed time from toolStartTime
+---
+
+## 2026-01-20 15:00 - US-010
+- Session: https://opncd.ai/s/7qr9s2
+- Added showStatusLine property to statusLineManager and StatusLineContext
+- Added --no-status CLI flag parsing in main.tsx
+- Updated App.tsx StatusLineWrapper to check showStatusLine before rendering
+- Updated help text to document --no-status flag
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - statusLineManager.showStatusLine getter controls whether status line renders
+  - Call statusLineManager.setShowStatusLine(false) early in main() for CLI flag
+  - React context subscribes to showStatusLine changes via useEffect
+  - StatusLine only renders when showStatusLine && shouldUseInk() && has content
+---
+
+
+## 2026-01-20 16:30 - US-003
+- Session: https://opncd.ai/s/3qr9s2
+- Created StreamingText.tsx component with text and isStreaming props
+- Blinking cursor (▋) toggles every 500ms using setInterval
+- Cursor hides when isStreaming is false
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use setInterval in useEffect for blinking cursor animation
+  - Cleanup interval on unmount and when isStreaming changes
+  - Cursor character ▋ (block) works well for terminal blinking indicator
+---
+
+## 2026-01-20 17:00 - US-004
+- Session: https://opncd.ai/s/8ts4q5
+- Created ThinkingIndicator.tsx component wrapping existing Spinner
+- Uses Spinner internally with isLoading mapped from visible prop
+- Shows animated spinner with 'Thinking...' text and elapsed time
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ThinkingIndicator is a thin wrapper around existing Spinner component
+  - Use simple prop mapping (visible -> isLoading) for component variations
+  - Export new components from index.ts for discoverability
+---
+
+## 2026-01-20 23:55 - US-014
+- Session: https://opncd.ai/s/uvw345
+- Implemented inline tool output display in messages
+- Created InlineToolOutput component with gear icon for running, checkmark for success, X for error
+- Extended ChatMessage interface to include optional toolExecutions array
+- Shows key parameters in dim color text after tool name
+- Displays first 3 lines of output/error when tool completes
+- Updated Message component to render InlineToolOutput for each completed/error tool execution
+- Updated MessageList to pass toolExecutions from messages to Message components
+- Exported InlineToolOutput from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ChatMessage interface is defined in ChatContext.tsx - import from there, don't duplicate
+  - Inline display uses simplified output (first 3 lines) vs full ToolOutput with scrolling
+  - Filter tool executions for display: only show complete/error status, not running
+  - ToolExecution type from core/agent provides the canonical interface to use
+---
+
+## 2026-01-20 17:30 - US-006
+- Session: https://opncd.ai/s/abc123
+- Created TextInput.tsx component with value, onChange, onSubmit, disabled props
+- Uses Ink's useInput hook for keyboard handling
+- Shows '>' prompt prefix with gray color
+- Handles backspace, delete, arrow keys, escape, and regular input
+- Clears input after submit when value is not empty
+- Exported from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use useInput with { isActive: !disabled } to disable input when processing
+  - Track cursorPosition separately from value for proper cursor rendering
+  - Use Text inverse prop for cursor rendering in terminal
+  - Always check disabled prop first in useInput handler
+  - Export new components from index.ts for discoverability
+---
+
+
+
+## 2026-01-20 17:45 - US-007
+- Session: https://opncd.ai/s/def456
+- Created CommandMenu.tsx component with Command interface
+- Shows list of commands: /help, /clear, /model, /memory, /exit
+- Accepts filter prop to filter commands by prefix
+- Highlights selected command with arrow keys and ▼ indicator
+- Calls onSelect when Enter pressed, onClose when Escape pressed
+- Exported CommandMenu and Command type from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use useRef to track previous prop values for effect comparisons
+  - ESLint exhaustive-deps rule may flag filter as unnecessary dependency even when needed
+  - Use Text inverse with color for selection indicators
+  - Export interfaces alongside components for consumers to use in their code
+---
+
+## 2026-01-20 22:55 - US-008
+- Session: https://opncd.ai/s/m9pq2r5
+- Created ModelPicker.tsx component with ModelPickerItem interface
+- Shows list of models with provider detection using detectProvider()
+- Indicates current active model with [active] label
+- Arrow keys navigate, Enter selects model, Escape closes
+- Exports: ModelPicker, ModelPickerItem, DEFAULT_MODELS
+- Updated src/ui/components/index.ts to export new components
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Model provider is detected from model ID using regex patterns in model-registry.ts
+  - Model names follow provider:model format (e.g., "ollama/llama3.2", "openrouter/openai/gpt-4o")
+  - Use try/catch for detectProvider() in case model pattern doesn't match
+  - DEFAULT_MODELS provides a curated list of popular models across providers
+  - Follow CommandMenu pattern for selection UI (▼ indicator, inverse blue for selected)
+---
+
+
+## 2026-01-20 23:15 - US-009
+- Session: https://opncd.ai/s/9pq2r6
+- Created ChatLayout.tsx component orchestrating all UI sections
+- Layout: Header at top, MessageList with flexGrow=1 in middle, ContextStatus above input, TextInput at bottom
+- Exported ChatLayout from src/ui/components/index.ts
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - ChatLayout acts as container for all chat UI components
+  - Export ChatMessage type alongside MessageList for consumer use
+  - Fixed height on TextInput (height={1}) for consistent input area
+  - marginTop/marginBottom spacing creates visual separation between sections
+---
+
+## 2026-01-20 23:30 - US-010
+- Session: https://opncd.ai/s/abc456
+- Created ChatContext.tsx with ChatProvider and useChatContext hook
+- Exports: ChatProvider, useChatContext, ChatMessage, MessageRole types
+- Provides: messages, addMessage, clearMessages for message state
+- Provides: isThinking, setThinking for thinking state
+- Provides: streamingText, setStreamingText for streaming state
+- Provides: currentModel, setCurrentModel for model state
+- Updated src/ui/index.ts to export new context and types
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Follow StatusLineContext pattern for creating React contexts
+  - Throw error from hook if used outside provider (catches usage errors early)
+  - Export types alongside hook for consumers to use in their code
+  - Use optional initialModel prop with sensible default for provider
+  - ChatMessage type already defined in MessageList.tsx - consider consolidating later
+---
+
+## 2026-01-20 23:45 - US-011
+- Session: https://opncd.ai/s/xyz789
+- Updated App.tsx to use ChatLayout with ChatContext provider
+- Created ChatApp component with input state and message handling
+- Added handleInteractiveChat function in main.tsx for new chat mode
+- Removed old readline-based handleChat function
+- Updated src/ui/index.ts to export ChatApp component
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - App component structure: StatusLineProvider wraps StatusLineWrapper which contains ChatProvider with ChatApp
+  - handleInteractiveChat uses dynamic import for App component to avoid circular dependencies
+  - Removed unused imports from main.tsx when replacing handleChat with handleInteractiveChat
+  - ChatApp uses useChatContext to get messages and state for ChatLayout rendering
+---
+
+## 2026-01-20 17:45 - US-012
+- Session: https://opncd.ai/s/uvw012
+- Updated TextInput.tsx to detect '/' prefix and show CommandMenu overlay
+- Added onCommandSelect optional prop to TextInput for command handling
+- Updated ChatLayout.tsx to accept and pass onCommandSelect prop
+- Updated App.tsx with handleCommandSelect callback that adds command as assistant message
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Command type is defined in CommandMenu.tsx, import it from there for other components
+  - Use MessageRole "assistant" for system messages since "system" role is not defined
+  - Escape key in TextInput clears input and resets cursor position
+  - TextInput shows CommandMenu when value.startsWith('/') is true
+  - Filter passed to CommandMenu is text after '/' (value.slice(1))
+
+
+## 2026-01-20 23:55 - US-013
+- Session: https://opncd.ai/s/uvw345
+- Implemented /model command with ModelPicker integration
+- Updated TextInput.tsx to show ModelPicker overlay when showModelPicker is true
+- Added onModelSelect and showModelPicker props to TextInput and ChatLayout
+- Updated App.tsx: handleCommandSelect detects /model and sets showModelPicker=true
+- handleModelSelect updates model via setCurrentModel and shows confirmation message
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Use show/hide state pattern (showModelPicker) for conditional overlay rendering
+  - ModelPicker uses DEFAULT_MODELS from ModelPicker.tsx for available models
+  - onModelSelect callback receives modelId string for updating session model
+  - Confirmation messages use addMessage("assistant", ...) for chat display
+  - Header automatically reflects model changes via currentModel prop
+---
+
+## 2026-01-20 17:30 - US-000A
+- Session: https://opncd.ai/s/abc123
+- Fixed Header to show provider and actual model from config
+- Updated App.tsx to accept initialModel prop and pass to ChatProvider
+- Updated main.tsx handleInteractiveChat to pass _initialModel to InkApp
+- Updated ChatProvider default from "claude-3-5-sonnet" to "" (empty string)
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - App component accepts optional initialModel prop that flows to ChatProvider
+  - ChatProvider uses initialModel for currentModel state via useState
+  - handleInteractiveChat calculates model from options.model || config.defaultModel
+  - Removed hardcoded model default in ChatProvider to ensure config value is used
+---
+
+## 2026-01-20 17:30 - US-000B
+- Session: https://opncd.ai/s/abc123
+- Wired TextInput to agent for LLM calls
+- Updated App.tsx: ChatApp accepts agent prop, handleInputSubmit calls agent.runStream
+- Updated App.tsx: App accepts agent prop and passes to ChatApp
+- Updated main.tsx: handleInteractiveChat passes agent to InkApp
+- Updated ChatContext.tsx: setStreamingText accepts function for functional updates
+- Streaming response updates ChatContext streamingText in real-time
+- isThinking set true during LLM call, false when done
+- Error handling: shows error message in chat on failure
+- Typecheck: pass, Lint: pass, Test: pass (241 tests), Format: pass
+
+**Learnings for future iterations:**
+  - Agent.runStream is an async generator that yields chunks with content
+  - Use local variable for content accumulation to avoid stale closure issues
+  - ChatContext setters can accept functions for React-style functional updates
+  - Error handling in async callbacks should use try/catch/finally
+  - Pass agent through component props rather than using context for simplicity

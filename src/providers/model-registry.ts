@@ -40,7 +40,7 @@ const MODEL_DATABASE: ModelEntry[] = [
   },
   {
     provider: "opencode",
-    patterns: ["^opencode/"],
+    patterns: ["^opencode/", "^big-", "^qwen-"],
     supportsThinking: false,
     supportsTools: true,
   },

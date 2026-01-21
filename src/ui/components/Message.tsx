@@ -8,31 +8,35 @@ interface SyntaxHighlightedProps {
   text: string;
 }
 
-const SyntaxHighlighted = memo(function SyntaxHighlighted({ text }: SyntaxHighlightedProps): React.ReactElement {
+const SyntaxHighlighted = memo(function SyntaxHighlighted({
+  text,
+}: SyntaxHighlightedProps): React.ReactElement {
   const lines = useMemo(() => text.split("\n"), [text]);
 
-  const lineElements = useMemo(() => 
-    lines.map((line, idx) => {
-      let color: string | undefined;
+  const lineElements = useMemo(
+    () =>
+      lines.map((line, idx) => {
+        let color: string | undefined;
 
-      if (line.startsWith("+")) {
-        color = "green";
-      } else if (line.startsWith("-")) {
-        color = "red";
-      } else if (line.startsWith("@@")) {
-        color = "magenta";
-      } else if (line.startsWith("diff --git") || line.startsWith("index ")) {
-        color = "cyan";
-      } else if (line.startsWith("---") || line.startsWith("+++")) {
-        color = "yellow";
-      }
+        if (line.startsWith("+")) {
+          color = "green";
+        } else if (line.startsWith("-")) {
+          color = "red";
+        } else if (line.startsWith("@@")) {
+          color = "magenta";
+        } else if (line.startsWith("diff --git") || line.startsWith("index ")) {
+          color = "cyan";
+        } else if (line.startsWith("---") || line.startsWith("+++")) {
+          color = "yellow";
+        }
 
-      return (
-        <Text key={`${idx}-${line.slice(0, 10)}`} color={color}>
-          {line}
-        </Text>
-      );
-    }), [lines]
+        return (
+          <Text key={`${idx}-${line.slice(0, 10)}`} color={color}>
+            {line}
+          </Text>
+        );
+      }),
+    [lines],
   );
 
   return <Box flexDirection="column">{lineElements}</Box>;
@@ -42,7 +46,9 @@ interface InlineToolOutputProps {
   toolExecution: ToolExecution;
 }
 
-export const InlineToolOutput = memo(function InlineToolOutput({ toolExecution }: InlineToolOutputProps): React.ReactElement {
+export const InlineToolOutput = memo(function InlineToolOutput({
+  toolExecution,
+}: InlineToolOutputProps): React.ReactElement {
   const { name, status, args, output, error } = toolExecution;
   const isComplete = status === ToolStatus.COMPLETE;
   const isError = status === ToolStatus.ERROR;
@@ -50,30 +56,38 @@ export const InlineToolOutput = memo(function InlineToolOutput({ toolExecution }
   const statusIcon = isComplete ? "✓" : isError ? "✗" : "⚙";
   const statusColor = isComplete ? "green" : isError ? "red" : "cyan";
 
-  const argsStr = useMemo(() => 
-    args
-      ? Object.entries(args)
-          .filter(([, v]) => v !== undefined)
-          .map(([, value]) => {
-            const str = typeof value === "string" ? value : JSON.stringify(value);
-            return str.length > TRUNCATE_LIMITS.TOOL_ARGS 
-              ? `${str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS)}...` 
-              : str;
-          })
-          .join(" ")
-      : "", [args]
+  const argsStr = useMemo(
+    () =>
+      args
+        ? Object.entries(args)
+            .filter(([, v]) => v !== undefined)
+            .map(([, value]) => {
+              const str = typeof value === "string" ? value : JSON.stringify(value);
+              return str.length > TRUNCATE_LIMITS.TOOL_ARGS
+                ? `${str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS)}...`
+                : str;
+            })
+            .join(" ")
+        : "",
+    [args],
   );
 
   const displayOutput = isError ? error : output;
 
-  const truncatedOutput = useMemo(() => 
-    displayOutput ? displayOutput.split("\n").slice(0, TRUNCATE_LIMITS.TOOL_OUTPUT_PREVIEW).join("\n") : "", 
-    [displayOutput]
+  const truncatedOutput = useMemo(
+    () =>
+      displayOutput
+        ? displayOutput.split("\n").slice(0, TRUNCATE_LIMITS.TOOL_OUTPUT_PREVIEW).join("\n")
+        : "",
+    [displayOutput],
   );
 
-  const showMoreIndicator = useMemo(() => 
-    displayOutput ? displayOutput.split("\n").length > TRUNCATE_LIMITS.TOOL_OUTPUT_PREVIEW : false,
-    [displayOutput]
+  const showMoreIndicator = useMemo(
+    () =>
+      displayOutput
+        ? displayOutput.split("\n").length > TRUNCATE_LIMITS.TOOL_OUTPUT_PREVIEW
+        : false,
+    [displayOutput],
   );
 
   return (
@@ -117,34 +131,47 @@ export const Message = memo(function Message({
   toolStatus,
   toolArgs,
 }: MessageProps): React.ReactElement {
-  const statusIcon = role === MessageRole.TOOL 
-    ? toolStatus === ToolStatus.COMPLETE ? "✓" : toolStatus === ToolStatus.ERROR ? "✗" : "⚙"
-    : "";
-  
-  const statusColor = role === MessageRole.TOOL
-    ? toolStatus === ToolStatus.COMPLETE ? "green" : toolStatus === ToolStatus.ERROR ? "red" : "cyan"
-    : "";
+  const statusIcon =
+    role === MessageRole.TOOL
+      ? toolStatus === ToolStatus.COMPLETE
+        ? "✓"
+        : toolStatus === ToolStatus.ERROR
+          ? "✗"
+          : "⚙"
+      : "";
 
-  const toolArgsStr = useMemo(() => 
-    toolArgs && Object.keys(toolArgs).length > 0
-      ? Object.entries(toolArgs)
-          .filter(([, v]) => v !== undefined)
-          .map(([, value]) => {
-            const str = typeof value === "string" ? value : JSON.stringify(value);
-            return ` =${str.length > TRUNCATE_LIMITS.TOOL_ARGS ? str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS) + "..." : str}`;
-          })
-          .join("")
-      : "", [toolArgs]
+  const statusColor =
+    role === MessageRole.TOOL
+      ? toolStatus === ToolStatus.COMPLETE
+        ? "green"
+        : toolStatus === ToolStatus.ERROR
+          ? "red"
+          : "cyan"
+      : "";
+
+  const toolArgsStr = useMemo(
+    () =>
+      toolArgs && Object.keys(toolArgs).length > 0
+        ? Object.entries(toolArgs)
+            .filter(([, v]) => v !== undefined)
+            .map(([, value]) => {
+              const str = typeof value === "string" ? value : JSON.stringify(value);
+              return ` =${str.length > TRUNCATE_LIMITS.TOOL_ARGS ? str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS) + "..." : str}`;
+            })
+            .join("")
+        : "",
+    [toolArgs],
   );
 
-  const truncatedContent = useMemo(() => 
-    content ? content.split("\n").slice(0, TRUNCATE_LIMITS.TOOL_OUTPUT_INLINE).join("\n") : "",
-    [content]
+  const truncatedContent = useMemo(
+    () =>
+      content ? content.split("\n").slice(0, TRUNCATE_LIMITS.TOOL_OUTPUT_INLINE).join("\n") : "",
+    [content],
   );
 
-  const showContentMore = useMemo(() => 
-    content ? content.split("\n").length > TRUNCATE_LIMITS.TOOL_OUTPUT_INLINE : false,
-    [content]
+  const showContentMore = useMemo(
+    () => (content ? content.split("\n").length > TRUNCATE_LIMITS.TOOL_OUTPUT_INLINE : false),
+    [content],
   );
 
   if (role === MessageRole.TOOL) {
