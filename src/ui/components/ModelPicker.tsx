@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { detectProvider } from "../../providers/model-registry.js";
+import { getCachedOllamaModels } from "../../providers/ollama-models.js";
 
 export interface ModelPickerItem {
   id: string;
@@ -76,7 +77,7 @@ export function ModelPicker({
         }
 
         return (
-          <Box key={model.id}>
+          <Box key={`${index}-${model.id}`}>
             <Text>
               {isSelected ? (
                 <Text inverse color="blue">
@@ -103,55 +104,92 @@ export function ModelPicker({
   );
 }
 
-export const DEFAULT_MODELS: ModelPickerItem[] = [
-  {
-    id: "claude-sonnet-4-20250514",
-    name: "Claude Sonnet 4",
-    description: "Anthropic's latest balanced model",
-  },
-  {
-    id: "claude-opus-4",
-    name: "Claude Opus 4",
-    description: "Anthropic's most powerful model",
-  },
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    description: "OpenAI's flagship model",
-  },
-  {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    description: "OpenAI's efficient model",
-  },
-  {
-    id: "o1",
-    name: "o1 (reasoning)",
-    description: "OpenAI's reasoning model",
-  },
-  {
-    id: "ollama/llama3.2",
-    name: "Llama 3.2",
-    description: "Meta's open model via Ollama",
-  },
-  {
-    id: "ollama/qwen2.5-coder",
-    name: "Qwen 2.5 Coder",
-    description: "Alibaba's coding model via Ollama",
-  },
-  {
-    id: "openrouter/openai/gpt-4o",
-    name: "GPT-4o (OpenRouter)",
-    description: "OpenAI via OpenRouter",
-  },
-  {
-    id: "openrouter/anthropic/claude-sonnet-4-20250514",
-    name: "Claude Sonnet (OpenRouter)",
-    description: "Anthropic via OpenRouter",
-  },
-  {
-    id: "deepseek/deepseek-chat",
-    name: "DeepSeek Chat",
-    description: "DeepSeek's V3 model via OpenRouter",
-  },
-];
+export interface ProviderModels {
+  openai: ModelPickerItem[];
+  anthropic: ModelPickerItem[];
+  ollama: ModelPickerItem[];
+  ollamaCloud: ModelPickerItem[];
+  openrouter: ModelPickerItem[];
+  opencode: ModelPickerItem[];
+}
+
+const PROVIDER_MODELS: ProviderModels = {
+  anthropic: [
+    {
+      id: "claude-sonnet-4-20250514",
+      name: "Claude Sonnet 4",
+      description: "Anthropic's balanced",
+    },
+    { id: "claude-opus-4", name: "Claude Opus 4", description: "Anthropic's most powerful" },
+  ],
+  openai: [
+    { id: "gpt-4o", name: "GPT-4o", description: "OpenAI's flagship" },
+    { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI's efficient" },
+    { id: "o1", name: "o1 (reasoning)", description: "OpenAI's reasoning" },
+  ],
+  ollama: [
+    { id: "gpt-oss:20b", name: "GPT-OSS 20B", description: "Local coding model" },
+    { id: "qwen3-coder", name: "Qwen3 Coder", description: "Local coding model" },
+  ],
+  ollamaCloud: [
+    { id: "gpt-oss:120b-cloud", name: "GPT-OSS 120B", description: "Cloud model" },
+    { id: "gpt-oss:20b-cloud", name: "GPT-OSS 20B", description: "Cloud model" },
+    { id: "glm-4.6:cloud", name: "GLM 4.6", description: "Cloud model" },
+    { id: "minimax-m2:cloud", name: "MiniMax M2", description: "Cloud model" },
+    { id: "qwen3-coder:480b-cloud", name: "Qwen3 Coder 480B", description: "Cloud model" },
+    { id: "deepseek-v3.1:671b-cloud", name: "DeepSeek V3.1 671B", description: "Cloud model" },
+  ],
+  openrouter: [
+    { id: "openrouter/openai/gpt-4o", name: "GPT-4o (OpenRouter)", description: "OpenAI via OR" },
+    {
+      id: "openrouter/anthropic/claude-sonnet-4-20250514",
+      name: "Claude Sonnet (OpenRouter)",
+      description: "Anthropic via OR",
+    },
+    { id: "deepseek/deepseek-chat", name: "DeepSeek Chat", description: "DeepSeek's V3" },
+  ],
+  opencode: [
+    { id: "opencode/big-pickle", name: "Big Pickle (Free)", description: "OpenCode free" },
+    { id: "opencode/glm-4.7-free", name: "GLM 4.7 (Free)", description: "Zhipu free" },
+    { id: "opencode/minimax-m2.1-free", name: "MiniMax M2.1 (Free)", description: "MiniMax free" },
+    { id: "opencode/claude-sonnet-4", name: "Claude Sonnet 4", description: "Anthropic" },
+    { id: "opencode/claude-opus-4-5", name: "Claude Opus 4.5", description: "Anthropic flagship" },
+    { id: "opencode/gpt-5.2", name: "GPT-5.2", description: "OpenAI latest" },
+    { id: "opencode/gpt-5.2-codex", name: "GPT-5.2 Codex", description: "OpenAI coding" },
+    { id: "opencode/kimi-k2", name: "Kimi K2", description: "Moonshot AI" },
+    { id: "opencode/qwen3-coder", name: "Qwen3 Coder", description: "Alibaba coding" },
+    { id: "opencode/gemini-3-pro", name: "Gemini 3 Pro", description: "Google" },
+  ],
+};
+
+export interface EnabledProviders {
+  openai?: boolean;
+  anthropic?: boolean;
+  ollama?: boolean;
+  ollamaCloud?: boolean;
+  openrouter?: boolean;
+  opencode?: boolean;
+}
+
+export function getModelsForProviders(enabledProviders: EnabledProviders): ModelPickerItem[] {
+  const models: ModelPickerItem[] = [];
+
+  for (const [provider, enabled] of Object.entries(enabledProviders)) {
+    if (enabled) {
+      if (provider === "ollama") {
+        const localModels = getCachedOllamaModels();
+        if (localModels.length > 0) {
+          models.push(...localModels);
+        } else {
+          models.push(...PROVIDER_MODELS.ollama);
+        }
+      } else if (provider in PROVIDER_MODELS) {
+        models.push(...PROVIDER_MODELS[provider as keyof ProviderModels]);
+      }
+    }
+  }
+
+  return models;
+}
+
+export const DEFAULT_MODELS: ModelPickerItem[] = [...PROVIDER_MODELS.ollama];

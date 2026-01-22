@@ -23,6 +23,8 @@ export function ChatApp(): React.ReactElement {
     streamingText,
     sendMessage,
     clearMessages,
+    cancelActiveRequest,
+    enabledProviders,
   } = useChatContext();
 
   const { handleCommandSelect, handleSlashCommand } = useCommandHandler({
@@ -40,7 +42,7 @@ export function ChatApp(): React.ReactElement {
       }
       setCancelCount(0);
       if (isThinking) {
-        setThinking(false);
+        cancelActiveRequest();
         addMessage(MessageRole.ASSISTANT, "\nCancelled. Type a new message or /exit to quit.");
       } else {
         setInputValue("");
@@ -56,7 +58,7 @@ export function ChatApp(): React.ReactElement {
         clearTimeout(cancelTimeoutRef.current);
       }
     };
-  }, [cancelCount, isThinking, setThinking, addMessage]);
+  }, [cancelCount, isThinking, setThinking, addMessage, cancelActiveRequest]);
 
   useInput(
     (input, key) => {
@@ -92,7 +94,16 @@ export function ChatApp(): React.ReactElement {
     (modelId: string) => {
       if (modelId && modelId !== currentModel) {
         setCurrentModel(modelId);
-        addMessage(MessageRole.ASSISTANT, `Model changed to: ${modelId}`);
+        const now = new Date();
+        const timestamp = now.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        addMessage(MessageRole.SEPARATOR, timestamp);
+        const displayName = modelId.replace(/^opencode\//, "");
+        addMessage(MessageRole.ASSISTANT, `Model changed to: ${displayName}`);
       }
       setShowModelPicker(false);
     },
@@ -127,21 +138,37 @@ export function ChatApp(): React.ReactElement {
             ? "Waiting for response... (ESC twice to cancel)"
             : "Type a message... (/ for commands)"
         }
+        enabledProviders={enabledProviders}
       />
     </Box>
   );
+}
+
+interface EnabledProviders {
+  openai?: boolean;
+  anthropic?: boolean;
+  ollama?: boolean;
+  ollamaCloud?: boolean;
+  openrouter?: boolean;
+  opencode?: boolean;
 }
 
 interface AppProps {
   children?: React.ReactNode;
   initialModel?: string;
   agent?: Agent;
+  enabledProviders?: EnabledProviders;
 }
 
-export function App({ children, initialModel, agent }: AppProps): React.ReactElement {
+export function App({
+  children,
+  initialModel,
+  agent,
+  enabledProviders,
+}: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
-      <ChatProvider initialModel={initialModel} agent={agent}>
+      <ChatProvider initialModel={initialModel} agent={agent} enabledProviders={enabledProviders}>
         {children ?? <ChatApp />}
       </ChatProvider>
     </StatusLineProvider>

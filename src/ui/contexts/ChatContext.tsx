@@ -11,6 +11,7 @@ import { statusLineManager } from "../status-line-manager.js";
 import { StatusType } from "../types/enums.js";
 import { MessageRole, ToolStatus } from "../types/enums.js";
 import { AgentNotInitializedError, MessageEmptyError, StreamError } from "../errors/chat-errors.js";
+import type { EnabledProviders } from "../components/ModelPicker.js";
 
 export interface ChatMessage {
   id: string;
@@ -45,6 +46,8 @@ interface ChatContextValue {
   setCurrentModel: (model: string) => void;
   sendMessage: (content: string) => Promise<void>;
   currentToolExecutions: ToolExecution[];
+  cancelActiveRequest: () => void;
+  enabledProviders?: EnabledProviders;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -61,12 +64,14 @@ interface ChatProviderProps {
   children: ReactNode;
   initialModel?: string;
   agent?: Agent;
+  enabledProviders?: EnabledProviders;
 }
 
 export function ChatProvider({
   children,
   initialModel = "",
   agent,
+  enabledProviders,
 }: ChatProviderProps): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setThinkingState] = useState(false);
@@ -74,6 +79,12 @@ export function ChatProvider({
   const [currentModel, setCurrentModelState] = useState(initialModel);
   const [currentToolExecutions, setCurrentToolExecutions] = useState<ToolExecution[]>([]);
   const seenToolsRef = useRef<Set<string>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const cancelActiveRequest = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+  }, []);
 
   const addMessage = useCallback(
     (
@@ -149,6 +160,10 @@ export function ChatProvider({
 
   const sendMessage = useCallback(
     async (content: string) => {
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       try {
         if (!agent) {
           throw new AgentNotInitializedError();
@@ -158,18 +173,32 @@ export function ChatProvider({
           throw new MessageEmptyError();
         }
 
+        const now = new Date();
+        const timestamp = now.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        addMessage(MessageRole.SEPARATOR, timestamp);
         addMessage(MessageRole.USER, content);
         setThinking(true);
         setStreamingText("");
         setCurrentToolExecutions([]);
         seenToolsRef.current.clear();
         statusLineManager.setStatus(StatusType.THINKING);
-        statusLineManager.setModel(currentModel);
+        statusLineManager.setModel(currentModel.replace(/^opencode\//, ""));
 
         let accumulatedContent = "";
 
         try {
-          for await (const chunk of agent.runStream(content, currentModel)) {
+          for await (const chunk of agent.runStream(content, currentModel, undefined, {
+            signal: controller.signal,
+          })) {
+            if (controller.signal.aborted) {
+              break;
+            }
+
             if (chunk.content) {
               accumulatedContent += chunk.content;
               setStreamingText(accumulatedContent);
@@ -216,11 +245,20 @@ export function ChatProvider({
           }
           statusLineManager.setStatus(StatusType.READY);
         } catch (streamErr) {
+          if (streamErr instanceof DOMException && streamErr.name === "AbortError") {
+            return;
+          }
           throw new StreamError(streamErr);
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         handleChatError(err);
       } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
         setThinking(false);
         setStreamingText("");
         setCurrentToolExecutions([]);
@@ -235,6 +273,7 @@ export function ChatProvider({
       formatToolCall,
       formatToolOutput,
       handleChatError,
+      cancelActiveRequest,
     ],
   );
 
@@ -252,6 +291,8 @@ export function ChatProvider({
         setCurrentModel,
         sendMessage,
         currentToolExecutions,
+        cancelActiveRequest,
+        enabledProviders,
       }}
     >
       {children}

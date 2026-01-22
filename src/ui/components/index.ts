@@ -10,5 +10,11 @@ export { ThinkingIndicator } from "./ThinkingIndicator.js";
 export { ContextStatus } from "./ContextStatus.js";
 export { TextInput } from "./TextInput.js";
 export { CommandMenu, type Command } from "./CommandMenu.js";
-export { ModelPicker, type ModelPickerItem, DEFAULT_MODELS } from "./ModelPicker.js";
+export {
+  ModelPicker,
+  type ModelPickerItem,
+  type EnabledProviders,
+  DEFAULT_MODELS,
+  getModelsForProviders,
+} from "./ModelPicker.js";
 export { ChatLayout } from "./ChatLayout.js";

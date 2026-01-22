@@ -33,7 +33,7 @@ export const MessageList = memo(function MessageList({
           toolArgs={msg.toolArgs}
         />
       ))}
-      {lastMessage && (
+      {isStreaming && lastMessage && (
         <Message
           key={lastMessage.id}
           role={lastMessage.role}

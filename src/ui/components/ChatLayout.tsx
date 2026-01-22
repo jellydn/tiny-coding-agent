@@ -5,7 +5,13 @@ import { MessageList, type ChatMessage } from "./MessageList.js";
 import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
 import { CommandMenu, type Command } from "./CommandMenu.js";
-import { ModelPicker, DEFAULT_MODELS } from "./ModelPicker.js";
+import {
+  ModelPicker,
+  DEFAULT_MODELS,
+  getModelsForProviders,
+  type EnabledProviders,
+  type ModelPickerItem,
+} from "./ModelPicker.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
 
 interface ChatLayoutProps {
@@ -19,6 +25,7 @@ interface ChatLayoutProps {
   inputPlaceholder?: string;
   inputDisabled?: boolean;
   showModelPicker?: boolean;
+  enabledProviders?: EnabledProviders;
 }
 
 function WelcomeMessage(): React.ReactElement {
@@ -50,10 +57,15 @@ export function ChatLayout({
   inputPlaceholder,
   inputDisabled,
   showModelPicker = false,
+  enabledProviders,
 }: ChatLayoutProps): React.ReactElement {
   const statusContext = useStatusLine();
   const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
   const commandFilter = showCommandMenu ? inputValue.slice(1) : "";
+
+  const availableModels: ModelPickerItem[] = enabledProviders
+    ? getModelsForProviders(enabledProviders)
+    : DEFAULT_MODELS;
 
   const handleCommandSelect = (command: Command) => {
     if (onCommandSelect) {
@@ -96,7 +108,7 @@ export function ChatLayout({
         )}
         {showModelPicker && (
           <ModelPicker
-            models={DEFAULT_MODELS}
+            models={availableModels}
             currentModel={currentModel ?? ""}
             onSelect={handleModelSelect}
             onClose={() => onModelSelect?.("")}

@@ -198,6 +198,18 @@ export const Message = memo(function Message({
     );
   }
 
+  if (role === MessageRole.SEPARATOR) {
+    return (
+      <Box marginY={1}>
+        <Text color="gray">────────────────────────────── </Text>
+        <Text color="gray" dimColor>
+          {content}
+        </Text>
+        <Text color="gray"> ──────────────────────────────</Text>
+      </Box>
+    );
+  }
+
   const label = role === MessageRole.USER ? "You:" : "Assistant:";
   const color = role === MessageRole.USER ? "green" : "cyan";
 

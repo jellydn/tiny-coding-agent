@@ -402,6 +402,7 @@ async function handleRun(
     trackContextUsage: !options.noTrackContext || config.trackContextUsage,
     agentsMdPath,
     thinking: config.thinking,
+    providerConfigs: config.providers,
   });
 
   const toolCount = toolRegistry.list().length;
@@ -640,11 +641,23 @@ async function handleInteractiveChat(
     trackContextUsage: !options.noTrackContext || config.trackContextUsage,
     agentsMdPath,
     thinking: config.thinking,
+    providerConfigs: config.providers,
   });
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
-  const { waitUntilExit } = renderApp(<InkApp initialModel={initialModel} agent={agent} />);
+  const enabledProviders = {
+    openai: !!config.providers.openai,
+    anthropic: !!config.providers.anthropic,
+    ollama: !!config.providers.ollama,
+    ollamaCloud: !!config.providers.ollamaCloud,
+    openrouter: !!config.providers.openrouter,
+    opencode: !!config.providers.opencode,
+  };
+
+  const { waitUntilExit } = renderApp(
+    <InkApp initialModel={initialModel} agent={agent} enabledProviders={enabledProviders} />,
+  );
 
   await waitUntilExit();
 }

@@ -125,71 +125,122 @@ export class OllamaProvider implements LLMClient {
   }
 
   async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
-    let stream: AsyncIterable<unknown>;
+    const body = {
+      model: options.model,
+      messages: convertMessages(options.messages),
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
+      options: {
+        temperature: options.temperature,
+        num_predict: options.maxTokens,
+      },
+      stream: true,
+    };
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this._apiKey) {
+      headers["Authorization"] = `Bearer ${this._apiKey}`;
+    }
+
+    let response: Response;
     try {
-      stream = await this._client.chat({
-        model: options.model,
-        messages: convertMessages(options.messages),
-        tools: options.tools?.length ? convertTools(options.tools) : undefined,
-        options: {
-          temperature: options.temperature,
-          num_predict: options.maxTokens,
-        },
-        stream: true,
+      response = await fetch(`${this._baseUrl}/api/chat`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: options.signal,
       });
     } catch (err) {
+      if (options.signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       throw new Error(`Ollama API error: ${toErrorMessage(err)}`);
     }
 
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Ollama API error: ${response.status} ${text}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Ollama API error: No response body");
+    }
+
+    const decoder = new TextDecoder();
     const toolCallsBuffer: Map<number, { name: string; arguments: string }> = new Map();
 
     try {
-      for await (const rawChunk of stream) {
-        const chunk = rawChunk as {
-          message?: {
-            tool_calls?: Array<{
-              function?: { name?: string; arguments?: Record<string, unknown> };
-            }>;
-            content?: string;
+      while (true) {
+        if (options.signal?.aborted) {
+          reader.cancel();
+          throw new DOMException("Aborted", "AbortError");
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split("\n").filter((line) => line.trim());
+
+        for (const line of lines) {
+          let chunk: {
+            message?: {
+              tool_calls?: Array<{
+                function?: { name?: string; arguments?: Record<string, unknown> };
+              }>;
+              content?: string;
+            };
+            done?: boolean;
           };
-          done?: boolean;
-        };
-        if (chunk.message?.tool_calls) {
-          for (const tc of chunk.message.tool_calls) {
-            const existing = toolCallsBuffer.get(0) ?? { name: "", arguments: "" };
-            if (tc.function?.name) existing.name = tc.function.name;
-            if (tc.function?.arguments) {
-              existing.arguments += JSON.stringify(tc.function.arguments);
-            }
-            toolCallsBuffer.set(0, existing);
+
+          try {
+            chunk = JSON.parse(line);
+          } catch {
+            continue;
           }
-        }
 
-        if (chunk.message?.content) {
-          yield {
-            content: chunk.message.content,
-            done: false,
-          };
-        }
+          if (chunk.message?.tool_calls) {
+            for (const tc of chunk.message.tool_calls) {
+              const existing = toolCallsBuffer.get(0) ?? { name: "", arguments: "" };
+              if (tc.function?.name) existing.name = tc.function.name;
+              if (tc.function?.arguments) {
+                existing.arguments += JSON.stringify(tc.function.arguments);
+              }
+              toolCallsBuffer.set(0, existing);
+            }
+          }
 
-        if (chunk.done) {
-          const toolCalls: ToolCall[] | undefined =
-            toolCallsBuffer.size > 0
-              ? Array.from(toolCallsBuffer.values()).map((tc) => ({
-                  id: crypto.randomUUID(),
-                  name: tc.name,
-                  arguments: JSON.parse(tc.arguments || "{}"),
-                }))
-              : undefined;
+          if (chunk.message?.content) {
+            yield {
+              content: chunk.message.content,
+              done: false,
+            };
+          }
 
-          yield {
-            toolCalls,
-            done: true,
-          };
-          return;
+          if (chunk.done) {
+            const toolCalls: ToolCall[] | undefined =
+              toolCallsBuffer.size > 0
+                ? Array.from(toolCallsBuffer.values()).map((tc) => ({
+                    id: crypto.randomUUID(),
+                    name: tc.name,
+                    arguments: JSON.parse(tc.arguments || "{}"),
+                  }))
+                : undefined;
+
+            yield {
+              toolCalls,
+              done: true,
+            };
+            return;
+          }
         }
       }
     } catch (err) {
+      if (options.signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       throw new Error(`Ollama stream error: ${toErrorMessage(err)}`);
     }
 

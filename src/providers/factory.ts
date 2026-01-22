@@ -3,6 +3,7 @@ import type { LLMClient } from "./types.js";
 import { OpenAIProvider } from "./openai.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OllamaProvider } from "./ollama.js";
+import { OllamaCloudProvider } from "./ollama-cloud.js";
 import { OpenRouterProvider } from "./openrouter.js";
 import { OpenCodeProvider } from "./opencode.js";
 import { detectProvider, type ProviderType } from "./model-registry.js";
@@ -14,6 +15,7 @@ export interface CreateProviderOptions {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;
     ollama?: ProviderConfig;
+    ollamaCloud?: ProviderConfig;
     openrouter?: ProviderConfig;
     opencode?: ProviderConfig;
   };
@@ -49,6 +51,17 @@ export function createProvider(options: CreateProviderOptions): LLMClient {
       return new OllamaProvider({
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+      });
+    }
+
+    case "ollamaCloud": {
+      const config = providers.ollamaCloud;
+      if (!config?.apiKey) {
+        throw new Error("Ollama Cloud provider requires apiKey in config");
+      }
+      return new OllamaCloudProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
       });
     }
 

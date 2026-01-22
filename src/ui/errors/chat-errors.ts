@@ -43,6 +43,8 @@ export class ToolExecutionError extends ChatError {
 
 export class StreamError extends ChatError {
   constructor(originalError: unknown) {
-    super("Stream processing error", "STREAM_ERROR", { originalError });
+    const originalMessage =
+      originalError instanceof Error ? originalError.message : String(originalError);
+    super(`Stream processing error: ${originalMessage}`, "STREAM_ERROR", { originalError });
   }
 }

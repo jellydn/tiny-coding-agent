@@ -25,20 +25,26 @@ export function useCommandHandler({
       switch (commandName) {
         case "/clear":
           onClearMessages();
+          onAddMessage(MessageRole.ASSISTANT, "Conversation cleared.");
           break;
         case "/exit":
           onExit();
           break;
         case "/help":
-          process.stdout.write(
-            "Available commands:\n/help - Show this help\n/clear - Clear conversation\n/model - Switch model\n/exit - Exit\n",
+          onAddMessage(
+            MessageRole.ASSISTANT,
+            `Available commands:
+  /help   - Show this help
+  /clear  - Clear conversation
+  /model  - Switch model
+  /exit   - Exit`,
           );
           break;
         case "/model":
           onSetShowModelPicker(true);
           break;
         default:
-          onAddMessage(MessageRole.ASSISTANT, `Command ${commandName} not implemented yet`);
+          onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
       }
     },
     [onAddMessage, onClearMessages, onSetShowModelPicker, onExit],

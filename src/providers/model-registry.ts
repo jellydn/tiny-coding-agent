@@ -1,4 +1,4 @@
-export type ProviderType = "openai" | "anthropic" | "ollama" | "openrouter" | "opencode";
+export type ProviderType = "openai" | "anthropic" | "ollama" | "ollamaCloud" | "openrouter" | "opencode";
 
 export interface ModelEntry {
   provider: ProviderType;
@@ -8,6 +8,18 @@ export interface ModelEntry {
 }
 
 const MODEL_DATABASE: ModelEntry[] = [
+  {
+    provider: "ollamaCloud",
+    patterns: ["-cloud$", ":cloud$"],
+    supportsThinking: false,
+    supportsTools: true,
+  },
+  {
+    provider: "ollama",
+    patterns: ["-oss", "^qwen3-coder", "^gpt-oss"],
+    supportsThinking: false,
+    supportsTools: true,
+  },
   {
     provider: "anthropic",
     patterns: ["^claude-3-5", "^claude-4"],
@@ -41,12 +53,6 @@ const MODEL_DATABASE: ModelEntry[] = [
   {
     provider: "opencode",
     patterns: ["^opencode/", "^big-", "^qwen-"],
-    supportsThinking: false,
-    supportsTools: true,
-  },
-  {
-    provider: "ollama",
-    patterns: ["-oss$", "^ollama-cloud/"],
     supportsThinking: false,
     supportsTools: true,
   },

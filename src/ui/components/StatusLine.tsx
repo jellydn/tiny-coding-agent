@@ -23,30 +23,6 @@ function truncateModel(model: string, maxLength: number): string {
   return model.slice(0, maxLength - 3) + "...";
 }
 
-function formatCompactNumber(num: number): string {
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1)}k`;
-  }
-  return String(num);
-}
-
-function truncateModel(model: string, maxLength: number): string {
-  if (model.length <= maxLength) return model;
-  return model.slice(0, maxLength - 3) + "...";
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  thinking: "⏳ Thinking",
-  ready: "✓ Ready",
-  error: "✗ Error",
-};
-
-const STATUS_COLORS: Record<string, string | undefined> = {
-  thinking: "yellow",
-  ready: "green",
-  error: "red",
-};
-
 export function StatusLine({
   status,
   model,

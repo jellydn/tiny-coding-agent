@@ -11,7 +11,29 @@ import {
 } from "./memory.js";
 import { z } from "zod";
 import { loadAgentsMd } from "../config/loader.js";
-import type { ThinkingConfig } from "../config/schema.js";
+import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
+import { createProvider, detectProvider } from "../providers/factory.js";
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+function redactApiKey(key?: string): string {
+  if (!key) return "(not set)";
+  if (key.length <= 8) return "****";
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+export interface ProviderConfigs {
+  openai?: ProviderConfig;
+  anthropic?: ProviderConfig;
+  ollama?: ProviderConfig;
+  ollamaCloud?: ProviderConfig;
+  openrouter?: ProviderConfig;
+  opencode?: ProviderConfig;
+}
 
 export interface AgentOptions {
   maxIterations?: number;
@@ -24,6 +46,7 @@ export interface AgentOptions {
   trackContextUsage?: boolean;
   agentsMdPath?: string;
   thinking?: ThinkingConfig;
+  providerConfigs?: ProviderConfigs;
 }
 
 export interface RuntimeConfig {
@@ -57,7 +80,9 @@ export interface AgentResponse {
 }
 
 export class Agent {
-  private _llmClient: LLMClient;
+  private _defaultLlmClient: LLMClient;
+  private _providerConfigs?: ProviderConfigs;
+  private _providerCache: Map<string, LLMClient> = new Map();
   private _toolRegistry: ToolRegistry;
   private _maxIterations: number;
   private _systemPrompt: string;
@@ -71,7 +96,8 @@ export class Agent {
   private _conversationHistory: Message[] = [];
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
-    this._llmClient = llmClient;
+    this._defaultLlmClient = llmClient;
+    this._providerConfigs = options.providerConfigs;
     this._toolRegistry = toolRegistry;
     this._maxIterations = options.maxIterations ?? 20;
 
@@ -102,6 +128,33 @@ export class Agent {
     }
   }
 
+  private _getLlmClientForModel(model: string): LLMClient {
+    if (!this._providerConfigs) {
+      return this._defaultLlmClient;
+    }
+
+    const providerType = detectProvider(model);
+    const cached = this._providerCache.get(providerType);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const client = createProvider({
+        model,
+        provider: providerType,
+        providers: this._providerConfigs,
+      });
+      this._providerCache.set(providerType, client);
+      return client;
+    } catch (err) {
+      if (this._verbose) {
+        console.error(`[Failed to create provider for ${providerType}: ${err}]`);
+      }
+      return this._defaultLlmClient;
+    }
+  }
+
   startChatSession(): void {
     this._conversationHistory = [];
   }
@@ -115,9 +168,11 @@ export class Agent {
     userPrompt: string,
     model: string,
     runtimeConfig?: RuntimeConfig,
+    options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
+    const llmClient = this._getLlmClientForModel(effectiveModel);
 
     let messages: Message[];
 
@@ -195,11 +250,38 @@ export class Agent {
 
     const tools = this._getToolDefinitions();
 
+    if (this._verbose) {
+      const providerType = detectProvider(effectiveModel);
+      const providerConfig = this._providerConfigs?.[providerType];
+
+      console.log("\n[LLM Request Details]");
+      console.log(`  Provider: ${providerType}`);
+      console.log(`  Model: ${effectiveModel}`);
+      console.log(`  API Key: ${redactApiKey(providerConfig?.apiKey)}`);
+      if (providerConfig?.baseUrl) {
+        console.log(`  Base URL: ${providerConfig.baseUrl}`);
+      }
+      if (effectiveThinking?.enabled) {
+        console.log(
+          `  Thinking: enabled (effort: ${effectiveThinking.effort ?? "medium"}, budget: ${effectiveThinking.budgetTokens ?? "default"})`,
+        );
+      }
+      console.log(`  System Prompt: ${this._systemPrompt.length} chars`);
+      console.log(`  Messages: ${messages.length}`);
+      console.log(`  Tools: ${tools.length}`);
+      if (this._memoryStore) {
+        console.log(`  Memory: ${this._memoryStore.count()} memories stored`);
+      }
+      console.log("");
+    }
+
     let iteration = 0;
     const recentToolCalls: string[] = [];
     let loopDetected = false;
 
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
+      throwIfAborted(options?.signal);
+
       if (!contextStats) {
         contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
       }
@@ -215,7 +297,7 @@ export class Agent {
         }
       }
 
-      const stream = this._llmClient.stream({
+      const stream = llmClient.stream({
         model: effectiveModel,
         messages: [
           {
@@ -226,6 +308,7 @@ export class Agent {
         ],
         tools: tools.length > 0 ? tools : undefined,
         thinking: effectiveThinking,
+        signal: options?.signal,
       });
 
       let fullContent = "";
@@ -302,6 +385,8 @@ export class Agent {
         return;
       }
 
+      throwIfAborted(options?.signal);
+
       yield {
         content: "",
         iterations: iteration + 1,
@@ -342,6 +427,8 @@ export class Agent {
         })),
         contextStats,
       };
+
+      throwIfAborted(options?.signal);
 
       for (const { toolCall, result } of toolExecutionResults) {
         const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
@@ -423,7 +510,7 @@ export class Agent {
         console.log(`\n[Loop detected - requesting final answer from LLM]`);
       }
 
-      const stream = this._llmClient.stream({
+      const stream = llmClient.stream({
         model: effectiveModel,
         messages: [
           {
@@ -434,6 +521,7 @@ export class Agent {
         ],
         tools: undefined,
         thinking: effectiveThinking,
+        signal: options?.signal,
       });
 
       for await (const chunk of stream) {
