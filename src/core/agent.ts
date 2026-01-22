@@ -15,9 +15,7 @@ import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
 import { createProvider, detectProvider } from "../providers/factory.js";
 
 function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 }
 
 function redactApiKey(key?: string): string {
@@ -129,15 +127,11 @@ export class Agent {
   }
 
   private _getLlmClientForModel(model: string): LLMClient {
-    if (!this._providerConfigs) {
-      return this._defaultLlmClient;
-    }
+    if (!this._providerConfigs) return this._defaultLlmClient;
 
     const providerType = detectProvider(model);
     const cached = this._providerCache.get(providerType);
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
     try {
       const client = createProvider({
@@ -148,9 +142,7 @@ export class Agent {
       this._providerCache.set(providerType, client);
       return client;
     } catch (err) {
-      if (this._verbose) {
-        console.error(`[Failed to create provider for ${providerType}: ${err}]`);
-      }
+      if (this._verbose) console.error(`[Failed to create provider for ${providerType}: ${err}]`);
       return this._defaultLlmClient;
     }
   }

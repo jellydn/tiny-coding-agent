@@ -172,6 +172,7 @@ export interface EnabledProviders {
 }
 
 export function getModelsForProviders(enabledProviders: EnabledProviders): ModelPickerItem[] {
+  const seen = new Set<string>();
   const models: ModelPickerItem[] = [];
 
   for (const [provider, enabled] of Object.entries(enabledProviders)) {
@@ -179,12 +180,27 @@ export function getModelsForProviders(enabledProviders: EnabledProviders): Model
       if (provider === "ollama") {
         const localModels = getCachedOllamaModels();
         if (localModels.length > 0) {
-          models.push(...localModels);
+          for (const model of localModels) {
+            if (!seen.has(model.id)) {
+              seen.add(model.id);
+              models.push(model);
+            }
+          }
         } else {
-          models.push(...PROVIDER_MODELS.ollama);
+          for (const model of PROVIDER_MODELS.ollama) {
+            if (!seen.has(model.id)) {
+              seen.add(model.id);
+              models.push(model);
+            }
+          }
         }
       } else if (provider in PROVIDER_MODELS) {
-        models.push(...PROVIDER_MODELS[provider as keyof ProviderModels]);
+        for (const model of PROVIDER_MODELS[provider as keyof ProviderModels]) {
+          if (!seen.has(model.id)) {
+            seen.add(model.id);
+            models.push(model);
+          }
+        }
       }
     }
   }

@@ -103,16 +103,16 @@ export class OpenAIProvider implements LLMClient {
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
+    const requestBody = {
+      model: options.model,
+      messages: convertMessages(options.messages),
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
+      temperature: options.temperature,
+      max_tokens: options.maxTokens,
+      reasoning_effort: options.thinking?.effort,
+    } as Record<string, unknown>;
     const response = await this._client.chat.completions.create(
-      {
-        model: options.model,
-        messages: convertMessages(options.messages),
-        tools: options.tools?.length ? convertTools(options.tools) : undefined,
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        // @ts-ignore - reasoning_effort is supported for o1/o3 models
-        reasoning_effort: options.thinking?.effort,
-      },
+      requestBody as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
       { signal: options.signal },
     );
 
@@ -127,17 +127,17 @@ export class OpenAIProvider implements LLMClient {
   }
 
   async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    const requestBody = {
+      model: options.model,
+      messages: convertMessages(options.messages),
+      tools: options.tools?.length ? convertTools(options.tools) : undefined,
+      temperature: options.temperature,
+      max_tokens: options.maxTokens,
+      stream: true,
+      reasoning_effort: options.thinking?.effort,
+    } as Record<string, unknown>;
     const stream = await this._client.chat.completions.create(
-      {
-        model: options.model,
-        messages: convertMessages(options.messages),
-        tools: options.tools?.length ? convertTools(options.tools) : undefined,
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        stream: true,
-        // @ts-ignore - reasoning_effort is supported for o1/o3 models
-        reasoning_effort: options.thinking?.effort,
-      },
+      requestBody as unknown as OpenAI.Chat.ChatCompletionCreateParamsStreaming,
       { signal: options.signal },
     );
 

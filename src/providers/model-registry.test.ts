@@ -143,10 +143,10 @@ describe("getModelInfo()", () => {
     expect(info?.supportsTools).toBe(true);
   });
 
-  it("should return a copy to prevent mutation", () => {
+  it("should return the same reference for same model", () => {
     const info1 = getModelInfo("gpt-4o");
     const info2 = getModelInfo("gpt-4o");
-    expect(info1).not.toBe(info2); // Different references
+    expect(info1).toBe(info2); // Same reference (MODEL_DATABASE entries are immutable)
     expect(info1).toEqual(info2); // Same values
   });
 });

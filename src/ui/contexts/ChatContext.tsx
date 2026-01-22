@@ -12,6 +12,7 @@ import { StatusType } from "../types/enums.js";
 import { MessageRole, ToolStatus } from "../types/enums.js";
 import { AgentNotInitializedError, MessageEmptyError, StreamError } from "../errors/chat-errors.js";
 import type { EnabledProviders } from "../components/ModelPicker.js";
+import { formatTimestamp } from "../utils.js";
 
 export interface ChatMessage {
   id: string;
@@ -117,13 +118,16 @@ export function ChatProvider({
     setCurrentModelState(model);
   }, []);
 
+  const MAX_ARG_LENGTH = 40;
+  const MAX_OUTPUT_LINES = 10;
+
   const formatToolCall = useCallback((te: ToolExecution): string => {
     const argsStr = te.args
       ? Object.entries(te.args)
           .filter(([, v]) => v !== undefined)
           .map(([k, v]) => {
             const str = typeof v === "string" ? v : JSON.stringify(v);
-            return `${k}=${str.length > 40 ? str.slice(0, 40) + "..." : str}`;
+            return `${k}=${str.length > MAX_ARG_LENGTH ? str.slice(0, MAX_ARG_LENGTH) + "..." : str}`;
           })
           .join(" ")
       : "";
@@ -133,9 +137,10 @@ export function ChatProvider({
   const formatToolOutput = useCallback((te: ToolExecution): string => {
     const output = te.error || te.output || "";
     if (!output) return "";
-    const lines = output.split("\n").slice(0, 10);
+    const allLines = output.split("\n");
+    const lines = allLines.slice(0, MAX_OUTPUT_LINES);
     const prefix = te.error ? "✗" : "✓";
-    return `\n${prefix} ${lines.join("\n  ")}${lines.length < output.split("\n").length ? "\n  ..." : ""}`;
+    return `\n${prefix} ${lines.join("\n  ")}${lines.length < allLines.length ? "\n  ..." : ""}`;
   }, []);
 
   const handleChatError = useCallback(
@@ -155,7 +160,7 @@ export function ChatProvider({
       addMessage(MessageRole.ASSISTANT, `Error: ${errorMsg}`);
       statusLineManager.setStatus(StatusType.ERROR);
     },
-    [addMessage],
+    [addMessage], // statusLineManager is a module-level singleton, no need in deps
   );
 
   const sendMessage = useCallback(
@@ -173,14 +178,7 @@ export function ChatProvider({
           throw new MessageEmptyError();
         }
 
-        const now = new Date();
-        const timestamp = now.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        addMessage(MessageRole.SEPARATOR, timestamp);
+        addMessage(MessageRole.SEPARATOR, formatTimestamp());
         addMessage(MessageRole.USER, content);
         setThinking(true);
         setStreamingText("");
@@ -191,11 +189,14 @@ export function ChatProvider({
 
         let accumulatedContent = "";
 
+        let wasAborted = false;
+
         try {
           for await (const chunk of agent.runStream(content, currentModel, undefined, {
             signal: controller.signal,
           })) {
             if (controller.signal.aborted) {
+              wasAborted = true;
               break;
             }
 
@@ -211,20 +212,27 @@ export function ChatProvider({
                 const toolKey = `${te.name}-${te.status}`;
 
                 if (te.status === ToolStatus.RUNNING) {
-                  statusLineManager.setTool(te.name);
                   if (!seenToolsRef.current.has(toolKey)) {
                     seenToolsRef.current.add(toolKey);
                     accumulatedContent += `\n${formatToolCall(te)}`;
                     setStreamingText(accumulatedContent);
                   }
                 } else if (te.status === ToolStatus.COMPLETE || te.status === ToolStatus.ERROR) {
-                  statusLineManager.clearTool();
                   if (!seenToolsRef.current.has(toolKey)) {
                     seenToolsRef.current.add(toolKey);
                     accumulatedContent += formatToolOutput(te);
                     setStreamingText(accumulatedContent);
                   }
                 }
+              }
+
+              const runningTool = chunk.toolExecutions.find(
+                (te) => te.status === ToolStatus.RUNNING,
+              );
+              if (runningTool) {
+                statusLineManager.setTool(runningTool.name);
+              } else {
+                statusLineManager.clearTool();
               }
             }
 
@@ -239,17 +247,21 @@ export function ChatProvider({
               break;
             }
           }
-
-          if (accumulatedContent) {
-            addMessage(MessageRole.ASSISTANT, accumulatedContent);
-          }
-          statusLineManager.setStatus(StatusType.READY);
         } catch (streamErr) {
           if (streamErr instanceof DOMException && streamErr.name === "AbortError") {
-            return;
+            wasAborted = true;
+          } else {
+            throw new StreamError(streamErr);
           }
-          throw new StreamError(streamErr);
         }
+
+        if (accumulatedContent) {
+          const finalContent = wasAborted
+            ? accumulatedContent + "\n\n*(cancelled)*"
+            : accumulatedContent;
+          addMessage(MessageRole.ASSISTANT, finalContent);
+        }
+        statusLineManager.setStatus(wasAborted ? StatusType.READY : StatusType.READY);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;

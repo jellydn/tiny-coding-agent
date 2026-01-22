@@ -3,10 +3,12 @@ import { Box, render, useInput } from "ink";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
+import type { EnabledProviders } from "./components/ModelPicker.js";
 
 import type { Agent } from "@/core/agent.js";
 import { useCommandHandler } from "./hooks/useCommandHandler.js";
 import { MessageRole } from "./types/enums.js";
+import { formatTimestamp } from "./utils.js";
 
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
@@ -94,14 +96,7 @@ export function ChatApp(): React.ReactElement {
     (modelId: string) => {
       if (modelId && modelId !== currentModel) {
         setCurrentModel(modelId);
-        const now = new Date();
-        const timestamp = now.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        addMessage(MessageRole.SEPARATOR, timestamp);
+        addMessage(MessageRole.SEPARATOR, formatTimestamp());
         const displayName = modelId.replace(/^opencode\//, "");
         addMessage(MessageRole.ASSISTANT, `Model changed to: ${displayName}`);
       }
@@ -142,15 +137,6 @@ export function ChatApp(): React.ReactElement {
       />
     </Box>
   );
-}
-
-interface EnabledProviders {
-  openai?: boolean;
-  anthropic?: boolean;
-  ollama?: boolean;
-  ollamaCloud?: boolean;
-  openrouter?: boolean;
-  opencode?: boolean;
 }
 
 interface AppProps {

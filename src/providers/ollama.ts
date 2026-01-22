@@ -30,16 +30,16 @@ type OllamaTool = {
   };
 };
 
-export function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 type OllamaToolCall = {
   function: {
     name: string;
     arguments: Record<string, unknown>;
   };
 };
+
+export function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 function convertTools(tools: ToolDefinition[]): OllamaTool[] {
   return tools.map((tool) => ({
@@ -152,10 +152,8 @@ export class OllamaProvider implements LLMClient {
         signal: options.signal,
       });
     } catch (err) {
-      if (options.signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      throw new Error(`Ollama API error: ${toErrorMessage(err)}`);
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     if (!response.ok) {
@@ -238,10 +236,8 @@ export class OllamaProvider implements LLMClient {
         }
       }
     } catch (err) {
-      if (options.signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      throw new Error(`Ollama stream error: ${toErrorMessage(err)}`);
+      if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     yield { done: true };

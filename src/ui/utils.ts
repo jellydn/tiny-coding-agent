@@ -32,3 +32,12 @@ export function resetUIContext(): void {
 export function shouldUseInk(): boolean {
   return !currentContext.noColor && !currentContext.jsonMode && isTTY();
 }
+
+export function formatTimestamp(date: Date = new Date()): string {
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

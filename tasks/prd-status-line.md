@@ -150,8 +150,6 @@ Add a persistent status line at the bottom of the terminal that displays real-ti
 
 **Status:** ✅ DONE
 
-**Status:** ✅ DONE
-
 ## Functional Requirements
 
 - FR-1: Status line renders at terminal bottom row, fixed position

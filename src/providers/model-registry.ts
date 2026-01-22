@@ -1,4 +1,10 @@
-export type ProviderType = "openai" | "anthropic" | "ollama" | "ollamaCloud" | "openrouter" | "opencode";
+export type ProviderType =
+  | "openai"
+  | "anthropic"
+  | "ollama"
+  | "ollamaCloud"
+  | "openrouter"
+  | "opencode";
 
 export interface ModelEntry {
   provider: ProviderType;
@@ -67,10 +73,11 @@ const MODEL_DATABASE: ModelEntry[] = [
 const patternCache = new Map<string, RegExp>();
 
 function compilePattern(pattern: string): RegExp {
-  if (!patternCache.has(pattern)) {
-    patternCache.set(pattern, new RegExp(pattern, "i"));
-  }
-  return patternCache.get(pattern)!;
+  const existing = patternCache.get(pattern);
+  if (existing) return existing;
+  const compiled = new RegExp(pattern, "i");
+  patternCache.set(pattern, compiled);
+  return compiled;
 }
 
 export function detectProvider(model: string): ProviderType {
@@ -93,7 +100,7 @@ export function getModelInfo(model: string): ModelEntry | null {
   for (const entry of MODEL_DATABASE) {
     for (const pattern of entry.patterns) {
       if (compilePattern(pattern).test(normalizedModel)) {
-        return { ...entry };
+        return entry;
       }
     }
   }
