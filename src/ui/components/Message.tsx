@@ -4,6 +4,39 @@ import type { ToolExecution } from "../../core/agent.js";
 import { TRUNCATE_LIMITS } from "../config/constants.js";
 import { MessageRole, ToolStatus } from "../types/enums.js";
 
+type ToolStatusLike = ToolStatus | "running" | "complete" | "error";
+
+function getToolStatusIcon(status?: ToolStatusLike): string {
+  switch (status) {
+    case ToolStatus.COMPLETE:
+    case "complete":
+      return "✓";
+    case ToolStatus.ERROR:
+    case "error":
+      return "✗";
+    default:
+      return "⚙";
+  }
+}
+
+function getToolStatusColor(status?: ToolStatusLike): string {
+  switch (status) {
+    case ToolStatus.COMPLETE:
+    case "complete":
+      return "green";
+    case ToolStatus.ERROR:
+    case "error":
+      return "red";
+    default:
+      return "cyan";
+  }
+}
+
+function hasToolMarkers(text: string): boolean {
+  const TOOL_MARKERS = ["🔧", "✓", "✗"];
+  return TOOL_MARKERS.some((marker) => text.includes(marker));
+}
+
 interface SyntaxHighlightedProps {
   text: string;
 }
@@ -53,8 +86,8 @@ export const InlineToolOutput = memo(function InlineToolOutput({
   const isComplete = status === ToolStatus.COMPLETE;
   const isError = status === ToolStatus.ERROR;
 
-  const statusIcon = isComplete ? "✓" : isError ? "✗" : "⚙";
-  const statusColor = isComplete ? "green" : isError ? "red" : "cyan";
+  const statusIcon = getToolStatusIcon(status);
+  const statusColor = getToolStatusColor(status);
 
   const argsStr = useMemo(
     () =>
@@ -131,23 +164,8 @@ export const Message = memo(function Message({
   toolStatus,
   toolArgs,
 }: MessageProps): React.ReactElement {
-  const statusIcon =
-    role === MessageRole.TOOL
-      ? toolStatus === ToolStatus.COMPLETE
-        ? "✓"
-        : toolStatus === ToolStatus.ERROR
-          ? "✗"
-          : "⚙"
-      : "";
-
-  const statusColor =
-    role === MessageRole.TOOL
-      ? toolStatus === ToolStatus.COMPLETE
-        ? "green"
-        : toolStatus === ToolStatus.ERROR
-          ? "red"
-          : "cyan"
-      : "";
+  const statusIcon = role === MessageRole.TOOL ? getToolStatusIcon(toolStatus) : "";
+  const statusColor = role === MessageRole.TOOL ? getToolStatusColor(toolStatus) : "";
 
   const toolArgsStr = useMemo(
     () =>
@@ -156,7 +174,11 @@ export const Message = memo(function Message({
             .filter(([, v]) => v !== undefined)
             .map(([, value]) => {
               const str = typeof value === "string" ? value : JSON.stringify(value);
-              return ` =${str.length > TRUNCATE_LIMITS.TOOL_ARGS ? str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS) + "..." : str}`;
+              const truncated =
+                str.length > TRUNCATE_LIMITS.TOOL_ARGS
+                  ? str.slice(0, TRUNCATE_LIMITS.TOOL_ARGS) + "..."
+                  : str;
+              return ` =${truncated}`;
             })
             .join("")
         : "",
@@ -213,12 +235,20 @@ export const Message = memo(function Message({
   const label = role === MessageRole.USER ? "You:" : "Assistant:";
   const color = role === MessageRole.USER ? "green" : "cyan";
 
+  const hasToolOutput = role === MessageRole.ASSISTANT && hasToolMarkers(content);
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginBottom={1}>
       <Text color={color} bold>
         {label}
       </Text>
-      <Text wrap="wrap">{content || "(no content)"}</Text>
+      <Box marginTop={1}>
+        {hasToolOutput ? (
+          <SyntaxHighlighted text={content || "(no content)"} />
+        ) : (
+          <Text wrap="wrap">{content || "(no content)"}</Text>
+        )}
+      </Box>
     </Box>
   );
 });

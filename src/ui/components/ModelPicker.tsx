@@ -3,6 +3,14 @@ import { Box, Text, useInput } from "ink";
 import { detectProvider } from "../../providers/model-registry.js";
 import { getCachedOllamaModels } from "../../providers/ollama-models.js";
 
+function getProviderSafely(model: string): string {
+  try {
+    return detectProvider(model);
+  } catch {
+    return "unknown";
+  }
+}
+
 export interface ModelPickerItem {
   id: string;
   name: string;
@@ -24,23 +32,21 @@ export function ModelPicker({
 }: ModelPickerProps): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const filteredModels = models;
-
   useEffect(() => {
-    const currentIndex = filteredModels.findIndex((m) => m.id === currentModel);
+    const currentIndex = models.findIndex((m) => m.id === currentModel);
     if (currentIndex >= 0) {
       setSelectedIndex(currentIndex);
     }
-  }, [currentModel, filteredModels]);
+  }, [currentModel, models]);
 
   useInput(
     (input, key) => {
       if (key.downArrow) {
-        setSelectedIndex((prev) => Math.min(prev + 1, filteredModels.length - 1));
+        setSelectedIndex((prev) => Math.min(prev + 1, models.length - 1));
       } else if (key.upArrow) {
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
       } else if (key.return) {
-        const selectedModel = filteredModels[selectedIndex];
+        const selectedModel = models[selectedIndex];
         if (selectedModel) {
           onSelect(selectedModel.id);
         }
@@ -51,7 +57,7 @@ export function ModelPicker({
     { isActive: true },
   );
 
-  if (filteredModels.length === 0) {
+  if (models.length === 0) {
     return (
       <Box borderStyle="round" borderColor="gray" paddingX={1} paddingY={1}>
         <Text color="gray">No models available</Text>
@@ -66,27 +72,15 @@ export function ModelPicker({
           Select Model
         </Text>
       </Box>
-      {filteredModels.map((model, index) => {
+      {models.map((model, index) => {
         const isSelected = index === selectedIndex;
         const isActive = model.id === currentModel;
-        let provider: string;
-        try {
-          provider = detectProvider(model.id);
-        } catch {
-          provider = "unknown";
-        }
+        const provider = getProviderSafely(model.id);
 
         return (
           <Box key={`${index}-${model.id}`}>
-            <Text>
-              {isSelected ? (
-                <Text inverse color="blue">
-                  {" "}
-                  ▼{" "}
-                </Text>
-              ) : (
-                <Text> </Text>
-              )}
+            <Text inverse={isSelected} color={isSelected ? "blue" : undefined}>
+              {isSelected ? " ▼ " : "   "}
             </Text>
             <Text bold color={isSelected ? "blue" : undefined}>
               {model.name}
@@ -175,32 +169,25 @@ export function getModelsForProviders(enabledProviders: EnabledProviders): Model
   const seen = new Set<string>();
   const models: ModelPickerItem[] = [];
 
+  function addModel(model: ModelPickerItem): void {
+    if (!seen.has(model.id)) {
+      seen.add(model.id);
+      models.push(model);
+    }
+  }
+
   for (const [provider, enabled] of Object.entries(enabledProviders)) {
-    if (enabled) {
-      if (provider === "ollama") {
-        const localModels = getCachedOllamaModels();
-        if (localModels.length > 0) {
-          for (const model of localModels) {
-            if (!seen.has(model.id)) {
-              seen.add(model.id);
-              models.push(model);
-            }
-          }
-        } else {
-          for (const model of PROVIDER_MODELS.ollama) {
-            if (!seen.has(model.id)) {
-              seen.add(model.id);
-              models.push(model);
-            }
-          }
-        }
-      } else if (provider in PROVIDER_MODELS) {
-        for (const model of PROVIDER_MODELS[provider as keyof ProviderModels]) {
-          if (!seen.has(model.id)) {
-            seen.add(model.id);
-            models.push(model);
-          }
-        }
+    if (!enabled) continue;
+
+    if (provider === "ollama") {
+      const localModels = getCachedOllamaModels();
+      const modelsToAdd = localModels.length > 0 ? localModels : PROVIDER_MODELS.ollama;
+      for (const model of modelsToAdd) {
+        addModel(model);
+      }
+    } else if (provider in PROVIDER_MODELS) {
+      for (const model of PROVIDER_MODELS[provider as keyof ProviderModels]) {
+        addModel(model);
       }
     }
   }
