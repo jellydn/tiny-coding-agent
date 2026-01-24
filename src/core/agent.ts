@@ -124,14 +124,12 @@ export class Agent {
       }
     }
 
-    if (options.skillDirectories && options.skillDirectories.length > 0) {
-      this._skillsInitPromise = this._initializeSkills(
-        options.skillDirectories,
-        getBuiltinSkillsDir(),
-        effectiveSystemPrompt,
-        options.verbose,
-      );
-    }
+    this._skillsInitPromise = this._initializeSkills(
+      options.skillDirectories ?? [],
+      getBuiltinSkillsDir(),
+      effectiveSystemPrompt,
+      options.verbose,
+    );
 
     this._systemPrompt = effectiveSystemPrompt;
     this._verbose = options.verbose ?? false;

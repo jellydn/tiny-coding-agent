@@ -226,7 +226,7 @@
       ],
       "priority": 14,
       "passes": true,
-      "notes": ""
+      "notes": "Fixed: Always initialize skills (including built-ins) regardless of user skillDirectories config"
     },
     {
       "id": "US-015",

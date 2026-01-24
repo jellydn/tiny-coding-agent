@@ -1,243 +1,61 @@
-# Ralph Progress Log
-Started: Sat Jan 24 10:54:47 +08 2026
+## Sat Jan 25 2026 - US-015
+[Session: https://opncd.ai/s/ralph-session-004]
+- Added /skill chat command for skill invocation
+- Updated CommandMenu.tsx to support dynamic skill name completion
+- Added skillItems prop to CommandMenu and ChatLayout for skill autocomplete
+- Updated useCommandHandler.ts to handle /skill commands with agent access
+- Added agent to ChatContext for access in UI components
+- Files changed: src/ui/App.tsx, src/ui/components/ChatLayout.tsx, src/ui/components/CommandMenu.tsx, src/ui/contexts/ChatContext.tsx, src/ui/hooks/useCommandHandler.ts, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - React hooks cannot be unit tested directly - need to test through integration or use @testing-library/react
+  - Adding new context values requires updating both the interface and the provider value
+  - Dynamic command filtering in CommandMenu requires handling both static commands and dynamic items
+  - Tab completion for skill names works by filtering skills when filter starts with "skill "
 ---
 
-## Sat Jan 24 2026 - US-001
-- Session: https://opncd.ai/s/Demo
-- Implemented skills types and directory structure
-- Created src/skills/types.ts with SkillMetadata, SkillFrontmatter, Skill interfaces
-- Created src/skills/index.ts exporting all types
-- Files changed:
-  - src/skills/types.ts (new)
-  - src/skills/index.ts (new)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - TypeScript interfaces use PascalCase naming convention
-  - Exports should be re-exported from index.ts using type modifier for clarity
-  - Always run typecheck and lint before committing
-  - This codebase uses .js extension in imports even for TypeScript files
----
+## Codebase Patterns
+- Skills complement AGENTS.md - both can be active simultaneously
+- Skill metadata parsing is lightweight for fast startup (only frontmatter parsed during discovery)
+- Skills are filesystem-based with SKILL.md files in directories
+- The yaml package is used for frontmatter parsing (already in dependencies)
 
-## Sat Jan 24 2026 - US-002
-- Session: https://opncd.ai/s/Demo
-- Implemented SKILL.md frontmatter parser
-- Created src/skills/parser.ts with parseSkillFrontmatter function
-- Created src/skills/parser.test.ts with 18 comprehensive tests
-- Updated src/skills/index.ts to export parser functions
-- Files changed:
-  - src/skills/parser.ts (new)
-  - src/skills/parser.test.ts (new)
-  - src/skills/index.ts (updated exports)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use `!("field" in parsed)` to check if field exists before checking its value
-  - Empty strings are falsy in JavaScript, so `!parsed.field` catches both undefined and ""
-  - The yaml package is available in this project for parsing YAML content
-  - Body content after --- may have leading newline that needs trimming
-  - Always run format (oxfmt) before committing as it's enforced by husky pre-commit
----
-
-## Sat Jan 24 2026 - US-003
-- Session: https://opncd.ai/s/Demo
-- Implemented skill discovery from directories
-- Created src/skills/loader.ts with discoverSkills(directories) function
-- Created src/skills/loader.test.ts with 10 comprehensive tests
-- Updated src/skills/index.ts to export discoverSkills function
-- Files changed:
-  - src/skills/loader.ts (new)
-  - src/skills/loader.test.ts (new)
-  - src/skills/index.ts (updated exports)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use `path.resolve()` to handle relative paths safely
-  - Use `fs.promises.readdir()` with `withFileTypes: true` for efficient directory traversal
-  - Recursive directory scanning needs to pass array by reference to accumulate results
-  - Use non-null assertion `!` when accessing array elements after length check
-  - Graceful error handling: use try-catch and continue rather than throw for expected failures
----
-
-## Sat Jan 24 2026 - US-004
-- Session: https://opncd.ai/s/Demo
-- Implemented generateSkillsPrompt function for XML output
-- Created src/skills/prompt.ts with generateSkillsPrompt(skills) function
-- Created src/skills/prompt.test.ts with 5 comprehensive tests
-- Updated src/skills/index.ts to export generateSkillsPrompt function
-- Files changed:
-  - src/skills/prompt.ts (new)
-  - src/skills/prompt.test.ts (new)
-  - src/skills/index.ts (updated exports)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - XML string construction can use template literals directly for simple cases
-  - When generating XML, no special escaping needed for basic skill metadata
----
-
-## Sat Jan 24 2026 - US-005
-- Session: https://opncd.ai/s/Demo
-- Implemented skill activation tool
-- Created src/tools/skill-tool.ts with createSkillTool factory function
-- Created src/tools/skill-tool.test.ts with 6 comprehensive tests
-- Updated src/tools/index.ts to export createSkillTool
-- Files changed:
-  - src/tools/skill-tool.ts (new)
-  - src/tools/skill-tool.test.ts (new)
-  - src/tools/index.ts (updated exports)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use factory function pattern to inject skillRegistry into tool via closure
-  - Wrap skill content in XML tags with name and base_dir attributes for context
-  - Include available skills list in error messages for better developer experience
-  - Error messages should include helpful context (like available skills) when appropriate
-
-
-## Sat Jan 24 2026 - US-006
-- Session: https://opncd.ai/s/Demo
-- Implemented skills configuration to config schema
-- Added skillDirectories?: string[] to Config interface
-- Added validation for optional array of strings in validateConfig
-- Added default directories ['~/.tiny-agent/skills/', './.skills/'] in getDefaultConfig
-- Added ~ to homedir() expansion in loadConfig for skillDirectories
-- Files changed:
-  - src/config/schema.ts (added skillDirectories property and validation)
-  - src/config/loader.ts (added default directories and ~ expansion)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use Array.isArray() to validate array types in config validation
-  - When expanding ~ to homedir, use path.join(homedir(), dir.slice(2)) for paths starting with ~/
-  - Run format (oxfmt) before committing as it's enforced by husky pre-commit
----
-
-## Sat Jan 24 2026 - US-007
-- Session: https://opncd.ai/s/Demo
-- Implemented skills integration into Agent class
-- Added skillDirectories option to AgentOptions interface
-- Added _skills Map and _skillsInitialized flag as private fields
-- Added _initializeSkills private async method for lazy skill loading
-- Modified constructor to trigger skills discovery via _skillsInitPromise
-- Updated runStream to await skills initialization before processing
-- Added getSkillRegistry() public method for skill tool access
-- Files changed:
-  - src/core/agent.ts (added skills support)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Constructors cannot be async in TypeScript; use lazy initialization with promises
-  - Use a private promise field to track async initialization without blocking constructor
-  - Await the initialization promise at the start of runStream or other entry points
-  - The _skills Map provides the registry for skill tool access via getSkillRegistry()
-
-## Sat Jan 24 2026 - US-008
-- Session: https://opncd.ai/s/Demo
-- Implemented skill tool registration and CLI wiring
-- Added createSkillTool import to main.tsx
-- Updated handleRun to pass config.skillDirectories to Agent constructor
-- Updated handleRun to create and register skill tool with agent's skill registry
-- Updated handleInteractiveChat with same changes
-- Files changed:
-  - src/cli/main.tsx (added skill tool registration)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Skill tool needs agent's skill registry, so must be created after agent instantiation
-  - Pattern: create agent first, then get registry, create tool, register tool
-  - Both handleRun and handleInteractiveChat need the same skill tool registration pattern
-
-## Sat Jan 24 2026 - US-009
-- Session: https://opncd.ai/s/Demo
-- Implemented skill list CLI command
-- Added handleSkill function to main.tsx
-- Updated main() to handle 'skill' command
-- Updated help text to include skill commands
-- Added dynamic import of discoverSkills in handleSkill
-- Files changed:
-  - src/cli/main.tsx (added skill command handling)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use dynamic imports for modules that may not be needed in all execution paths
-  - Follow the same pattern as handleMemory for consistency
-  - Truncate description to 60 chars for list view
-
-## Sat Jan 24 2026 - US-010
-- Session: https://opncd.ai/s/Demo
-- Implemented skill show CLI command
-- Added 'show' subcommand handling in handleSkill function
-- Supports --json flag for JSON output with name, description, body fields
-- Shows error if skill not found with list of available skills
-- Reads and displays full SKILL.md content
-- Files changed:
-  - src/cli/main.tsx (added skill show command)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use dynamic imports for fs module when only needed for specific subcommands
-  - Provide helpful error messages with available options when skill not found
-  - JSON output format should match acceptance criteria exactly
-
-## Sat Jan 24 2026 - US-011
-- Session: https://opncd.ai/s/Demo
-- Implemented skill init CLI command
-- Added 'init' subcommand handling in handleSkill function
-- Creates ~/.tiny-agent/skills/<name>/SKILL.md with template
-- Validates skill name format (lowercase alphanumeric with hyphens)
-- Shows error if skill directory already exists
-- Shows success message with path and usage instructions
-- Files changed:
-  - src/cli/main.tsx (added skill init command)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - Use dynamic imports for node:os and node:fs modules when only needed for specific subcommands
-  - Validate skill name format to match the parser's validation rules
-  - Provide helpful success messages with next steps for user guidance
----
-
-## Sat Jan 24 2026 - US-012
-- Session: https://opncd.ai/s/Demo
-- Implemented allowed-tools restriction enforcement
-- Added parseAllowedTools helper to parser.ts for handling space-delimited string
-- Added _activeSkillAllowedTools field and _setSkillRestriction/_clearSkillRestriction methods to Agent
-- Modified _getToolDefinitions to filter tools based on active restriction
-- Updated createSkillTool to accept callback that sets skill restriction when skill is loaded
-- Updated main.tsx to pass callback to createSkillTool in both handleRun and handleInteractiveChat
-- Created src/tools/skill-tool-allowed-tools.test.ts with 6 comprehensive tests
-- Files changed:
-  - src/skills/parser.ts (added parseAllowedTools helper)
-  - src/core/agent.ts (added skill restriction fields and methods)
-  - src/tools/skill-tool.ts (added callback parameter for restriction)
-  - src/cli/main.tsx (pass callback to createSkillTool)
-  - src/tools/skill-tool-allowed-tools.test.ts (new)
-  - scripts/ralph/prd.json (updated passes: true)
-- **Learnings for future iterations:**
-  - YAML keys in frontmatter use camelCase (e.g., allowedTools) not hyphenated names
-  - Callback pattern works well for setting agent state from tool execution
-  - Tool filtering should happen at the _getToolDefinitions level for consistency
-  - Restriction is cleared at the start of each runStream for new message context
-  - Test skills need to use valid YAML key names that match the expected type interface
-
-
-## Sat Jan 24 2026 - US-008 (CLI Enhancement)
-- Session: https://opncd.ai/s/ralph-session-001
-- Implemented --skills-dir CLI option for adding custom skill directories
-- Added skillsDir?: string[] to CliOptions interface
-- Added parsing logic for --skills-dir flag (supports multiple uses)
-- Updated handleRun and handleInteractiveChat to merge CLI dirs with config dirs
+## [Date/Time] - US-007
+[Session: https://opncd.ai/s/ralph-session-001]
+- Implemented `--skills-dir` CLI option to add custom skill directories
+- Added `skillsDir?: string[]` to CliOptions interface
+- Updated argument parsing to handle multiple `--skills-dir` flags
+- Merged CLI-provided directories with config directories (CLI dirs appended after config dirs)
 - Added help text for the new option
-- Files changed:
-  - src/cli/main.tsx (added --skills-dir option)
+- Files changed: src/cli/main.tsx
 - **Learnings for future iterations:**
-  - When adding CLI options, need to update: interface, parseArgs(), help text, AND all Agent instantiation sites
+  - When adding CLI options, need to update: interface, parseArgs(), help text, AND any functions that use the config
   - TypeScript strict mode requires null checks even after length checks
-  - Merging pattern: options.x ? [...(config.x || []), ...options.x] : config.x
-  - Both handleRun and handleInteractiveChat need identical skill directory handling
+  - The pattern of merging CLI and config values works well: `options.x ? [...(config.x || []), ...options.x] : config.x`
+  - There are two places where Agent is instantiated: handleRun and handleInteractiveChat - both need to be updated
+---
+## Sat Jan 25 2025 - US-012
+[Session: https://opncd.ai/s/ralph-session-002]
+- Added unit tests for allowed-tools frontmatter parsing in skill-tool.test.ts
+- Added unit tests for agent tool filtering with skill restrictions in agent.test.ts
+- Fixed parser to handle hyphenated YAML keys (allowed-tools vs allowedTools)
+- Files changed: src/skills/parser.ts, src/tools/skill-tool.test.ts, src/core/agent.test.ts, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - YAML keys with hyphens (e.g., `allowed-tools`) are parsed literally - need to handle both hyphenated and camelCase versions
+  - TypeScript `ReturnType<typeof import(...)>` pattern is useful for testing private methods with complex return types
+  - Agent's `_getToolDefinitions()` method already handles tool filtering based on `_activeSkillAllowedTools`
+  - The skill tool's `onSkillLoaded` callback pattern integrates well with the agent's restriction system
 ---
 
-## [Date/Time] - US-013
+## Sat Jan 24 2026 - US-014
 [Session: https://opncd.ai/s/ralph-session-003]
-- Created built-in code-simplifier skill at src/skills/builtin/code-simplifier/SKILL.md
-- Skill includes YAML frontmatter with name, description, and empty allowed-tools
-- Body contains comprehensive guidelines for code simplification
-- Topics covered: preserving functionality, project standards, guard clauses, early returns, descriptive naming
-- Special guidance on avoiding over-simplification and nested ternaries
-- Files changed: src/skills/builtin/code-simplifier/SKILL.md
+- Added isBuiltin field to SkillMetadata type
+- Updated discoverSkills to accept builtinDir parameter and mark skills as builtin
+- Added getBuiltinSkillsDir function using import.meta.url to resolve built-in path
+- Updated Agent class to pass builtin directory to discoverSkills
+- Updated CLI skill list to show [builtin] indicator
+- Added unit tests for builtin skills discovery with deduplication
+- Files changed: src/skills/types.ts, src/skills/loader.ts, src/skills/index.ts, src/skills/loader.test.ts, src/core/agent.ts, src/cli/main.tsx, scripts/ralph/prd.json
 - **Learnings for future iterations:**
-  - Skills follow SKILL.md format with YAML frontmatter and markdown body
-  - Built-in skills live in src/skills/builtin/<skill-name>/ directory
-  - Skill body uses markdown with headers for organization
-  - No TypeScript changes needed for adding new built-in skills
----
+  - When builtin directory is nested inside user directories, skills get discovered twice - use deduplication by path
+  - TypeScript import.meta.url requires fileURLToPath and __dirname pattern for ESM
+  - Tests with overlapping directory structures need careful isolation
