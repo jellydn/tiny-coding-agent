@@ -48,6 +48,7 @@ interface CliOptions {
   allowAll?: boolean;
   noColor?: boolean;
   json?: boolean;
+  skillsDir?: string[];
 }
 
 class ThinkingTagFilter {
@@ -243,6 +244,15 @@ function parseArgs(): {
       options.noColor = true;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--skills-dir" && i + 1 < args.length) {
+      const dirValue = args[i + 1];
+      if (dirValue) {
+        if (!options.skillsDir) {
+          options.skillsDir = [];
+        }
+        options.skillsDir.push(dirValue);
+      }
+      i++;
     } else if (arg && !arg.startsWith("-")) {
       positionalArgs.push(arg);
     }
@@ -397,6 +407,10 @@ async function handleRun(
     options.agentsMd ??
     (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
 
+  const skillDirectories = options.skillsDir
+    ? [...(config.skillDirectories || []), ...options.skillsDir]
+    : config.skillDirectories;
+
   const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
     systemPrompt: config.systemPrompt,
@@ -410,7 +424,7 @@ async function handleRun(
     agentsMdPath,
     thinking: config.thinking,
     providerConfigs: config.providers,
-    skillDirectories: config.skillDirectories,
+    skillDirectories,
   });
 
   const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
@@ -642,6 +656,10 @@ async function handleInteractiveChat(
     options.agentsMd ??
     (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
 
+  const skillDirectories = options.skillsDir
+    ? [...(config.skillDirectories || []), ...options.skillsDir]
+    : config.skillDirectories;
+
   const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
     systemPrompt: config.systemPrompt,
@@ -655,7 +673,7 @@ async function handleInteractiveChat(
     agentsMdPath,
     thinking: config.thinking,
     providerConfigs: config.providers,
-    skillDirectories: config.skillDirectories,
+    skillDirectories,
   });
 
   const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
@@ -725,6 +743,7 @@ OPTIONS:
     --no-track-context                 Disable context tracking (enabled by default)
     --no-status                        Disable status line
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
+    --skills-dir <path>                Add a skill directory (can be used multiple times)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
     --help, -h                         Show this help message

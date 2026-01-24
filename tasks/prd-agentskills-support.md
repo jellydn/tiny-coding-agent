@@ -101,11 +101,13 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 
 **Acceptance Criteria:**
 
-- [ ] Add `skillDirectories` array to `src/config/schema.ts`
-- [ ] Default to `["~/.tiny-agent/skills/", "./.skills/"]`
-- [ ] Add `--skills-dir <path>` CLI option to add custom directories
-- [ ] Update `loadConfig` to handle skill directories
-- [ ] Typecheck passes
+- [x] Add `skillDirectories` array to `src/config/schema.ts`
+- [x] Default to `["~/.tiny-agent/skills/", "./.skills/"]`
+- [x] Add `--skills-dir <path>` CLI option to add custom directories
+- [x] Update `loadConfig` to handle skill directories
+- [x] Typecheck passes
+
+**Status:** ✅ DONE
 
 ### US-008: Support skill file references
 

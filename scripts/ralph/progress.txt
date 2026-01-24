@@ -185,3 +185,44 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Use dynamic imports for node:os and node:fs modules when only needed for specific subcommands
   - Validate skill name format to match the parser's validation rules
   - Provide helpful success messages with next steps for user guidance
+---
+
+## Sat Jan 24 2026 - US-012
+- Session: https://opncd.ai/s/Demo
+- Implemented allowed-tools restriction enforcement
+- Added parseAllowedTools helper to parser.ts for handling space-delimited string
+- Added _activeSkillAllowedTools field and _setSkillRestriction/_clearSkillRestriction methods to Agent
+- Modified _getToolDefinitions to filter tools based on active restriction
+- Updated createSkillTool to accept callback that sets skill restriction when skill is loaded
+- Updated main.tsx to pass callback to createSkillTool in both handleRun and handleInteractiveChat
+- Created src/tools/skill-tool-allowed-tools.test.ts with 6 comprehensive tests
+- Files changed:
+  - src/skills/parser.ts (added parseAllowedTools helper)
+  - src/core/agent.ts (added skill restriction fields and methods)
+  - src/tools/skill-tool.ts (added callback parameter for restriction)
+  - src/cli/main.tsx (pass callback to createSkillTool)
+  - src/tools/skill-tool-allowed-tools.test.ts (new)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - YAML keys in frontmatter use camelCase (e.g., allowedTools) not hyphenated names
+  - Callback pattern works well for setting agent state from tool execution
+  - Tool filtering should happen at the _getToolDefinitions level for consistency
+  - Restriction is cleared at the start of each runStream for new message context
+  - Test skills need to use valid YAML key names that match the expected type interface
+
+
+## Sat Jan 24 2026 - US-008 (CLI Enhancement)
+- Session: https://opncd.ai/s/ralph-session-001
+- Implemented --skills-dir CLI option for adding custom skill directories
+- Added skillsDir?: string[] to CliOptions interface
+- Added parsing logic for --skills-dir flag (supports multiple uses)
+- Updated handleRun and handleInteractiveChat to merge CLI dirs with config dirs
+- Added help text for the new option
+- Files changed:
+  - src/cli/main.tsx (added --skills-dir option)
+- **Learnings for future iterations:**
+  - When adding CLI options, need to update: interface, parseArgs(), help text, AND all Agent instantiation sites
+  - TypeScript strict mode requires null checks even after length checks
+  - Merging pattern: options.x ? [...(config.x || []), ...options.x] : config.x
+  - Both handleRun and handleInteractiveChat need identical skill directory handling
+---

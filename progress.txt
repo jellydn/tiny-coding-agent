@@ -1,0 +1,20 @@
+## Codebase Patterns
+- Skills complement AGENTS.md - both can be active simultaneously
+- Skill metadata parsing is lightweight for fast startup (only frontmatter parsed during discovery)
+- Skills are filesystem-based with SKILL.md files in directories
+- The yaml package is used for frontmatter parsing (already in dependencies)
+
+## [Date/Time] - US-007
+[Session: https://opncd.ai/s/ralph-session-001]
+- Implemented `--skills-dir` CLI option to add custom skill directories
+- Added `skillsDir?: string[]` to CliOptions interface
+- Updated argument parsing to handle multiple `--skills-dir` flags
+- Merged CLI-provided directories with config directories (CLI dirs appended after config dirs)
+- Added help text for the new option
+- Files changed: src/cli/main.tsx
+- **Learnings for future iterations:**
+  - When adding CLI options, need to update: interface, parseArgs(), help text, AND any functions that use the config
+  - TypeScript strict mode requires null checks even after length checks
+  - The pattern of merging CLI and config values works well: `options.x ? [...(config.x || []), ...options.x] : config.x`
+  - There are two places where Agent is instantiated: handleRun and handleInteractiveChat - both need to be updated
+---

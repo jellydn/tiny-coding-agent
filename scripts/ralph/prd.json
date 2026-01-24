@@ -134,7 +134,7 @@
       ],
       "priority": 8,
       "passes": true,
-      "notes": ""
+      "notes": "CLI option added in this iteration"
     },
     {
       "id": "US-009",
@@ -194,7 +194,68 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": true,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Add built-in code-simplifier skill",
+      "description": "As a user, I want a built-in code-simplifier skill for refining code clarity and maintainability.",
+      "acceptanceCriteria": [
+        "Create src/skills/builtin/code-simplifier/SKILL.md",
+        "Frontmatter: name=code-simplifier, description for code simplification",
+        "Body includes instructions for preserving functionality, applying project standards, enhancing clarity",
+        "Skill focuses on recently modified code unless instructed otherwise",
+        "Include guidance on avoiding over-simplification and nested ternaries",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Load built-in skills from package",
+      "description": "As the system, I need to discover built-in skills bundled with the package.",
+      "acceptanceCriteria": [
+        "Add src/skills/builtin/ directory to skill discovery",
+        "Use __dirname or import.meta.url to resolve built-in skill path",
+        "Built-in skills appear in skill list alongside user skills",
+        "Mark built-in skills with [builtin] indicator in skill list output",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add /skill chat command for skill invocation",
+      "description": "As a user, I want to invoke skills via /skill <name> in chat.",
+      "acceptanceCriteria": [
+        "Add /skill command to CommandMenu in chat-commands.ts",
+        "/skill <name> loads the skill and shows confirmation message",
+        "/skill without name shows available skills list",
+        "Tab completion for skill names after /skill prefix",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add skill install CLI command",
+      "description": "As a user, I want tiny-agent skill install <path> to install a skill from a directory.",
+      "acceptanceCriteria": [
+        "tiny-agent skill install <path>: copies skill directory to ~/.tiny-agent/skills/",
+        "Validate SKILL.md exists and has valid frontmatter before copying",
+        "Error if skill with same name already exists (use --force to overwrite)",
+        "Show success message with installed skill name",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
       "notes": ""
     }
   ]
