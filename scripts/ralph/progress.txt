@@ -70,4 +70,22 @@ Started: Sat Jan 24 10:54:47 +08 2026
 - **Learnings for future iterations:**
   - XML string construction can use template literals directly for simple cases
   - When generating XML, no special escaping needed for basic skill metadata
+---
+
+## Sat Jan 24 2026 - US-005
+- Session: https://opncd.ai/s/Demo
+- Implemented skill activation tool
+- Created src/tools/skill-tool.ts with createSkillTool factory function
+- Created src/tools/skill-tool.test.ts with 6 comprehensive tests
+- Updated src/tools/index.ts to export createSkillTool
+- Files changed:
+  - src/tools/skill-tool.ts (new)
+  - src/tools/skill-tool.test.ts (new)
+  - src/tools/index.ts (updated exports)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use factory function pattern to inject skillRegistry into tool via closure
+  - Wrap skill content in XML tags with name and base_dir attributes for context
+  - Include available skills list in error messages for better developer experience
+  - Error messages should include helpful context (like available skills) when appropriate
 
