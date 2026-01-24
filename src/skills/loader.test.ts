@@ -266,10 +266,12 @@ describe("discoverSkills", () => {
   });
 
   it("should parse allowed-tools from frontmatter", async () => {
-    await createSkillWithAllowedTools(tempDir, "restricted-skill", "A skill with tool restrictions", [
-      "read_file",
-      "list_files",
-    ]);
+    await createSkillWithAllowedTools(
+      tempDir,
+      "restricted-skill",
+      "A skill with tool restrictions",
+      ["read_file", "list_files"],
+    );
 
     const skills = await discoverSkills([tempDir]);
 

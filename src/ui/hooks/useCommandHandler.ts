@@ -7,9 +7,6 @@ import { useCallback } from "react";
 import { MessageRole } from "../types/enums.js";
 import type { Command } from "../components/CommandMenu.js";
 import type { Agent } from "../../core/agent.js";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { parseSkillFrontmatter } from "../../skills/parser.js";
 
 interface UseCommandHandlerProps {
   onAddMessage: (role: MessageRole, content: string) => void;
@@ -62,9 +59,8 @@ export function useCommandHandler({
       }
 
       const skillRegistry = agent.getSkillRegistry();
-      const skillMetadata = skillRegistry.get(skillName);
 
-      if (!skillMetadata) {
+      if (!skillRegistry.has(skillName)) {
         const availableSkills = Array.from(skillRegistry.keys()).join(", ");
         onAddMessage(
           MessageRole.ASSISTANT,
@@ -74,47 +70,31 @@ export function useCommandHandler({
       }
 
       try {
-        const content = await fs.readFile(skillMetadata.location, "utf-8");
-
-        let allowedTools: string[] | undefined;
-        try {
-          const parsed = parseSkillFrontmatter(content);
-          allowedTools = parsed.frontmatter.allowedTools;
-        } catch {
-          console.warn(`[WARN] Could not parse frontmatter for skill: ${skillName}`);
+        const result = await agent.loadSkill(skillName);
+        if (!result) {
+          const availableSkills = Array.from(skillRegistry.keys()).join(", ");
+          onAddMessage(
+            MessageRole.ASSISTANT,
+            `Skill not found: ${skillName}\n\nAvailable skills: ${availableSkills || "none"}`,
+          );
+          return;
         }
 
+        const { wrappedContent, allowedTools } = result;
         if (allowedTools) {
-          agent._setSkillRestriction(allowedTools);
           onAddMessage(
             MessageRole.ASSISTANT,
-            `Loaded skill: **${skillName}**\nRestricted tools to: ${allowedTools.join(", ")}`,
+            `Loaded skill: **${skillName}**\nRestricted tools to: ${allowedTools.join(", ")}\n\n${wrappedContent}`,
           );
         } else {
-          agent._clearSkillRestriction();
           onAddMessage(
             MessageRole.ASSISTANT,
-            `Loaded skill: **${skillName}**\nAll tools available.`,
+            `Loaded skill: **${skillName}**\nAll tools available.\n\n${wrappedContent}`,
           );
         }
-
-        const baseDir = path.dirname(skillMetadata.location);
-        const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${content}\n</loaded_skill>`;
-
-        onAddMessage(
-          MessageRole.ASSISTANT,
-          `Skill loaded successfully. The skill instructions are now active.\n\n${wrappedContent}`,
-        );
       } catch (err) {
-        const error = err as NodeJS.ErrnoException;
-        if (error.code === "ENOENT") {
-          onAddMessage(
-            MessageRole.ASSISTANT,
-            `Error: Skill file not found: ${skillMetadata.location}`,
-          );
-        } else {
-          onAddMessage(MessageRole.ASSISTANT, `Error reading skill: ${error.message}`);
-        }
+        const message = err instanceof Error ? err.message : String(err);
+        onAddMessage(MessageRole.ASSISTANT, `Error loading skill: ${message}`);
       }
     },
     [agent, onAddMessage],

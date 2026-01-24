@@ -141,7 +141,9 @@ export function getEmbeddedBuiltinSkills(): SkillMetadata[] {
         isBuiltin: true,
       });
     } catch (err) {
-      console.warn(`Warning: Failed to parse embedded skill ${embedded.name}: ${(err as Error).message}`);
+      console.warn(
+        `Warning: Failed to parse embedded skill ${embedded.name}: ${(err as Error).message}`,
+      );
     }
   }
 

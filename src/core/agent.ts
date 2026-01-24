@@ -2,6 +2,8 @@ import type { LLMClient, Message } from "../providers/types.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { countTokens, truncateMessages } from "./tokens.js";
 import {
   MemoryStore,
@@ -19,6 +21,7 @@ import {
   getBuiltinSkillsDir,
   type SkillMetadata,
 } from "../skills/index.js";
+import { parseSkillFrontmatter } from "../skills/parser.js";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -28,6 +31,19 @@ function redactApiKey(key?: string): string {
   if (!key) return "(not set)";
   if (key.length <= 8) return "****";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+/**
+ * Escapes XML special characters to prevent injection attacks.
+ * Converts &, <, >, ", and ' to their XML entity equivalents.
+ */
+function escapeXml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export interface ProviderConfigs {
@@ -625,6 +641,53 @@ export class Agent {
   async waitForSkills(): Promise<void> {
     if (this._skillsInitPromise) {
       await this._skillsInitPromise;
+    }
+  }
+
+  /**
+   * Loads a skill by name and returns the formatted content for the LLM.
+   * This method centralizes skill loading logic and prevents XML injection attacks
+   * by properly escaping skill file content.
+   *
+   * @param skillName - The name of the skill to load
+   * @returns The wrapped skill content ready for LLM consumption, or null if skill not found
+   */
+  async loadSkill(
+    skillName: string,
+  ): Promise<{ content: string; wrappedContent: string; allowedTools?: string[] } | null> {
+    const skillMetadata = this._skills.get(skillName);
+    if (!skillMetadata) {
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(skillMetadata.location, "utf-8");
+
+      let allowedTools: string[] | undefined;
+      try {
+        const parsed = parseSkillFrontmatter(content);
+        allowedTools = parsed.frontmatter.allowedTools;
+      } catch {
+        console.warn(`[WARN] Could not parse frontmatter for skill: ${skillName}`);
+      }
+
+      if (allowedTools) {
+        this._setSkillRestriction(allowedTools);
+      } else {
+        this._clearSkillRestriction();
+      }
+
+      const baseDir = path.dirname(skillMetadata.location);
+      const escapedContent = escapeXml(content);
+      const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${escapedContent}\n</loaded_skill>`;
+
+      return { content, wrappedContent, allowedTools };
+    } catch (err) {
+      const error = err as NodeJS.ErrnoException;
+      if (error.code === "ENOENT") {
+        throw new Error(`Skill file not found: ${skillMetadata.location}`);
+      }
+      throw new Error(`Error reading skill: ${error.message}`);
     }
   }
 

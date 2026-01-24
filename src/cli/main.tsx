@@ -963,8 +963,8 @@ async function handleSkill(
     }
 
     try {
-      const { readFileSync } = await import("node:fs");
-      const content = readFileSync(skill.location, "utf-8");
+      const { readFile } = await import("node:fs/promises");
+      const content = await readFile(skill.location, "utf-8");
 
       if (_options.json) {
         console.log(
@@ -1007,17 +1007,22 @@ async function handleSkill(
     }
 
     const { homedir } = await import("node:os");
-    const { mkdirSync, existsSync, writeFileSync } = await import("node:fs");
-    const skillDir = `${homedir()}/.tiny-agent/skills/${skillName}`;
-    const skillFile = `${skillDir}/SKILL.md`;
+    const { mkdir, writeFile, readdir } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const skillDir = join(homedir(), ".tiny-agent", "skills", skillName);
+    const skillFile = join(skillDir, "SKILL.md");
 
-    if (existsSync(skillDir)) {
+    // Check if directory exists by trying to list it
+    try {
+      await readdir(skillDir);
       console.error(`Error: Skill directory already exists: ${skillDir}`);
       process.exit(1);
+    } catch {
+      // Directory doesn't exist, which is what we want
     }
 
     try {
-      mkdirSync(skillDir, { recursive: true });
+      await mkdir(skillDir, { recursive: true });
 
       const template = `---
 name: ${skillName}
@@ -1043,7 +1048,7 @@ User input example
 - Common pitfalls to avoid...
 `;
 
-      writeFileSync(skillFile, template, "utf-8");
+      await writeFile(skillFile, template, "utf-8");
       console.log(`Skill created: ${skillFile}`);
       console.log("\nTo use this skill, add the skill directory to your config.yaml:");
       console.log("  skillDirectories:");

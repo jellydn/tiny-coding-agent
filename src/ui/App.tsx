@@ -5,8 +5,6 @@ import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { EnabledProviders } from "./components/ModelPicker.js";
 import type { SkillMetadata } from "../skills/types.js";
-import * as fs from "node:fs/promises";
-import { parseSkillFrontmatter } from "../skills/parser.js";
 
 import type { Agent } from "@/core/agent.js";
 import { useCommandHandler } from "./hooks/useCommandHandler.js";
@@ -138,24 +136,19 @@ export function ChatApp(): React.ReactElement {
       skillInvokedThisMessageRef.current.add(skill.name);
 
       try {
-        const content = await fs.readFile(skill.location, "utf-8");
-        let allowedTools: string[] | undefined;
-
-        try {
-          const parsed = parseSkillFrontmatter(content);
-          allowedTools = parsed.frontmatter.allowedTools;
-        } catch {
-          console.warn(`[WARN] Could not parse frontmatter for skill: ${skill.name}`);
+        const result = await agent.loadSkill(skill.name);
+        if (!result) {
+          addMessage(MessageRole.ASSISTANT, `Error: Skill not found: ${skill.name}`);
+          return;
         }
 
+        const { allowedTools } = result;
         if (allowedTools) {
-          agent._setSkillRestriction(allowedTools);
           addMessage(
             MessageRole.ASSISTANT,
             `Loaded skill: **@${skill.name}**\nRestricted tools to: ${allowedTools.join(", ")}`,
           );
         } else {
-          agent._clearSkillRestriction();
           addMessage(
             MessageRole.ASSISTANT,
             `Loaded skill: **@${skill.name}**\nAll tools available.`,
