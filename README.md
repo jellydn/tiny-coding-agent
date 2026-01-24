@@ -16,6 +16,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
 - **Memory System**: User-initiated persistent storage with relevance-based retrieval
+- **Agent Skills**: Reusable prompts from agentskills.io or custom SKILL.md files
 - **Plugin System**: Extend the agent with custom tools
 - **JSON Output Mode**: Machine-readable output for tooling integration
 
@@ -116,6 +117,7 @@ A default config is automatically created on first run with:
 
 - **Local LLM**: Ollama with llama3.2 model
 - **Context7 MCP**: Up-to-date library documentation (no API key needed)
+- **Serena MCP**: Semantic code operations (symbol search, find references, rename) - requires `uv`
 - **All Tools**: Enabled by default (can be disabled in config)
 
 To customize, create `~/.tiny-agent/config.yaml`:
@@ -157,9 +159,25 @@ providers:
 
 # MCP servers for extended capabilities
 mcpServers:
+  # Context7: Documentation lookups for libraries/frameworks
   context7:
     command: npx
     args: ["-y", "@upstash/context7-mcp"]
+
+  # Serena: Semantic code operations (requires uv)
+  serena:
+    command: uvx
+    args:
+      [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide",
+        "--project",
+        ".",
+      ]
 
 # Tool configurations
 tools:
@@ -284,6 +302,83 @@ Approve all? (y/N), or enter number to approve individually:
 ```
 
 **Bypass Confirmations**: Use `--allow-all` or `-y` flag for automation/CI.
+
+## Agent Skills
+
+Tiny-agent supports **Agent Skills** - reusable prompt templates that can be loaded and used during conversations. Skills are defined in `SKILL.md` files with YAML frontmatter.
+
+### Built-in Skills
+
+The agent includes several built-in skills for common tasks. Type `@` to see available skills, or use `/skill` to list them.
+
+### Custom Skills Directory
+
+Add your own skills by creating `SKILL.md` files in skill directories:
+
+```yaml
+# ~/.tiny-agent/skills/my-custom-skill/SKILL.md
+---
+name: my-custom-skill
+description: A custom skill for XYZ tasks
+allowedTools:
+  - read_file
+  - edit_file
+  - write_file
+---
+
+You are an expert at XYZ. When given a task:
+1. First analyze the codebase to understand the structure
+2. Then implement the requested changes
+3. Finally verify your changes work correctly
+```
+
+Enable custom skills directories in config:
+
+```yaml
+skillDirectories:
+  - ~/.tiny-agent/skills/ # Global: available in all projects
+  - .skills/ # Project-local: .skills/ directory in your project
+```
+
+### Skill Format
+
+Each skill must have a `SKILL.md` file with:
+
+```yaml
+---
+name: skill-name
+description: Brief description of what the skill does
+allowedTools: # Optional: restrict which tools can be used
+  - read_file
+  - write_file
+license: MIT # Optional
+---
+# Skill content (Markdown)
+Your skill prompt here...
+```
+
+The skill content is loaded as a system prompt modification when the skill is activated.
+
+### Chat Commands for Skills
+
+| Command         | Description                         |
+| --------------- | ----------------------------------- |
+| `/skill`        | List all available skills           |
+| `@<skill-name>` | Load a skill (type @ to see picker) |
+
+### Loading Skills
+
+The agent supports skills from multiple sources:
+
+- **[vercel/agent-skills](https://github.com/vercel-labs/agent-skills)**: Community-contributed skills (limited selection)
+
+  ```bash
+  git clone https://github.com/vercel-labs/agent-skills.git ~/.tiny-agent/skills/vercel-agent-skills
+  ```
+
+- **[skills.sh](https://skills.sh/)**: Browse and download individual skills from a larger registry
+
+Skills are automatically discovered from `SKILL.md` files in your configured skill directories.
 
 ### Chat Commands
 

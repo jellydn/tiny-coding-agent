@@ -9,11 +9,19 @@ bun run typecheck        # Type check (tsc --noEmit)
 bun run lint             # Lint (oxlint)
 bun run lint:fix         # Auto-fix lint issues
 bun run format           # Format code (oxfmt)
+bun run format:check     # Check formatting only
 bun test                 # Run all tests
 bun test <file>          # Run single test file (e.g., src/core/memory.test.ts)
 bun test <pattern>       # Run tests matching pattern (e.g., "MemoryStore")
 bun test:watch           # Watch mode for TDD
-bun run format && bun run typecheck && bun run lint  # After changes
+
+# Release workflow
+bun run release:patch    # Patch release (run tests, typecheck, lint, bump patch)
+bun run release:minor    # Minor release
+bun run release:major    # Major release
+
+# After changes
+bun run format && bun run typecheck && bun run lint
 ```
 
 ## Code Style
@@ -62,6 +70,20 @@ try {
 ```
 
 Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
+
+### Async Patterns
+
+```typescript
+async function fetchData(url: string): Promise<Result<Data>> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+    return { success: true, data: await response.json() };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+```
 
 ### Tidying Practices
 
@@ -133,7 +155,7 @@ src/
   mcp/        # MCP client integration
   cli/        # CLI interface
   config/     # Configuration loading
-  skills/     # Skill loading and management (agentskills.io support)
+  skills/     # Skill loading (agentskills.io support)
 ```
 
 Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
@@ -150,4 +172,3 @@ Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotoco
 2. **Plan First**: Propose a plan before editing, break into manageable steps
 3. **Test-Driven**: Run tests after changes to verify correctness
 4. **Typecheck & Lint**: Always run `bun run typecheck && bun run lint` after changes
-5. **One Thing at a Time**: Complete current task before starting new ones
