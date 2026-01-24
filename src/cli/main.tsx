@@ -1072,7 +1072,7 @@ export async function main(): Promise<void> {
       await handleSkill(config, args, options);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error("Available commands: chat, run <prompt>, config, status, memory");
+      console.error("Available commands: chat, run <prompt>, config, status, memory, skill");
       console.error(
         "Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help",
       );
