@@ -23,3 +23,5 @@ export { grepTool, globTool, searchTools } from "./search-tools.js";
 export { webSearchTool, webSearchTools } from "./web-search-tool.js";
 
 export { loadPlugins } from "./plugin-loader.js";
+
+export { createSkillTool } from "./skill-tool.js";
