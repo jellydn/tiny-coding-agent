@@ -16,9 +16,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 ## User Stories
 
 ### US-001: Create skills directory structure and types
+
 **Description:** As a developer, I need TypeScript types and constants for the skills system so the codebase has a clear contract.
 
 **Acceptance Criteria:**
+
 - [ ] Create `src/skills/types.ts` with `SkillMetadata`, `SkillFrontmatter`, and `Skill` interfaces
 - [ ] `SkillMetadata` contains: name (1-64 chars, lowercase + hyphens), description (1-1024 chars), location (absolute path)
 - [ ] `Skill` extends metadata with full body content and optional fields (license, compatibility, metadata, allowed-tools)
@@ -26,9 +28,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-002: Implement SKILL.md frontmatter parser
+
 **Description:** As the system, I need to parse YAML frontmatter from SKILL.md files to extract skill metadata.
 
 **Acceptance Criteria:**
+
 - [ ] Create `src/skills/parser.ts` with `parseSkillFrontmatter(content: string)` function
 - [ ] Extract YAML frontmatter between `---` delimiters
 - [ ] Validate required fields: `name` (1-64 chars, lowercase alphanumeric + hyphens), `description` (1-1024 chars)
@@ -37,9 +41,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-003: Implement skill discovery
+
 **Description:** As the system, I need to discover skills from configured directories at startup.
 
 **Acceptance Criteria:**
+
 - [ ] Create `src/skills/loader.ts` with `discoverSkills(directories: string[])` function
 - [ ] Scan directories for folders containing `SKILL.md`
 - [ ] Parse only frontmatter (not body) for each skill
@@ -50,9 +56,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-004: Generate available_skills XML for system prompt
+
 **Description:** As the system, I need to inject available skills into the agent's system prompt.
 
 **Acceptance Criteria:**
+
 - [ ] Create `src/skills/prompt.ts` with `generateSkillsPrompt(skills: SkillMetadata[])` function
 - [ ] Generate XML in format: `<available_skills><skill><name>...</name><description>...</description><location>...</location></skill>...</available_skills>`
 - [ ] Keep each skill metadata concise (~50-100 tokens)
@@ -60,9 +68,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-005: Implement skill activation tool
+
 **Description:** As the agent, I need a `skill` tool to load full SKILL.md content when a task matches.
 
 **Acceptance Criteria:**
+
 - [ ] Create `src/tools/skill-tool.ts` with a tool named `skill`
 - [ ] Parameters: `name` (required string)
 - [ ] Tool reads full SKILL.md file from skill's location
@@ -73,9 +83,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-006: Integrate skills into Agent startup
+
 **Description:** As a user, I want skills discovered and available when the agent starts.
 
 **Acceptance Criteria:**
+
 - [ ] Modify `src/core/agent.ts` to accept `skillDirectories` option
 - [ ] Discover skills at Agent construction
 - [ ] Append `<available_skills>` XML to system prompt
@@ -84,9 +96,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-007: Add skills configuration to config schema
+
 **Description:** As a user, I want to configure skill directories in my config file.
 
 **Acceptance Criteria:**
+
 - [ ] Add `skillDirectories` array to `src/config/schema.ts`
 - [ ] Default to `["~/.tiny-agent/skills/", "./.skills/"]`
 - [ ] Add `--skills-dir <path>` CLI option to add custom directories
@@ -94,9 +108,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-008: Support skill file references
+
 **Description:** As a skill author, I want to reference bundled files in my skill.
 
 **Acceptance Criteria:**
+
 - [ ] Skill tool output includes base directory path
 - [ ] Agent can read files from `scripts/`, `references/`, `assets/` subdirectories
 - [ ] Relative paths in SKILL.md body work correctly
@@ -104,9 +120,11 @@ Add support for the [agentskills.io](https://agentskills.io) specification to ex
 - [ ] Typecheck passes
 
 ### US-009: Add skill management CLI commands
+
 **Description:** As a user, I want CLI commands to manage and inspect skills.
 
 **Acceptance Criteria:**
+
 - [ ] `tiny-agent skill list` - List discovered skills with name, description
 - [ ] `tiny-agent skill show <name>` - Display full SKILL.md content
 - [ ] `tiny-agent skill init <name>` - Create a new skill template in `~/.tiny-agent/skills/`

@@ -17,3 +17,22 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Always run typecheck and lint before committing
   - This codebase uses .js extension in imports even for TypeScript files
 ---
+
+## Sat Jan 24 2026 - US-002
+- Session: https://opncd.ai/s/Demo
+- Implemented SKILL.md frontmatter parser
+- Created src/skills/parser.ts with parseSkillFrontmatter function
+- Created src/skills/parser.test.ts with 18 comprehensive tests
+- Updated src/skills/index.ts to export parser functions
+- Files changed:
+  - src/skills/parser.ts (new)
+  - src/skills/parser.test.ts (new)
+  - src/skills/index.ts (updated exports)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use `!("field" in parsed)` to check if field exists before checking its value
+  - Empty strings are falsy in JavaScript, so `!parsed.field` catches both undefined and ""
+  - The yaml package is available in this project for parsing YAML content
+  - Body content after --- may have leading newline that needs trimming
+  - Always run format (oxfmt) before committing as it's enforced by husky pre-commit
+---
