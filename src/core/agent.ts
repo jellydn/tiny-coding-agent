@@ -424,8 +424,6 @@ export class Agent {
         assistantMessage.toolCalls = assistantToolCalls;
       }
 
-      messages.push(assistantMessage);
-
       if (assistantToolCalls.length === 0) {
         if (this._verbose) {
           console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);

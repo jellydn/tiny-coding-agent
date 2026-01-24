@@ -63,7 +63,6 @@ export class ToolRegistry {
   isDangerous(name: string, args: Record<string, unknown>): boolean {
     const tool = this._tools.get(name);
     if (!tool?.dangerous) return false;
-
     if (typeof tool.dangerous === "function") {
       const result = tool.dangerous(args);
       return result !== undefined && result !== false;

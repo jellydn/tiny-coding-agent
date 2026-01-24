@@ -62,11 +62,7 @@ export class McpManager {
    * Check if a tool name matches any disabled pattern
    */
   private _isDisabledByPattern(name: string): boolean {
-    if (this._disabledPatterns.length === 0) {
-      return false;
-    }
-    // Only check patterns for MCP tools
-    if (!name.startsWith("mcp_")) {
+    if (this._disabledPatterns.length === 0 || !name.startsWith("mcp_")) {
       return false;
     }
     return this._disabledPatterns.some((pattern) => this._globToRegex(pattern).test(name));

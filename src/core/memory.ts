@@ -158,12 +158,10 @@ export class MemoryStore {
   }
 
   countTokens(): number {
-    let total = 0;
-    for (const memory of this._memories.values()) {
-      total += countTokens(memory.content);
-      total += countTokens(memory.category);
-    }
-    return total;
+    return Array.from(this._memories.values()).reduce(
+      (total, m) => total + countTokens(m.content) + countTokens(m.category),
+      0,
+    );
   }
 
   private _load(): void {
@@ -215,12 +213,11 @@ export class MemoryStore {
 
   private _evictIfNeeded(): void {
     while (this._memories.size > this._maxMemories) {
-      const oldestId = Array.from(this._memories.entries()).sort(
-        ([, a], [, b]) =>
-          new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
-      )[0]?.[0];
-      if (oldestId) {
-        this._memories.delete(oldestId);
+      const oldest = Array.from(this._memories.values()).sort(
+        (a, b) => new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
+      )[0];
+      if (oldest) {
+        this._memories.delete(oldest.id);
       }
     }
   }

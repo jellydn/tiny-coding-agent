@@ -20,14 +20,9 @@ export const JSON_PATH = getJsonPath();
 
 export function getConfigPath(): string {
   const yamlPath = getYamlPath();
+  if (existsSync(yamlPath)) return yamlPath;
   const jsonPath = getJsonPath();
-  if (existsSync(yamlPath)) {
-    return yamlPath;
-  }
-  if (existsSync(jsonPath)) {
-    return jsonPath;
-  }
-  return yamlPath;
+  return existsSync(jsonPath) ? jsonPath : yamlPath;
 }
 
 const SYSTEM_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
