@@ -169,3 +169,19 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Use dynamic imports for fs module when only needed for specific subcommands
   - Provide helpful error messages with available options when skill not found
   - JSON output format should match acceptance criteria exactly
+
+## Sat Jan 24 2026 - US-011
+- Session: https://opncd.ai/s/Demo
+- Implemented skill init CLI command
+- Added 'init' subcommand handling in handleSkill function
+- Creates ~/.tiny-agent/skills/<name>/SKILL.md with template
+- Validates skill name format (lowercase alphanumeric with hyphens)
+- Shows error if skill directory already exists
+- Shows success message with path and usage instructions
+- Files changed:
+  - src/cli/main.tsx (added skill init command)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use dynamic imports for node:os and node:fs modules when only needed for specific subcommands
+  - Validate skill name format to match the parser's validation rules
+  - Provide helpful success messages with next steps for user guidance

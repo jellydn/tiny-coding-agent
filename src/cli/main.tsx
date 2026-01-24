@@ -964,9 +964,71 @@ async function handleSkill(
       }
       process.exit(1);
     }
+  } else if (subCommand === "init") {
+    const skillName = args[1];
+    if (!skillName) {
+      console.error("Error: Skill name required. Usage: tiny-agent skill init <name>");
+      process.exit(1);
+    }
+
+    if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(skillName) || skillName.includes("--")) {
+      console.error(
+        "Error: Invalid skill name. Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens or consecutive hyphens.",
+      );
+      process.exit(1);
+    }
+
+    const { homedir } = await import("node:os");
+    const { mkdirSync, existsSync, writeFileSync } = await import("node:fs");
+    const skillDir = `${homedir()}/.tiny-agent/skills/${skillName}`;
+    const skillFile = `${skillDir}/SKILL.md`;
+
+    if (existsSync(skillDir)) {
+      console.error(`Error: Skill directory already exists: ${skillDir}`);
+      process.exit(1);
+    }
+
+    try {
+      mkdirSync(skillDir, { recursive: true });
+
+      const template = `---
+name: ${skillName}
+description: A short description of what this skill does
+
+# Skill Instructions
+
+## When to Use
+Describe when this skill should be activated...
+
+## Steps
+1. First step...
+2. Second step...
+3. Third step...
+
+## Examples
+\`\`\`example
+User input example
+\`\`\`
+
+## Notes
+- Important considerations...
+- Common pitfalls to avoid...
+`;
+
+      writeFileSync(skillFile, template, "utf-8");
+      console.log(`Skill created: ${skillFile}`);
+      console.log("\nTo use this skill, add the skill directory to your config.yaml:");
+      console.log("  skillDirectories:");
+      console.log(`    - ${homedir()}/.tiny-agent/skills`);
+      console.log("\nOr run: tiny-agent skill list to verify the skill is discovered.\n");
+    } catch (err) {
+      const error = err as NodeJS.ErrnoException;
+      console.error(`Error creating skill: ${error.message}`);
+      process.exit(1);
+    }
   } else {
     console.error(`Unknown skill command: ${subCommand}`);
-    console.error("Available commands: list, show");
+    console.error("Available commands: list, show, init");
     process.exit(1);
   }
 
