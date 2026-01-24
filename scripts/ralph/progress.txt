@@ -36,3 +36,38 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Body content after --- may have leading newline that needs trimming
   - Always run format (oxfmt) before committing as it's enforced by husky pre-commit
 ---
+
+## Sat Jan 24 2026 - US-003
+- Session: https://opncd.ai/s/Demo
+- Implemented skill discovery from directories
+- Created src/skills/loader.ts with discoverSkills(directories) function
+- Created src/skills/loader.test.ts with 10 comprehensive tests
+- Updated src/skills/index.ts to export discoverSkills function
+- Files changed:
+  - src/skills/loader.ts (new)
+  - src/skills/loader.test.ts (new)
+  - src/skills/index.ts (updated exports)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use `path.resolve()` to handle relative paths safely
+  - Use `fs.promises.readdir()` with `withFileTypes: true` for efficient directory traversal
+  - Recursive directory scanning needs to pass array by reference to accumulate results
+  - Use non-null assertion `!` when accessing array elements after length check
+  - Graceful error handling: use try-catch and continue rather than throw for expected failures
+---
+
+## Sat Jan 24 2026 - US-004
+- Session: https://opncd.ai/s/Demo
+- Implemented generateSkillsPrompt function for XML output
+- Created src/skills/prompt.ts with generateSkillsPrompt(skills) function
+- Created src/skills/prompt.test.ts with 5 comprehensive tests
+- Updated src/skills/index.ts to export generateSkillsPrompt function
+- Files changed:
+  - src/skills/prompt.ts (new)
+  - src/skills/prompt.test.ts (new)
+  - src/skills/index.ts (updated exports)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - XML string construction can use template literals directly for simple cases
+  - When generating XML, no special escaping needed for basic skill metadata
+
