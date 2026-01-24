@@ -34,17 +34,25 @@ interface ChatLayoutProps {
 
 function WelcomeMessage(): React.ReactElement {
   return (
-    <Box flexDirection="column" paddingX={2}>
+    <Box flexDirection="column" justifyContent="center" alignItems="center" flexGrow={1}>
       <Text bold color="cyan">
         {`
-░▀▀█▀▀░░▀░░█▀▀▄░█░░█░░░█▀▀▄░█▀▀▀░█▀▀░█▀▀▄░▀█▀
-░░▒█░░░░█▀░█░▒█░█▄▄█░░▒█▄▄█░█░▀▄░█▀▀░█░▒█░░█░
-░░▒█░░░▀▀▀░▀░░▀░▄▄▄▀░░▒█░▒█░▀▀▀▀░▀▀▀░▀░░▀░░▀░
-
+     ┏┳┓•      ┏┓   ┓•      ┏┓
+      ┃ ┓┏┓┓┏  ┃ ┏┓┏┫┓┏┓┏┓  ┣┫┏┓┏┓┏┓╋
+      ┻ ┗┛┗┗┫  ┗┛┗┛┗┻┗┛┗┗┫  ┛┗┗┫┗ ┛┗┗
+            ┛            ┛     ┛
+                     │
+              ┌──────┴──────┐
+              │  <      />  │
+              │             │
+              │     ___     │
+              └──────┴──────┘
 `}
       </Text>
-      <Text dimColor>by ITMan.fyi</Text>
-      <Text>Type a message, / for commands, @ for skills</Text>
+      <Text dimColor>From ITMan.fyi with ❤️</Text>
+      <Box marginTop={1}>
+        <Text>Type a message, / for commands, @ for skills</Text>
+      </Box>
       <Text>/model - Switch model /clear - Clear /exit - Exit</Text>
       <Text>@skill-name - Load a skill</Text>
     </Box>
