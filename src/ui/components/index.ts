@@ -1,5 +1,20 @@
 export { Spinner } from "./Spinner.js";
-export { Message } from "./Message.js";
+export { Message, InlineToolOutput } from "./Message.js";
 export { ToolOutput } from "./ToolOutput.js";
 export { StatusLine } from "./StatusLine.js";
 export { HeaderBox } from "./HeaderBox.js";
+export { Header } from "./Header.js";
+export { MessageList } from "./MessageList.js";
+export { StreamingText } from "./StreamingText.js";
+export { ThinkingIndicator } from "./ThinkingIndicator.js";
+export { ContextStatus } from "./ContextStatus.js";
+export { TextInput } from "./TextInput.js";
+export { CommandMenu, type Command } from "./CommandMenu.js";
+export {
+  ModelPicker,
+  type ModelPickerItem,
+  type EnabledProviders,
+  DEFAULT_MODELS,
+  getModelsForProviders,
+} from "./ModelPicker.js";
+export { ChatLayout } from "./ChatLayout.js";

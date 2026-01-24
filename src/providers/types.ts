@@ -36,6 +36,7 @@ export interface ChatOptions {
     effort?: "none" | "low" | "medium" | "high";
     budgetTokens?: number;
   };
+  signal?: AbortSignal;
 }
 
 export interface ChatResponse {

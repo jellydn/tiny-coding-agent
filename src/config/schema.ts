@@ -33,6 +33,7 @@ export interface Config {
     openai?: ProviderConfig;
     anthropic?: ProviderConfig;
     ollama?: ProviderConfig;
+    ollamaCloud?: ProviderConfig;
     openrouter?: ProviderConfig;
     opencode?: ProviderConfig;
   };

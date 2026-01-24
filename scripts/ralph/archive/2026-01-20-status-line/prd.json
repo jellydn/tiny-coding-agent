@@ -4,38 +4,6 @@
   "description": "Redesign the CLI interface with structured layout: header at top, streaming messages in middle, context status, and enhanced input with command/model selection.",
   "userStories": [
     {
-      "id": "US-000A",
-      "title": "Fix Header to show provider and actual model from config",
-      "description": "As a user, I want to see the correct model and provider in the header.",
-      "acceptanceCriteria": [
-        "Header shows provider:model format (e.g., 'anthropic:claude-sonnet-4')",
-        "Model comes from config.defaultModel or --model flag, not hardcoded",
-        "App component accepts initialModel prop and passes to ChatProvider",
-        "handleInteractiveChat passes model to InkApp",
-        "Typecheck passes"
-      ],
-      "priority": 0,
-      "passes": true,
-      "notes": "Fixed: Header uses detectProvider(), App accepts initialModel prop"
-    },
-    {
-      "id": "US-000B",
-      "title": "Wire TextInput to agent for LLM calls",
-      "description": "As a user, I want my input to be sent to the LLM and see streaming responses.",
-      "acceptanceCriteria": [
-        "App component accepts agent prop",
-        "handleInteractiveChat passes agent to InkApp",
-        "handleInputSubmit calls agent.runStream with user message",
-        "Streaming response updates ChatContext streamingText",
-        "Final response added to messages via addMessage",
-        "isThinking set true during LLM call, false when done",
-        "Typecheck passes"
-      ],
-      "priority": 0,
-      "passes": true,
-      "notes": "Fixed: ChatContext.sendMessage calls agent.runStream, handles streaming"
-    },
-    {
       "id": "US-001",
       "title": "Create Header component",
       "description": "As a user, I want to see a header at the top of the CLI so I know which agent/session I'm in.",
@@ -48,8 +16,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Implemented with round border, cyan color, model display"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-002",
@@ -64,8 +32,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "Uses Message component for rendering, flexGrow=1"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-003",
@@ -79,8 +47,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "Blinking cyan cursor, 500ms interval"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-004",
@@ -94,8 +62,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "Wraps Spinner with 'Thinking' label"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-005",
@@ -110,8 +78,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "Color thresholds at 80% (yellow) and 95% (red)"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-006",
@@ -127,8 +95,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": true,
-      "notes": "Full cursor support, backspace, arrow keys, escape"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-007",
@@ -144,8 +112,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "5 commands, arrow key navigation, filter support"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-008",
@@ -160,8 +128,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "10 default models, [active] indicator, provider detection"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-009",
@@ -177,8 +145,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "Full layout orchestration implemented"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-010",
@@ -194,8 +162,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": true,
-      "notes": "ChatProvider with all required state"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-011",
@@ -209,8 +177,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": true,
-      "notes": "ChatApp component uses ChatLayout, wrapped in providers"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-012",
@@ -224,8 +192,8 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": true,
-      "notes": "Integrated in TextInput, filter by prefix"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-013",
@@ -239,8 +207,8 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": true,
-      "notes": "handleModelSelect in ChatApp, confirmation message added"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-014",
@@ -255,8 +223,8 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": true,
-      "notes": "InlineToolOutput component shows gear icon, args in dim color, results inline"
+      "passes": false,
+      "notes": ""
     }
   ]
 }

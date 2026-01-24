@@ -1,4 +1,3 @@
-import * as readline from "node:readline";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
@@ -7,28 +6,15 @@ import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
-import { Agent, type RuntimeConfig } from "../core/agent.js";
+import { Agent } from "../core/agent.js";
 import { McpManager } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
-import type { SessionState } from "./chat-commands.js";
-import { parseChatCommand } from "./chat-commands.js";
-import {
-  setConfirmationHandler,
-  isSessionApprovedAll,
-  isSessionDeniedAll,
-  setSessionApproval,
-  clearSessionApproval,
-  type ConfirmationRequest,
-  type ConfirmationResult,
-} from "../tools/confirmation.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
-import { statusLineManager, subscribeToStatusLine, type StatusLineState } from "../ui/index.js";
-import { getStatusLine } from "./status-line.js";
+import { statusLineManager } from "../ui/index.js";
+import { StatusType } from "../ui/types/enums.js";
 import { render } from "ink";
-import { Spinner } from "../ui/components/Spinner.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
-import { HeaderBox } from "../ui/components/HeaderBox.js";
 import { OpenAIProvider } from "../providers/openai.js";
 import { AnthropicProvider } from "../providers/anthropic.js";
 import { OllamaProvider } from "../providers/ollama.js";
@@ -355,377 +341,6 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
   return registry;
 }
 
-async function handleChat(
-  config: ReturnType<typeof loadConfig>,
-  options: CliOptions,
-): Promise<void> {
-  const llmClient = await createLLMClient(config, options);
-  const toolRegistry = await setupTools(config);
-  const initialModel = options.model || config.defaultModel;
-
-  const enableMemory = !options.noMemory || config.memoryFile !== undefined;
-  const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
-
-  const agentsMdPath =
-    options.agentsMd ??
-    (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
-
-  const agent = new Agent(llmClient, toolRegistry, {
-    verbose: options.verbose,
-    systemPrompt: config.systemPrompt,
-    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-    maxContextTokens,
-    memoryFile: enableMemory
-      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
-      : undefined,
-    maxMemoryTokens: config.maxMemoryTokens,
-    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
-    agentsMdPath,
-    thinking: config.thinking,
-  });
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  // Set up confirmation handler for dangerous tools
-  if (!options.allowAll) {
-    setConfirmationHandler((request: ConfirmationRequest): Promise<ConfirmationResult> => {
-      return new Promise((resolve) => {
-        const { actions } = request;
-
-        if (isSessionApprovedAll()) {
-          resolve(true);
-          return;
-        }
-
-        if (isSessionDeniedAll()) {
-          resolve(false);
-          return;
-        }
-
-        console.log("\n⚠️  The following operations will be performed:");
-        for (let i = 0; i < actions.length; i++) {
-          const action = actions[i];
-          if (!action) continue;
-
-          console.log(`  [${i + 1}] ${action.tool}: ${action.description}`);
-
-          const argsPreview = Object.entries(action.args)
-            .map(([k, v]) => {
-              const str = typeof v === "string" ? v : JSON.stringify(v);
-              if (k === "content" && str.length > 200) {
-                return `${k}=\n${str.slice(0, 200)}\n... (${str.length - 200} more chars)`;
-              }
-              if (str.length > 80) {
-                return `${k}=${str.slice(0, 80)}...`;
-              }
-              return `${k}=${str}`;
-            })
-            .join("\n      ");
-          if (argsPreview) console.log(`      ${argsPreview}`);
-        }
-
-        rl.question("\nApprove all? (y/N), or enter number to approve individually: ", (answer) => {
-          const trimmed = answer.toLowerCase().trim();
-          if (trimmed === "y" || trimmed === "yes") {
-            setSessionApproval(true);
-            resolve(true);
-            return;
-          }
-
-          if (trimmed === "n" || trimmed === "no") {
-            setSessionApproval(false);
-            resolve(false);
-            return;
-          }
-
-          // Check if user entered a number (for per-command approval)
-          const num = parseInt(trimmed);
-          if (!isNaN(num) && num >= 1 && num <= actions.length) {
-            const selectedAction = actions[num - 1];
-            if (selectedAction) {
-              console.log(`  → Approved [${num}] ${selectedAction.tool}`);
-            }
-            resolve({ type: "partial", selectedIndex: num - 1 });
-            return;
-          }
-
-          resolve(false);
-        });
-      });
-    });
-  }
-
-  const toolCount = toolRegistry.list().length;
-
-  const getProviderDisplayName = (
-    client: LLMClient,
-    cfg: ReturnType<typeof loadConfig>,
-  ): string => {
-    if (client instanceof OpenCodeProvider) {
-      const baseUrl = cfg.providers.opencode?.baseUrl ?? "https://opencode.ai/zen/v1";
-      return `OpenCode (${baseUrl})`;
-    }
-    if (client instanceof OpenAIProvider) {
-      const baseUrl = cfg.providers.openai?.baseUrl;
-      return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
-    }
-    if (client instanceof AnthropicProvider) return "Anthropic";
-    if (client instanceof OllamaProvider) {
-      const baseUrl = cfg.providers.ollama?.baseUrl ?? "http://localhost:11434";
-      return `Ollama (${baseUrl})`;
-    }
-    if (client instanceof OpenRouterProvider) {
-      const baseUrl = cfg.providers.openrouter?.baseUrl ?? "https://openrouter.ai/api/v1";
-      return `OpenRouter (${baseUrl})`;
-    }
-    return "Unknown";
-  };
-
-  const providerDisplayName = getProviderDisplayName(llmClient, config);
-
-  // Display header box
-  if (shouldUseInk()) {
-    const { unmount } = render(
-      <HeaderBox
-        model={initialModel}
-        provider={providerDisplayName}
-        toolCount={toolCount}
-        memoryEnabled={enableMemory}
-        agentsMdLoaded={!!agentsMdPath}
-      />,
-    );
-    unmount();
-  } else {
-    console.log(`Tiny Coding Agent (model: ${initialModel}, ${providerDisplayName})`);
-    const memoryStatus = enableMemory ? "enabled" : "disabled";
-    const agentsMdStatus = agentsMdPath ? `AGENTS.md loaded` : "no AGENTS.md";
-    console.log(`[${toolCount} tools, ${memoryStatus}, ${agentsMdStatus}]`);
-    console.log("Use Ctrl+D or /bye to exit");
-    console.log("Chat commands: /model <name>, /thinking on|off, /effort low|medium|high");
-    console.log('(Fuzzy matching enabled - e.g., "/m" for "/model")');
-  }
-  console.log();
-
-  const useInkForStatusLine = shouldUseInk();
-  const statusLineEnabled = statusLineManager.showStatusLine && useInkForStatusLine;
-  const statusLine = getStatusLine({ enabled: statusLineEnabled });
-  let currentStatusState: StatusLineState = {};
-
-  const updateDisplay = (): void => {
-    if (!statusLineEnabled) return;
-    const toolElapsed =
-      currentStatusState.toolStartTime !== undefined
-        ? (Date.now() - currentStatusState.toolStartTime) / 1000
-        : undefined;
-
-    statusLine.update({
-      status: currentStatusState.status ?? "ready",
-      model: currentStatusState.model,
-      tokensUsed: currentStatusState.tokensUsed,
-      tokensMax: currentStatusState.tokensMax,
-      toolName: currentStatusState.tool,
-      toolElapsed,
-    });
-  };
-
-  const unsubscribeStatusLine = subscribeToStatusLine((state: StatusLineState) => {
-    currentStatusState = state;
-    updateDisplay();
-  });
-
-  const statusTimer = setInterval(() => {
-    if (currentStatusState.tool) {
-      updateDisplay();
-    }
-  }, 100);
-
-  rl.on("close", () => {
-    clearInterval(statusTimer);
-    statusLine.clear();
-    unsubscribeStatusLine();
-    console.log("\nGoodbye!");
-    process.exit(0);
-  });
-
-  agent.startChatSession();
-
-  // Session state for runtime model/mode switching
-  const sessionState: SessionState = {
-    model: initialModel,
-    thinking: config.thinking,
-  };
-
-  const askQuestion = (): void => {
-    rl.question("You: ", async (userInput: string) => {
-      clearSessionApproval();
-
-      if (!userInput.trim()) {
-        askQuestion();
-        return;
-      }
-
-      // Check for chat commands
-      const { isCommand, newState, matchedCommand, error, shouldExit } =
-        parseChatCommand(userInput);
-
-      if (isCommand) {
-        const originalCmd = userInput.split(/\s+/)[0];
-        const actualCmd = matchedCommand || originalCmd;
-
-        if (shouldExit) {
-          console.log(`[Command: ${originalCmd} → ${actualCmd}]`);
-          rl.close();
-          console.log("Goodbye!");
-          process.exit(0);
-        }
-
-        if (error) {
-          console.log(`[Command Error: ${error}]`);
-        } else if (newState) {
-          Object.assign(sessionState, newState);
-          console.log(`[Command: ${originalCmd} → ${actualCmd}]`);
-          console.log(
-            `[Mode: model=${sessionState.model}, thinking=${sessionState.thinking?.enabled ?? false}]`,
-          );
-        }
-        askQuestion();
-        return;
-      }
-
-      await runAgentPrompt(userInput);
-      askQuestion();
-    });
-  };
-
-  const runAgentPrompt = async (prompt: string): Promise<void> => {
-    try {
-      const useInk = shouldUseInk();
-      const jsonMode = isJsonMode();
-
-      if (jsonMode) {
-        outputJson({ type: "user", content: prompt });
-      } else {
-        process.stdout.write("\n");
-      }
-
-      let hasContent = false;
-
-      // Show spinner while waiting for LLM response
-      let spinnerInstance: { unmount: () => void } | null = null;
-      if (useInk) {
-        spinnerInstance = render(<Spinner isLoading={true} />);
-      }
-
-      // Build runtime config from session state
-      const runtimeConfig: RuntimeConfig = {
-        model: sessionState.model !== initialModel ? sessionState.model : undefined,
-        thinking: sessionState.thinking,
-      };
-
-      let accumulatedContent = "";
-      const thinkFilter = new ThinkingTagFilter();
-
-      statusLineManager.setModel(sessionState.model);
-      statusLineManager.setStatus("thinking");
-
-      for await (const chunk of agent.runStream(prompt, sessionState.model, runtimeConfig)) {
-        if (spinnerInstance && (chunk.content || chunk.toolExecutions)) {
-          spinnerInstance.unmount();
-          spinnerInstance = null;
-        }
-
-        if (chunk.content) {
-          const filtered = thinkFilter.filter(chunk.content);
-          if (jsonMode) {
-            accumulatedContent += filtered;
-          } else if (filtered) {
-            process.stdout.write(filtered);
-          }
-          hasContent = true;
-        }
-
-        if (chunk.toolExecutions) {
-          const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
-          if (runningTool) {
-            statusLineManager.setTool(runningTool.name);
-          } else {
-            statusLineManager.clearTool();
-          }
-
-          if (jsonMode) {
-            for (const te of chunk.toolExecutions) {
-              if (te.status !== "running") {
-                outputJson({
-                  type: "tool",
-                  content: te.status === "complete" ? (te.output ?? "") : (te.error ?? ""),
-                  toolName: te.name,
-                });
-              }
-            }
-          } else {
-            if (!useInk) {
-              process.stdout.write("\n  Tools:\n");
-            }
-            for (const te of chunk.toolExecutions) {
-              displayToolExecution(te, useInk);
-            }
-            if (!options.noTrackContext && chunk.contextStats) {
-              const ctx = chunk.contextStats;
-              statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
-            }
-            if (!hasContent) {
-              process.stdout.write("Agent: ");
-            }
-          }
-        }
-
-        if (chunk.done) {
-          const remaining = thinkFilter.flush();
-          if (remaining && !jsonMode) {
-            process.stdout.write(remaining);
-          }
-          accumulatedContent += remaining;
-
-          if (jsonMode && accumulatedContent) {
-            outputJson({ type: "assistant", content: accumulatedContent });
-          } else if (!jsonMode) {
-            process.stdout.write("\n");
-          }
-
-          statusLineManager.setStatus("ready");
-
-          if (chunk.maxIterationsReached) {
-            if (!jsonMode) {
-              console.log(
-                `\nAgent reached max iterations (${chunk.iterations}) without finishing.`,
-              );
-            }
-            const shouldContinue = await new Promise<boolean>((resolve) => {
-              rl.question("Continue? (y/N): ", (answer) => {
-                resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-              });
-            });
-            if (shouldContinue) {
-              await runAgentPrompt("continue");
-            }
-            return;
-          }
-        }
-      }
-    } catch (err) {
-      statusLineManager.setStatus("error");
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`\nError: ${message}\n`);
-      statusLineManager.setStatus("ready");
-    }
-  };
-
-  askQuestion();
-}
-
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
     return "";
@@ -787,6 +402,7 @@ async function handleRun(
     trackContextUsage: !options.noTrackContext || config.trackContextUsage,
     agentsMdPath,
     thinking: config.thinking,
+    providerConfigs: config.providers,
   });
 
   const toolCount = toolRegistry.list().length;
@@ -810,7 +426,7 @@ async function handleRun(
     const thinkFilter = new ThinkingTagFilter();
 
     statusLineManager.setModel(model);
-    statusLineManager.setStatus("thinking");
+    statusLineManager.setStatus(StatusType.THINKING);
 
     for await (const chunk of agent.runStream(currentPrompt, model)) {
       if (chunk.content) {
@@ -855,7 +471,7 @@ async function handleRun(
       }
 
       if (chunk.done) {
-        statusLineManager.setStatus("ready");
+        statusLineManager.setStatus(StatusType.READY);
 
         if (chunk.maxIterationsReached) {
           if (!jsonMode) {
@@ -884,10 +500,10 @@ async function handleRun(
     await runPrompt(prompt);
     process.exit(0);
   } catch (err) {
-    statusLineManager.setStatus("error");
+    statusLineManager.setStatus(StatusType.ERROR);
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
-    statusLineManager.setStatus("ready");
+    statusLineManager.setStatus(StatusType.READY);
     process.exit(1);
   }
 }
@@ -996,6 +612,54 @@ function openEditor(): void {
   proc.on("close", (code) => {
     process.exit(code);
   });
+}
+
+async function handleInteractiveChat(
+  config: ReturnType<typeof loadConfig>,
+  options: CliOptions,
+): Promise<void> {
+  const llmClient = await createLLMClient(config, options);
+  const toolRegistry = await setupTools(config);
+  const initialModel = options.model || config.defaultModel;
+
+  const enableMemory = !options.noMemory || config.memoryFile !== undefined;
+  const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
+
+  const agentsMdPath =
+    options.agentsMd ??
+    (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
+
+  const agent = new Agent(llmClient, toolRegistry, {
+    verbose: options.verbose,
+    systemPrompt: config.systemPrompt,
+    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+    maxContextTokens,
+    memoryFile: enableMemory
+      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
+      : undefined,
+    maxMemoryTokens: config.maxMemoryTokens,
+    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+    agentsMdPath,
+    thinking: config.thinking,
+    providerConfigs: config.providers,
+  });
+
+  const { App: InkApp, renderApp } = await import("../ui/index.js");
+
+  const enabledProviders = {
+    openai: !!config.providers.openai,
+    anthropic: !!config.providers.anthropic,
+    ollama: !!config.providers.ollama,
+    ollamaCloud: !!config.providers.ollamaCloud,
+    openrouter: !!config.providers.openrouter,
+    opencode: !!config.providers.opencode,
+  };
+
+  const { waitUntilExit } = renderApp(
+    <InkApp initialModel={initialModel} agent={agent} enabledProviders={enabledProviders} />,
+  );
+
+  await waitUntilExit();
 }
 
 function showHelp(): void {
@@ -1206,7 +870,7 @@ export async function main(): Promise<void> {
     const config = loadConfig();
 
     if (command === "chat") {
-      await handleChat(config, options);
+      await handleInteractiveChat(config, options);
     } else if (command === "run") {
       await handleRun(config, args, options);
     } else if (command === "config") {

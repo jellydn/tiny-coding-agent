@@ -4,8 +4,9 @@ import {
   subscribeToStatusLine,
   type StatusLineState,
 } from "../status-line-manager.js";
+import { StatusType } from "../types/enums.js";
 
-export type StatusLineStatus = "thinking" | "ready" | "error";
+export type StatusLineStatus = StatusType;
 
 interface StatusLineContextValue extends StatusLineState {
   setStatus: (status?: StatusLineStatus) => void;
@@ -36,7 +37,6 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
   const [tokensUsed, setTokensUsedState] = useState<number | undefined>();
   const [tokensMax, setTokensMaxState] = useState<number | undefined>();
   const [tool, setToolState] = useState<string | undefined>();
-  const [toolStartTime, setToolStartTimeState] = useState<number | undefined>();
   const [showStatusLine, setShowStatusLineState] = useState(true);
 
   useEffect(() => {
@@ -46,7 +46,12 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
       if ("tokensUsed" in newState) setTokensUsedState(newState.tokensUsed);
       if ("tokensMax" in newState) setTokensMaxState(newState.tokensMax);
       if ("tool" in newState) setToolState(newState.tool);
-      if ("toolStartTime" in newState) setToolStartTimeState(newState.toolStartTime);
+      setShowStatusLineState(statusLineManager.showStatusLine);
+    });
+  }, []);
+
+  useEffect(() => {
+    return subscribeToStatusLine(() => {
       setShowStatusLineState(statusLineManager.showStatusLine);
     });
   }, []);
@@ -79,7 +84,6 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
         tokensUsed,
         tokensMax,
         tool,
-        toolStartTime,
         setStatus,
         setModel,
         setContext,

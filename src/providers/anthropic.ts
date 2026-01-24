@@ -151,15 +151,18 @@ export class AnthropicProvider implements LLMClient {
       options.thinking?.budgetTokens,
     );
 
-    const response = await this._client.messages.create({
-      model: options.model,
-      max_tokens: options.maxTokens ?? 4096,
-      system,
-      messages,
-      tools: options.tools?.length ? convertTools(options.tools) : undefined,
-      temperature: options.temperature,
-      thinking,
-    });
+    const response = await this._client.messages.create(
+      {
+        model: options.model,
+        max_tokens: options.maxTokens ?? 4096,
+        system,
+        messages,
+        tools: options.tools?.length ? convertTools(options.tools) : undefined,
+        temperature: options.temperature,
+        thinking,
+      },
+      { signal: options.signal },
+    );
 
     const { text, toolCalls } = parseContentBlocks(response.content);
 
@@ -188,51 +191,60 @@ export class AnthropicProvider implements LLMClient {
       thinking,
     });
 
-    const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
-    let currentBlockIndex = -1;
+    const abortHandler = () => {
+      stream.controller.abort();
+    };
+    options.signal?.addEventListener("abort", abortHandler);
 
-    for await (const event of stream) {
-      if (event.type === "content_block_start") {
-        currentBlockIndex = event.index;
-        if (event.content_block.type === "tool_use") {
-          toolCallsBuffer.set(currentBlockIndex, {
-            id: event.content_block.id,
-            name: event.content_block.name,
-            input: "",
-          });
-        }
-      } else if (event.type === "content_block_delta") {
-        const delta = event as ContentBlockDelta;
-        if (delta.delta.type === "text_delta") {
-          yield {
-            content: delta.delta.text,
-            done: false,
-          };
-        } else if (delta.delta.type === "input_json_delta") {
-          const existing = toolCallsBuffer.get(delta.index);
-          if (existing) {
-            existing.input += delta.delta.partial_json;
+    try {
+      const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
+      let currentBlockIndex = -1;
+
+      for await (const event of stream) {
+        if (event.type === "content_block_start") {
+          currentBlockIndex = event.index;
+          if (event.content_block.type === "tool_use") {
+            toolCallsBuffer.set(currentBlockIndex, {
+              id: event.content_block.id,
+              name: event.content_block.name,
+              input: "",
+            });
           }
+        } else if (event.type === "content_block_delta") {
+          const delta = event as ContentBlockDelta;
+          if (delta.delta.type === "text_delta") {
+            yield {
+              content: delta.delta.text,
+              done: false,
+            };
+          } else if (delta.delta.type === "input_json_delta") {
+            const existing = toolCallsBuffer.get(delta.index);
+            if (existing) {
+              existing.input += delta.delta.partial_json;
+            }
+          }
+        } else if (event.type === "message_stop") {
+          const toolCalls: ToolCall[] | undefined =
+            toolCallsBuffer.size > 0
+              ? Array.from(toolCallsBuffer.values()).map((tc) => ({
+                  id: tc.id,
+                  name: tc.name,
+                  arguments: JSON.parse(tc.input || "{}"),
+                }))
+              : undefined;
+
+          yield {
+            toolCalls,
+            done: true,
+          };
+          return;
         }
-      } else if (event.type === "message_stop") {
-        const toolCalls: ToolCall[] | undefined =
-          toolCallsBuffer.size > 0
-            ? Array.from(toolCallsBuffer.values()).map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                arguments: JSON.parse(tc.input || "{}"),
-              }))
-            : undefined;
-
-        yield {
-          toolCalls,
-          done: true,
-        };
-        return;
       }
-    }
 
-    yield { done: true };
+      yield { done: true };
+    } finally {
+      options.signal?.removeEventListener("abort", abortHandler);
+    }
   }
 
   async getCapabilities(model: string): Promise<ModelCapabilities> {
