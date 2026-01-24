@@ -13,7 +13,12 @@ import { z } from "zod";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
 import { createProvider, detectProvider } from "../providers/factory.js";
-import { discoverSkills, generateSkillsPrompt, type SkillMetadata } from "../skills/index.js";
+import {
+  discoverSkills,
+  generateSkillsPrompt,
+  getBuiltinSkillsDir,
+  type SkillMetadata,
+} from "../skills/index.js";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -122,6 +127,7 @@ export class Agent {
     if (options.skillDirectories && options.skillDirectories.length > 0) {
       this._skillsInitPromise = this._initializeSkills(
         options.skillDirectories,
+        getBuiltinSkillsDir(),
         effectiveSystemPrompt,
         options.verbose,
       );
@@ -142,12 +148,13 @@ export class Agent {
 
   private async _initializeSkills(
     skillDirectories: string[],
+    builtinDir: string,
     systemPrompt: string,
     verbose?: boolean,
   ): Promise<void> {
     if (this._skillsInitialized) return;
 
-    const discoveredSkills = await discoverSkills(skillDirectories);
+    const discoveredSkills = await discoverSkills(skillDirectories, builtinDir);
     for (const skill of discoveredSkills) {
       this._skills.set(skill.name, skill);
     }

@@ -1,7 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseSkillFrontmatter, type ParsedSkill } from "./parser.js";
 import type { SkillMetadata } from "./types.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export function getBuiltinSkillsDir(): string {
+  return path.resolve(__dirname, "builtin");
+}
 
 async function isDirectory(dirPath: string): Promise<boolean> {
   try {
@@ -38,8 +45,52 @@ async function parseFrontmatterOnly(filePath: string): Promise<ParsedSkill | nul
   }
 }
 
-export async function discoverSkills(directories: string[]): Promise<SkillMetadata[]> {
+export async function discoverSkills(
+  directories: string[],
+  builtinDir?: string,
+): Promise<SkillMetadata[]> {
   const skills: SkillMetadata[] = [];
+  const seenLocations = new Set<string>();
+
+  if (builtinDir) {
+    let builtinDirPath: string | undefined;
+
+    try {
+      builtinDirPath = path.resolve(builtinDir);
+    } catch {
+      console.warn(`Warning: Invalid built-in skill directory path: ${builtinDir}`);
+    }
+
+    if (builtinDirPath) {
+      let dirExists = false;
+
+      try {
+        dirExists = await isDirectory(builtinDirPath);
+      } catch {
+        console.warn(`Warning: Cannot access built-in skill directory: ${builtinDirPath}`);
+      }
+
+      if (dirExists) {
+        const builtinSkillFiles = await findSkillFiles(builtinDirPath);
+
+        for (const filePath of builtinSkillFiles) {
+          const parsed = await parseFrontmatterOnly(filePath);
+
+          if (!parsed) {
+            continue;
+          }
+
+          skills.push({
+            name: parsed.frontmatter.name,
+            description: parsed.frontmatter.description,
+            location: filePath,
+            isBuiltin: true,
+          });
+          seenLocations.add(filePath);
+        }
+      }
+    }
+  }
 
   for (const dir of directories) {
     let dirPath: string;
@@ -67,6 +118,10 @@ export async function discoverSkills(directories: string[]): Promise<SkillMetada
     const skillFiles = await findSkillFiles(dirPath);
 
     for (const filePath of skillFiles) {
+      if (seenLocations.has(filePath)) {
+        continue;
+      }
+
       const parsed = await parseFrontmatterOnly(filePath);
 
       if (!parsed) {

@@ -30,3 +30,17 @@
   - Agent's `_getToolDefinitions()` method already handles tool filtering based on `_activeSkillAllowedTools`
   - The skill tool's `onSkillLoaded` callback pattern integrates well with the agent's restriction system
 ---
+
+## Sat Jan 24 2026 - US-014
+[Session: https://opncd.ai/s/ralph-session-003]
+- Added isBuiltin field to SkillMetadata type
+- Updated discoverSkills to accept builtinDir parameter and mark skills as builtin
+- Added getBuiltinSkillsDir function using import.meta.url to resolve built-in path
+- Updated Agent class to pass builtin directory to discoverSkills
+- Updated CLI skill list to show [builtin] indicator
+- Added unit tests for builtin skills discovery with deduplication
+- Files changed: src/skills/types.ts, src/skills/loader.ts, src/skills/index.ts, src/skills/loader.test.ts, src/core/agent.ts, src/cli/main.tsx, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - When builtin directory is nested inside user directories, skills get discovered twice - use deduplication by path
+  - TypeScript import.meta.url requires fileURLToPath and __dirname pattern for ESM
+  - Tests with overlapping directory structures need careful isolation

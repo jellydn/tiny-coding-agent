@@ -27,6 +27,7 @@ import { AnthropicProvider } from "../providers/anthropic.js";
 import { OllamaProvider } from "../providers/ollama.js";
 import { OpenRouterProvider } from "../providers/openrouter.js";
 import { OpenCodeProvider } from "../providers/opencode.js";
+import { getBuiltinSkillsDir } from "../skills/loader.js";
 
 /**
  * Configuration for tool output preview in plain text mode.
@@ -898,7 +899,8 @@ async function handleSkill(
   if (subCommand === "list") {
     const skillDirectories = config.skillDirectories || [];
     const { discoverSkills } = await import("../skills/loader.js");
-    const skills = await discoverSkills(skillDirectories);
+    const builtinDir = getBuiltinSkillsDir();
+    const skills = await discoverSkills(skillDirectories, builtinDir);
 
     if (_options.json) {
       console.log(
@@ -907,6 +909,7 @@ async function handleSkill(
             name: s.name,
             description: s.description,
             location: s.location,
+            isBuiltin: s.isBuiltin,
           })),
         ),
       );
@@ -929,7 +932,8 @@ async function handleSkill(
             skill.description.length > 60
               ? `${skill.description.slice(0, 60)}...`
               : skill.description;
-          console.log(`  ${skill.name}`);
+          const builtinIndicator = skill.isBuiltin ? " [builtin]" : "";
+          console.log(`  ${skill.name}${builtinIndicator}`);
           console.log(`    ${truncatedDesc}`);
           console.log();
         }
@@ -945,8 +949,8 @@ async function handleSkill(
 
     const skillDirectories = config.skillDirectories || [];
     const { discoverSkills } = await import("../skills/loader.js");
-    const { readFileSync } = await import("node:fs");
-    const skills = await discoverSkills(skillDirectories);
+    const builtinDir = getBuiltinSkillsDir();
+    const skills = await discoverSkills(skillDirectories, builtinDir);
     const skill = skills.find((s) => s.name === skillName);
 
     if (!skill) {
@@ -959,6 +963,7 @@ async function handleSkill(
     }
 
     try {
+      const { readFileSync } = await import("node:fs");
       const content = readFileSync(skill.location, "utf-8");
 
       if (_options.json) {

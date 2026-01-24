@@ -2,6 +2,7 @@ export interface SkillMetadata {
   name: string;
   description: string;
   location: string;
+  isBuiltin?: boolean;
 }
 
 export interface SkillFrontmatter {

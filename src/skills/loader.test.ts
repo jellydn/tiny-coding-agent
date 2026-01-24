@@ -161,4 +161,51 @@ describe("discoverSkills", () => {
     expect(skills.length).toBe(1);
     expect(skills[0]!.name).toBe("deep-skill");
   });
+
+  it("should mark skills from builtin directory as builtin", async () => {
+    const builtinDir = path.join(tempDir, "builtin");
+    await fs.promises.mkdir(builtinDir, { recursive: true });
+    await createSkillFile(builtinDir, "builtin-skill", "A builtin skill");
+
+    const skills = await discoverSkills([], builtinDir);
+
+    expect(skills.length).toBe(1);
+    expect(skills[0]!.name).toBe("builtin-skill");
+    expect(skills[0]!.isBuiltin).toBe(true);
+  });
+
+  it("should discover skills from both builtin and user directories", async () => {
+    const builtinDir = path.join(tempDir, "builtin");
+    await fs.promises.mkdir(builtinDir, { recursive: true });
+    await createSkillFile(builtinDir, "builtin-skill", "A builtin skill");
+    await createSkillFile(tempDir, "user-skill", "A user skill");
+
+    const skills = await discoverSkills([tempDir], builtinDir);
+
+    const builtinSkills = skills.filter((s) => s.isBuiltin);
+    const userSkills = skills.filter((s) => !s.isBuiltin);
+    expect(builtinSkills.length).toBe(1);
+    expect(builtinSkills[0]!.name).toBe("builtin-skill");
+    expect(userSkills.length).toBe(1);
+    expect(userSkills[0]!.name).toBe("user-skill");
+  });
+
+  it("should handle missing builtin directory gracefully", async () => {
+    await createSkillFile(tempDir, "user-skill", "A user skill");
+
+    const skills = await discoverSkills([tempDir], "/nonexistent/builtin");
+
+    expect(skills.length).toBe(1);
+    expect(skills[0]!.name).toBe("user-skill");
+  });
+
+  it("should skip invalid skills in builtin directory", async () => {
+    const builtinDir = path.join(tempDir, "builtin");
+    await fs.promises.mkdir(builtinDir, { recursive: true });
+    await createInvalidSkillFile(builtinDir);
+
+    const skills = await discoverSkills([], builtinDir);
+
+    expect(skills.length).toBe(0);
+  });
 });
