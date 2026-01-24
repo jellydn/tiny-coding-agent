@@ -268,4 +268,182 @@ describe("Agent", () => {
       expect(hasSystemError).toBe(true);
     });
   });
+
+  describe("Skill tool restriction", () => {
+    it("should filter tools when allowed-tools restriction is set", async () => {
+      const llm = new MockLLMClient();
+      const registry = new ToolRegistry();
+      const agent = new Agent(llm, registry);
+
+      // Add mock tools to registry
+      registry.register({
+        name: "read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+        },
+        execute: async () => ({ success: true, output: "file content" }),
+      });
+      registry.register({
+        name: "bash",
+        description: "Run a bash command",
+        parameters: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] },
+        execute: async () => ({ success: true, output: "command output" }),
+      });
+      registry.register({
+        name: "glob",
+        description: "Find files",
+        parameters: {
+          type: "object",
+          properties: { pattern: { type: "string" } },
+          required: ["pattern"],
+        },
+        execute: async () => ({ success: true, output: "file1.ts\nfile2.ts" }),
+      });
+
+      // Set restriction to only allow 'read' tool
+      agent._setSkillRestriction(["read"]);
+
+      // Get tool definitions - should only contain 'read'
+      const agentPrivate = agent as unknown as {
+        _activeSkillAllowedTools: string[] | undefined;
+        _toolRegistry: ToolRegistry;
+        _getToolDefinitions(): ReturnType<
+          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+        >;
+      };
+      expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
+
+      const toolDefs = agentPrivate._getToolDefinitions();
+
+      expect(toolDefs.length).toBe(1);
+      const firstTool = toolDefs[0];
+      expect(firstTool).toBeDefined();
+      expect(firstTool!.name).toBe("read");
+    });
+
+    it("should return all tools when no restriction is set", async () => {
+      const llm = new MockLLMClient();
+      const registry = new ToolRegistry();
+      const agent = new Agent(llm, registry);
+
+      // Add mock tools to registry
+      registry.register({
+        name: "read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+        },
+        execute: async () => ({ success: true, output: "file content" }),
+      });
+      registry.register({
+        name: "bash",
+        description: "Run a bash command",
+        parameters: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] },
+        execute: async () => ({ success: true, output: "command output" }),
+      });
+
+      const agentPrivate = agent as unknown as {
+        _activeSkillAllowedTools: string[] | undefined;
+        _getToolDefinitions(): ReturnType<
+          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+        >;
+      };
+      expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
+
+      // Get tool definitions - should contain all tools
+      const toolDefs = agentPrivate._getToolDefinitions();
+
+      expect(toolDefs.length).toBe(2);
+      expect(toolDefs.map((t) => t.name).sort()).toEqual(["bash", "read"]);
+    });
+
+    it("should clear restriction when _clearSkillRestriction is called", async () => {
+      const llm = new MockLLMClient();
+      const registry = new ToolRegistry();
+      const agent = new Agent(llm, registry);
+
+      // Add mock tools to registry
+      registry.register({
+        name: "read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+        },
+        execute: async () => ({ success: true, output: "file content" }),
+      });
+      registry.register({
+        name: "bash",
+        description: "Run a bash command",
+        parameters: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] },
+        execute: async () => ({ success: true, output: "command output" }),
+      });
+
+      // Set restriction then clear it
+      agent._setSkillRestriction(["read"]);
+      agent._clearSkillRestriction();
+
+      const agentPrivate = agent as unknown as {
+        _activeSkillAllowedTools: string[] | undefined;
+        _getToolDefinitions(): ReturnType<
+          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+        >;
+      };
+      expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
+
+      // Get tool definitions - should contain all tools
+      const toolDefs = agentPrivate._getToolDefinitions();
+
+      expect(toolDefs.length).toBe(2);
+      expect(toolDefs.map((t) => t.name).sort()).toEqual(["bash", "read"]);
+    });
+
+    it("should clear restriction at start of runStream", async () => {
+      const llm = new MockLLMClient();
+      const registry = new ToolRegistry();
+      const agent = new Agent(llm, registry);
+
+      // Add mock tools
+      registry.register({
+        name: "read",
+        description: "Read a file",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string" } },
+          required: ["path"],
+        },
+        execute: async () => ({ success: true, output: "file content" }),
+      });
+
+      const agentPrivate = agent as unknown as {
+        _activeSkillAllowedTools: string[] | undefined;
+        _getToolDefinitions(): ReturnType<
+          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+        >;
+      };
+
+      // Set a restriction
+      agent._setSkillRestriction(["read"]);
+      expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
+
+      // Verify restriction is set
+      let toolDefs = agentPrivate._getToolDefinitions();
+      expect(toolDefs.length).toBe(1);
+
+      // Start a new runStream - this should clear the restriction
+      for await (const _chunk of agent.runStream("test", "mock-model")) {
+      }
+
+      // After runStream, restriction should be cleared
+      expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
+      toolDefs = agentPrivate._getToolDefinitions();
+      expect(toolDefs.length).toBe(1);
+    });
+  });
 });

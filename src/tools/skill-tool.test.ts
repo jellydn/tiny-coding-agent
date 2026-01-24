@@ -131,5 +131,135 @@ This is the body content.`;
       expect(result.success).toBe(false);
       expect(result.error).toContain("Available skills: none");
     });
+
+    it("should parse allowed-tools from frontmatter and call onSkillLoaded callback", async () => {
+      const skillContent = `---
+name: test-skill
+description: A test skill
+allowed-tools: read bash glob
+---
+# Test Skill
+
+This is the body content.`;
+
+      writeFileSync(testSkillPath, skillContent, "utf-8");
+
+      const skillRegistry = new Map<
+        string,
+        { name: string; description: string; location: string }
+      >();
+      skillRegistry.set("test-skill", {
+        name: "test-skill",
+        description: "A test skill",
+        location: testSkillPath,
+      });
+
+      let capturedAllowedTools: string[] | undefined;
+      const tool = createSkillTool(skillRegistry, (allowedTools) => {
+        capturedAllowedTools = allowedTools;
+      });
+
+      const result = await tool.execute({ name: "test-skill" });
+
+      expect(result.success).toBe(true);
+      expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
+    });
+
+    it("should pass undefined to onSkillLoaded when no allowed-tools in frontmatter", async () => {
+      const skillContent = `---
+name: test-skill
+description: A test skill
+---
+# Test Skill
+
+This is the body content.`;
+
+      writeFileSync(testSkillPath, skillContent, "utf-8");
+
+      const skillRegistry = new Map<
+        string,
+        { name: string; description: string; location: string }
+      >();
+      skillRegistry.set("test-skill", {
+        name: "test-skill",
+        description: "A test skill",
+        location: testSkillPath,
+      });
+
+      let capturedAllowedTools: string[] | undefined;
+      const tool = createSkillTool(skillRegistry, (allowedTools) => {
+        capturedAllowedTools = allowedTools;
+      });
+
+      const result = await tool.execute({ name: "test-skill" });
+
+      expect(result.success).toBe(true);
+      expect(capturedAllowedTools).toBeUndefined();
+    });
+
+    it("should handle allowed-tools as array in frontmatter", async () => {
+      const skillContent = `---
+name: test-skill
+description: A test skill
+allowed-tools:
+  - read
+  - bash
+  - glob
+---
+# Test Skill`;
+
+      writeFileSync(testSkillPath, skillContent, "utf-8");
+
+      const skillRegistry = new Map<
+        string,
+        { name: string; description: string; location: string }
+      >();
+      skillRegistry.set("test-skill", {
+        name: "test-skill",
+        description: "A test skill",
+        location: testSkillPath,
+      });
+
+      let capturedAllowedTools: string[] | undefined;
+      const tool = createSkillTool(skillRegistry, (allowedTools) => {
+        capturedAllowedTools = allowedTools;
+      });
+
+      const result = await tool.execute({ name: "test-skill" });
+
+      expect(result.success).toBe(true);
+      expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
+    });
+
+    it("should handle empty allowed-tools gracefully", async () => {
+      const skillContent = `---
+name: test-skill
+description: A test skill
+allowed-tools: ""
+---
+# Test Skill`;
+
+      writeFileSync(testSkillPath, skillContent, "utf-8");
+
+      const skillRegistry = new Map<
+        string,
+        { name: string; description: string; location: string }
+      >();
+      skillRegistry.set("test-skill", {
+        name: "test-skill",
+        description: "A test skill",
+        location: testSkillPath,
+      });
+
+      let capturedAllowedTools: string[] | undefined;
+      const tool = createSkillTool(skillRegistry, (allowedTools) => {
+        capturedAllowedTools = allowedTools;
+      });
+
+      const result = await tool.execute({ name: "test-skill" });
+
+      expect(result.success).toBe(true);
+      expect(capturedAllowedTools).toBeUndefined();
+    });
   });
 });

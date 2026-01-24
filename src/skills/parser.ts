@@ -64,7 +64,9 @@ export function parseSkillFrontmatter(content: string): ParsedSkill {
     license: parsed.license,
     compatibility: parsed.compatibility,
     metadata: parsed.metadata,
-    allowedTools: parseAllowedTools(parsed.allowedTools),
+    allowedTools: parseAllowedTools(
+      parsed.allowedTools ?? (parsed as Record<string, unknown>)["allowed-tools"],
+    ),
   };
 
   return { frontmatter, body };
