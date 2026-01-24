@@ -913,9 +913,60 @@ async function handleSkill(
         console.log(`Total: ${skills.length} skill(s)\n`);
       }
     }
+  } else if (subCommand === "show") {
+    const skillName = args[1];
+    if (!skillName) {
+      console.error("Error: Skill name required. Usage: tiny-agent skill show <name>");
+      process.exit(1);
+    }
+
+    const skillDirectories = config.skillDirectories || [];
+    const { discoverSkills } = await import("../skills/loader.js");
+    const { readFileSync } = await import("node:fs");
+    const skills = await discoverSkills(skillDirectories);
+    const skill = skills.find((s) => s.name === skillName);
+
+    if (!skill) {
+      console.error(`Error: Skill not found: ${skillName}`);
+      const available = skills.map((s) => s.name).join(", ");
+      if (available) {
+        console.error(`  Available skills: ${available}`);
+      }
+      process.exit(1);
+    }
+
+    try {
+      const content = readFileSync(skill.location, "utf-8");
+
+      if (_options.json) {
+        console.log(
+          JSON.stringify({
+            name: skill.name,
+            description: skill.description,
+            body: content,
+          }),
+        );
+      } else {
+        console.log(`\nSkill: ${skill.name}`);
+        console.log(`======\n`);
+        console.log(`Description: ${skill.description}`);
+        console.log(`Location: ${skill.location}`);
+        console.log("\n---\n");
+        console.log(content);
+        console.log();
+      }
+    } catch (err) {
+      const error = err as NodeJS.ErrnoException;
+      if (error.code === "ENOENT") {
+        console.error(`Error: Skill file not found: ${skill.location}`);
+      } else {
+        console.error(`Error reading skill: ${error.message}`);
+      }
+      process.exit(1);
+    }
   } else {
     console.error(`Unknown skill command: ${subCommand}`);
-    console.error("Available commands: list");
+    console.error("Available commands: list, show");
     process.exit(1);
   }
 
