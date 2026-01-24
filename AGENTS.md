@@ -167,6 +167,7 @@ src/
   mcp/        # MCP client integration
   cli/        # CLI interface
   config/     # Configuration loading
+  skills/     # Skill loading and management (agentskills.io support)
 ```
 
 Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
