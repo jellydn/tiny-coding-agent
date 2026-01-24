@@ -231,13 +231,10 @@ export class Agent {
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     const llmClient = this._getLlmClientForModel(effectiveModel);
 
-    let messages: Message[];
-
-    if (this._conversationFile) {
-      messages = this._loadConversation();
-    } else {
-      messages = this._conversationHistory;
-    }
+    // Load or continue conversation history
+    let messages: Message[] = this._conversationFile
+      ? this._loadConversation()
+      : this._conversationHistory;
 
     const isContinuation = userPrompt === "continue";
     if (!isContinuation) {
@@ -269,6 +266,7 @@ export class Agent {
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
+    // Use memory store if available
     if (this._maxContextTokens && this._memoryStore) {
       const systemTokens = countTokens(this._systemPrompt);
       const { memoryBudget, conversationBudget } = calculateContextBudget(
@@ -290,19 +288,21 @@ export class Agent {
       contextStats = result.stats;
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
-    } else if (this._maxContextTokens) {
+    }
+    // Truncate conversation if no memory store
+    else if (this._maxContextTokens) {
       const systemTokens = countTokens(this._systemPrompt);
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
-
-      if (availableTokens > 0) {
+      if (availableTokens <= 0) {
+        contextStats = updateContextStats(0, false);
+      } else {
         const truncated = truncateMessages(messages, availableTokens);
-        if (truncated.length < messages.length) {
+        truncationApplied = truncated.length < messages.length;
+        if (truncationApplied) {
           messages = truncated as Message[];
-          truncationApplied = true;
         }
+        contextStats = updateContextStats(0, truncationApplied);
       }
-
-      contextStats = updateContextStats(0, truncationApplied);
     }
 
     const tools = this._getToolDefinitions();

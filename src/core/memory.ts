@@ -213,12 +213,10 @@ export class MemoryStore {
 
   private _evictIfNeeded(): void {
     while (this._memories.size > this._maxMemories) {
-      const oldest = Array.from(this._memories.values()).sort(
-        (a, b) => new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
-      )[0];
-      if (oldest) {
-        this._memories.delete(oldest.id);
-      }
+      const oldest = Array.from(this._memories.values()).reduce((a, b) =>
+        new Date(a.lastAccessedAt) < new Date(b.lastAccessedAt) ? a : b,
+      );
+      this._memories.delete(oldest.id);
     }
   }
 }

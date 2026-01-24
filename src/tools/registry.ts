@@ -60,28 +60,31 @@ export class ToolRegistry {
     }));
   }
 
-  isDangerous(name: string, args: Record<string, unknown>): boolean {
+  private _getDangerResult(
+    name: string,
+    args: Record<string, unknown>,
+  ): { isDangerous: boolean; level?: string } {
     const tool = this._tools.get(name);
-    if (!tool?.dangerous) return false;
-    if (typeof tool.dangerous === "function") {
-      const result = tool.dangerous(args);
-      return result !== undefined && result !== false;
+    const dangerous = tool?.dangerous;
+    if (!dangerous) return { isDangerous: false };
+
+    if (typeof dangerous === "function") {
+      const result = dangerous(args);
+      if (typeof result === "string") return { isDangerous: true, level: result };
+      if (result === true) return { isDangerous: true, level: `Execute ${name}` };
+      return { isDangerous: false };
     }
-    return true;
+
+    if (typeof dangerous === "string") return { isDangerous: true, level: dangerous };
+    return { isDangerous: true, level: `Execute ${name}` };
+  }
+
+  isDangerous(name: string, args: Record<string, unknown>): boolean {
+    return this._getDangerResult(name, args).isDangerous;
   }
 
   getDangerLevel(name: string, args: Record<string, unknown>): string | undefined {
-    const tool = this._tools.get(name);
-    if (!tool?.dangerous) return undefined;
-
-    if (typeof tool.dangerous === "string") return tool.dangerous;
-    if (tool.dangerous === true) return `Execute ${name}`;
-    if (typeof tool.dangerous === "function") {
-      const result = tool.dangerous(args);
-      if (typeof result === "string") return result;
-      if (result === true) return `Execute ${name}`;
-    }
-    return undefined;
+    return this._getDangerResult(name, args).level;
   }
 
   async executeBatch(

@@ -106,6 +106,17 @@ export class McpManager {
   }
 
   private async _connectClient(name: string, client: McpClient): Promise<void> {
+    const maxAttempts = this._maxRestartAttempts;
+    const attempts = this._restartAttempts.get(name) ?? 0;
+
+    // Check if already exhausted attempts
+    if (attempts >= maxAttempts) {
+      if (_verbose) {
+        console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
+      }
+      return;
+    }
+
     try {
       await client.connect();
       this._restartAttempts.set(name, 0);
@@ -113,22 +124,14 @@ export class McpManager {
         console.log(`[MCP] Connected ${name} with ${client.tools.length} tools`);
       }
     } catch {
-      const attempts = this._restartAttempts.get(name) ?? 0;
-      if (attempts < this._maxRestartAttempts) {
-        this._restartAttempts.set(name, attempts + 1);
-        if (_verbose) {
-          console.warn(
-            `[MCP] ${name} connection failed (attempt ${attempts + 1}/${this._maxRestartAttempts}), retrying...`,
-          );
-        }
-        await this._delay(1000 * (attempts + 1));
-        await this._connectClient(name, client);
-      } else {
-        // Don't throw - let the tool call fail gracefully
-        if (_verbose) {
-          console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
-        }
+      this._restartAttempts.set(name, attempts + 1);
+      if (_verbose) {
+        console.warn(
+          `[MCP] ${name} connection failed (attempt ${attempts + 1}/${maxAttempts}), retrying...`,
+        );
       }
+      await this._delay(1000 * (attempts + 1));
+      await this._connectClient(name, client);
     }
   }
 
