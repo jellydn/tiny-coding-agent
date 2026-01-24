@@ -44,18 +44,26 @@ export function parseSkillFrontmatter(content: string): ParsedSkill {
     throw new Error("Frontmatter must have a 'name' field");
   }
 
+  // Validate skill name (1-64 chars, lowercase alphanumeric with hyphens)
+  if (parsed.name.length < 1 || parsed.name.length > 64) {
+    throw new Error("Skill name must be 1-64 characters");
+  }
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(parsed.name)) {
+    throw new Error(
+      "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+    );
+  }
+
   if (!("description" in parsed) || typeof parsed.description !== "string") {
     throw new Error("Frontmatter must have a 'description' field");
   }
 
-  const nameValidation = validateSkillName(parsed.name!);
-  if (!nameValidation.valid) {
-    throw new Error(`Invalid skill name: ${nameValidation.error}`);
+  // Validate description (1-1024 chars, not whitespace only)
+  if (parsed.description.length < 1 || parsed.description.length > 1024) {
+    throw new Error("Description must be 1-1024 characters");
   }
-
-  const descriptionValidation = validateDescription(parsed.description!);
-  if (!descriptionValidation.valid) {
-    throw new Error(`Invalid description: ${descriptionValidation.error}`);
+  if (parsed.description.trim().length === 0) {
+    throw new Error("Description must not be empty or whitespace only");
   }
 
   const frontmatter: SkillFrontmatter = {
@@ -72,51 +80,14 @@ export function parseSkillFrontmatter(content: string): ParsedSkill {
   return { frontmatter, body };
 }
 
-interface ValidationResult {
-  valid: boolean;
-  error?: string;
-}
-
 function parseAllowedTools(value: unknown): string[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
+  if (!value) return undefined;
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (trimmed === "") {
-      return undefined;
-    }
-    return trimmed.split(/\s+/).filter((tool) => tool.length > 0);
+    return trimmed ? trimmed.split(/\s+/) : undefined;
   }
   return undefined;
-}
-
-function validateSkillName(name: string): ValidationResult {
-  if (name.length < 1 || name.length > 64) {
-    return { valid: false, error: "must be 1-64 characters" };
-  }
-
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
-    return {
-      valid: false,
-      error: "must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
-    };
-  }
-
-  return { valid: true };
-}
-
-function validateDescription(description: string): ValidationResult {
-  if (description.length < 1 || description.length > 1024) {
-    return { valid: false, error: "must be 1-1024 characters" };
-  }
-
-  if (description.trim().length === 0) {
-    return { valid: false, error: "must not be empty or whitespace only" };
-  }
-
-  return { valid: true };
 }

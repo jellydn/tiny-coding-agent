@@ -1,9 +1,9 @@
-import { execSync } from "node:child_process";
 import type { McpServerConfig } from "../config/schema.js";
 import type { Tool, ToolResult } from "../tools/types.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { McpClient } from "./client.js";
 import type { McpToolDefinition, McpConnection } from "./types.js";
+import { isCommandAvailable } from "../utils/command.js";
 
 let _verbose = false;
 
@@ -11,13 +11,13 @@ export function setMcpVerbose(verbose: boolean): void {
   _verbose = verbose;
 }
 
-function isCommandAvailable(command: string): boolean {
-  try {
-    execSync(`command -v ${JSON.stringify(command)}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * Convert glob pattern to regex. Escapes special regex characters,
+ * converting * to .*? (non-greedy wildcard).
+ */
+export function globToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[\\[.+?^${}()|]/g, "\\$&").replace(/\*/g, ".*?");
+  return new RegExp(`^${escaped}$`);
 }
 
 let _globalMcpManager: McpManager | null = null;
@@ -37,18 +37,12 @@ export class McpManager {
   private _disabledPatterns: string[] = [];
 
   constructor(disabledPatterns: string[] = []) {
-    setGlobalMcpManager(this);
     this._disabledPatterns = disabledPatterns;
   }
 
-  private _globToRegex(pattern: string): RegExp {
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?");
-    return new RegExp(`^${escaped}$`);
-  }
-
   private _isDisabledByPattern(name: string): boolean {
-    if (this._disabledPatterns.length === 0 || !name.startsWith("mcp_")) return false;
-    return this._disabledPatterns.some((pattern) => this._globToRegex(pattern).test(name));
+    if (this._disabledPatterns.length === 0) return false;
+    return this._disabledPatterns.some((pattern) => globToRegex(pattern).test(name));
   }
 
   async addServer(name: string, config: McpServerConfig): Promise<boolean> {
@@ -86,37 +80,33 @@ export class McpManager {
 
   private async _connectClient(name: string, client: McpClient): Promise<void> {
     const maxAttempts = this._maxRestartAttempts;
-    const attempts = this._restartAttempts.get(name) ?? 0;
+    let attempts = this._restartAttempts.get(name) ?? 0;
 
-    if (attempts >= maxAttempts) {
-      if (_verbose) {
-        process.stderr.write(`[MCP] ${name} unavailable - will retry on next tool use\n`);
+    while (attempts < maxAttempts) {
+      try {
+        await client.connect();
+        this._restartAttempts.set(name, 0);
+        if (_verbose) {
+          process.stderr.write(`[MCP] Connected ${name} with ${client.tools.length} tools\n`);
+        }
+        return;
+      } catch {
+        attempts++;
+        this._restartAttempts.set(name, attempts);
+        if (attempts < maxAttempts) {
+          if (_verbose) {
+            process.stderr.write(
+              `[MCP] ${name} connection failed (attempt ${attempts}/${maxAttempts}), retrying...\n`,
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
+        }
       }
-      return;
     }
 
-    try {
-      await client.connect();
-      this._restartAttempts.set(name, 0);
-      if (_verbose) {
-        process.stderr.write(`[MCP] Connected ${name} with ${client.tools.length} tools\n`);
-      }
-      return;
-    } catch {
-      this._restartAttempts.set(name, attempts + 1);
-      if (_verbose) {
-        process.stderr.write(
-          `[MCP] ${name} connection failed (attempt ${attempts + 1}/${maxAttempts}), retrying...\n`,
-        );
-      }
+    if (_verbose) {
+      process.stderr.write(`[MCP] ${name} unavailable - will retry on next tool use\n`);
     }
-
-    await this._delay(1000 * (attempts + 1));
-    await this._connectClient(name, client);
-  }
-
-  private _delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async removeServer(name: string): Promise<void> {
@@ -145,11 +135,7 @@ export class McpManager {
   }
 
   getAllTools(): Map<string, McpToolDefinition[]> {
-    const result = new Map<string, McpToolDefinition[]>();
-    for (const [name, client] of this._clients) {
-      result.set(name, client.tools);
-    }
-    return result;
+    return new Map(Array.from(this._clients, ([name, client]) => [name, client.tools]));
   }
 
   async callTool(
@@ -189,10 +175,7 @@ export class McpManager {
         };
       }
 
-      return {
-        success: true,
-        output: textContent,
-      };
+      return { success: true, output: textContent };
     } catch (error) {
       return {
         success: false,
@@ -211,15 +194,11 @@ export class McpManager {
 
   getServerStatus(): Array<{ name: string; connected: boolean; toolCount: number }> {
     return Array.from(this._clients.entries()).map(([name, client]) => {
-      const enabledTools = client.tools.filter((toolDef) => {
+      const toolCount = client.tools.filter((toolDef) => {
         const prefixedName = `mcp_${name}_${toolDef.name}`;
         return !this._isDisabledByPattern(prefixedName);
-      });
-      return {
-        name,
-        connected: client.isConnected,
-        toolCount: enabledTools.length,
-      };
+      }).length;
+      return { name, connected: client.isConnected, toolCount };
     });
   }
 

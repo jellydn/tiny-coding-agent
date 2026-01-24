@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { countTokens, truncateMessages } from "./tokens.js";
+import { escapeXml } from "../utils/xml.js";
 import {
   MemoryStore,
   calculateContextBudget,
@@ -32,19 +33,6 @@ function redactApiKey(key?: string): string {
   if (!key) return "(not set)";
   if (key.length <= 8) return "****";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
-}
-
-/**
- * Escapes XML special characters to prevent injection attacks.
- * Converts &, <, >, ", and ' to their XML entity equivalents.
- */
-function escapeXml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 export interface ProviderConfigs {
@@ -101,6 +89,20 @@ export interface AgentResponse {
   messages: Message[];
 }
 
+const toolCallSchema = z.object({
+  name: z.string(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
+});
+
+function isValidToolCall(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text);
+    return toolCallSchema.safeParse(parsed).success;
+  } catch {
+    return false;
+  }
+}
+
 export class Agent {
   private _defaultLlmClient: LLMClient;
   private _providerConfigs?: ProviderConfigs;
@@ -126,6 +128,12 @@ export class Agent {
     this._providerConfigs = options.providerConfigs;
     this._toolRegistry = toolRegistry;
     this._maxIterations = options.maxIterations ?? 20;
+    this._verbose = options.verbose ?? false;
+    this._conversationFile = options.conversationFile;
+    this._maxContextTokens = options.maxContextTokens;
+    this._maxMemoryTokens = options.maxMemoryTokens;
+    this._trackContextUsage = options.trackContextUsage ?? false;
+    this._thinking = options.thinking;
 
     let effectiveSystemPrompt =
       options.systemPrompt ??
@@ -135,26 +143,20 @@ export class Agent {
       const agentsMdContent = loadAgentsMd(options.agentsMdPath);
       if (agentsMdContent) {
         effectiveSystemPrompt = `${agentsMdContent}\n\n---\n\n${effectiveSystemPrompt}`;
-        if (options.verbose) {
+        if (this._verbose) {
           console.log(`[Loaded AGENTS.md from ${options.agentsMdPath}]`);
         }
       }
     }
 
+    this._systemPrompt = effectiveSystemPrompt;
+
     this._skillsInitPromise = this._initializeSkills(
       options.skillDirectories ?? [],
       getBuiltinSkillsDir(),
       effectiveSystemPrompt,
-      options.verbose,
+      this._verbose,
     );
-
-    this._systemPrompt = effectiveSystemPrompt;
-    this._verbose = options.verbose ?? false;
-    this._conversationFile = options.conversationFile;
-    this._maxContextTokens = options.maxContextTokens;
-    this._maxMemoryTokens = options.maxMemoryTokens;
-    this._trackContextUsage = options.trackContextUsage ?? false;
-    this._thinking = options.thinking;
 
     if (options.memoryFile) {
       this._memoryStore = new MemoryStore({ filePath: options.memoryFile });
@@ -260,7 +262,9 @@ export class Agent {
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
-    if (this._maxContextTokens && this._memoryStore) {
+    if (!this._maxContextTokens) {
+      // No context limit - skip context management
+    } else if (this._memoryStore) {
       const systemTokens = countTokens(this._systemPrompt);
       const { memoryBudget, conversationBudget } = calculateContextBudget(
         this._maxContextTokens,
@@ -281,7 +285,7 @@ export class Agent {
       contextStats = result.stats;
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
-    } else if (this._maxContextTokens) {
+    } else {
       const systemTokens = countTokens(this._systemPrompt);
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
       if (availableTokens <= 0) {
@@ -363,20 +367,6 @@ export class Agent {
       let responseToolCalls: string[] = [];
       const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] =
         [];
-
-      const toolCallSchema = z.object({
-        name: z.string(),
-        parameters: z.record(z.string(), z.unknown()).optional(),
-      });
-
-      const isValidToolCall = (text: string): boolean => {
-        try {
-          const parsed = JSON.parse(text);
-          return toolCallSchema.safeParse(parsed).success;
-        } catch {
-          return false;
-        }
-      };
 
       for await (const chunk of stream) {
         if (chunk.content) {
@@ -490,14 +480,11 @@ export class Agent {
       const notFoundErrors = toolExecutionResults.filter(
         ({ result }) => !result.success && result.error?.includes("not found"),
       );
-      const hasNotFoundErrors = notFoundErrors.length > 0;
-
       const declinedErrors = toolExecutionResults.filter(
         ({ result }) => !result.success && result.error?.includes("User declined confirmation"),
       );
-      const hasDeclinedErrors = declinedErrors.length > 0;
 
-      if (hasNotFoundErrors) {
+      if (notFoundErrors.length > 0) {
         const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
         messages.push({
           role: "system",
@@ -510,7 +497,7 @@ export class Agent {
         break;
       }
 
-      if (hasDeclinedErrors) {
+      if (declinedErrors.length > 0) {
         const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
 
         if (declinedErrors.length === toolExecutionResults.length) {
@@ -635,29 +622,17 @@ export class Agent {
   }
 
   async waitForSkills(): Promise<void> {
-    if (this._skillsInitPromise) {
-      await this._skillsInitPromise;
-    }
+    if (!this._skillsInitPromise) return;
+    await this._skillsInitPromise;
   }
 
-  /**
-   * Loads a skill by name and returns the formatted content for the LLM.
-   * This method centralizes skill loading logic and prevents XML injection attacks
-   * by properly escaping skill file content.
-   *
-   * @param skillName - The name of the skill to load
-   * @returns The wrapped skill content ready for LLM consumption, or null if skill not found
-   */
   async loadSkill(
     skillName: string,
   ): Promise<{ content: string; wrappedContent: string; allowedTools?: string[] } | null> {
     const skillMetadata = this._skills.get(skillName);
-    if (!skillMetadata) {
-      return null;
-    }
+    if (!skillMetadata) return null;
 
     try {
-      // Handle built-in skills (embedded content)
       let content: string;
       let baseDir = ".";
 
@@ -668,7 +643,6 @@ export class Agent {
         }
         content = embeddedContent;
       } else {
-        // File-based skill
         content = await fs.readFile(skillMetadata.location, "utf-8");
         baseDir = path.dirname(skillMetadata.location);
       }

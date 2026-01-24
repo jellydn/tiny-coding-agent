@@ -20,20 +20,24 @@ async function isDirectory(dirPath: string): Promise<boolean> {
   }
 }
 
-async function findSkillFiles(dir: string, found: string[] = []): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
+async function findSkillFiles(dir: string): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const files: string[] = [];
 
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      await findSkillFiles(fullPath, found);
-    } else if (entry.isFile() && entry.name === "SKILL.md") {
-      found.push(fullPath);
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...(await findSkillFiles(fullPath)));
+      } else if (entry.isFile() && entry.name === "SKILL.md") {
+        files.push(fullPath);
+      }
     }
-  }
 
-  return found;
+    return files;
+  } catch {
+    return [];
+  }
 }
 
 async function parseFrontmatterOnly(filePath: string): Promise<ParsedSkill | null> {
@@ -53,62 +57,37 @@ export async function discoverSkills(
   const skills: SkillMetadata[] = [];
   const seenLocations = new Set<string>();
 
-  let builtinDirPath: string | undefined;
-  let builtinDirExists = false;
-
+  // Load built-in skills if directory exists
   if (builtinDir) {
-    try {
-      builtinDirPath = path.resolve(builtinDir);
-    } catch {
-      console.warn(`Warning: Invalid built-in skill directory path: ${builtinDir}`);
-    }
-
-    if (builtinDirPath) {
-      try {
-        builtinDirExists = await isDirectory(builtinDirPath);
-      } catch {
-        console.warn(`Warning: Cannot access built-in skill directory: ${builtinDirPath}`);
+    const builtinDirPath = path.resolve(builtinDir);
+    if (await isDirectory(builtinDirPath)) {
+      const builtinSkillFiles = await findSkillFiles(builtinDirPath);
+      for (const filePath of builtinSkillFiles) {
+        const parsed = await parseFrontmatterOnly(filePath);
+        if (parsed) {
+          skills.push({
+            name: parsed.frontmatter.name,
+            description: parsed.frontmatter.description,
+            location: filePath,
+            isBuiltin: true,
+            allowedTools: parsed.frontmatter.allowedTools,
+          });
+          seenLocations.add(filePath);
+        }
       }
     }
-  }
 
-  if (builtinDirExists && builtinDirPath) {
-    const builtinSkillFiles = await findSkillFiles(builtinDirPath);
-
-    for (const filePath of builtinSkillFiles) {
-      const parsed = await parseFrontmatterOnly(filePath);
-
-      if (!parsed) {
-        continue;
-      }
-
-      skills.push({
-        name: parsed.frontmatter.name,
-        description: parsed.frontmatter.description,
-        location: filePath,
-        isBuiltin: true,
-        allowedTools: parsed.frontmatter.allowedTools,
-      });
-      seenLocations.add(filePath);
-    }
-
-    const hasBuiltinSkills = skills.some((s) => s.isBuiltin);
-    if (!hasBuiltinSkills) {
-      const embeddedSkills = getEmbeddedBuiltinSkills();
-      for (const skill of embeddedSkills) {
-        skills.push(skill);
-      }
+    // Fallback to embedded skills if no builtin skills found
+    if (!skills.some((s) => s.isBuiltin)) {
+      skills.push(...getEmbeddedBuiltinSkills());
     }
   } else {
-    const embeddedSkills = getEmbeddedBuiltinSkills();
-    for (const skill of embeddedSkills) {
-      skills.push(skill);
-    }
+    skills.push(...getEmbeddedBuiltinSkills());
   }
 
+  // Load skills from configured directories
   for (const dir of directories) {
     let dirPath: string;
-
     try {
       dirPath = path.resolve(dir);
     } catch {
@@ -116,38 +95,21 @@ export async function discoverSkills(
       continue;
     }
 
-    let dirExists = false;
-
-    try {
-      dirExists = await isDirectory(dirPath);
-    } catch {
-      console.warn(`Warning: Cannot access skill directory: ${dirPath}`);
-      continue;
-    }
-
-    if (!dirExists) {
-      continue;
-    }
+    if (!(await isDirectory(dirPath))) continue;
 
     const skillFiles = await findSkillFiles(dirPath);
-
     for (const filePath of skillFiles) {
-      if (seenLocations.has(filePath)) {
-        continue;
-      }
+      if (seenLocations.has(filePath)) continue;
 
       const parsed = await parseFrontmatterOnly(filePath);
-
-      if (!parsed) {
-        continue;
+      if (parsed) {
+        skills.push({
+          name: parsed.frontmatter.name,
+          description: parsed.frontmatter.description,
+          location: filePath,
+          allowedTools: parsed.frontmatter.allowedTools,
+        });
       }
-
-      skills.push({
-        name: parsed.frontmatter.name,
-        description: parsed.frontmatter.description,
-        location: filePath,
-        allowedTools: parsed.frontmatter.allowedTools,
-      });
     }
   }
 

@@ -1,21 +1,9 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { loadConfig, getConfigPath } from "../config/loader.js";
-
-/**
- * Check if a command is available in PATH.
- */
-function isCommandAvailable(command: string): boolean {
-  try {
-    execSync(`command -v ${JSON.stringify(command)}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+import { isCommandAvailable } from "../utils/command.js";
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
@@ -28,7 +16,13 @@ import {
   createSkillTool,
 } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
-import { McpManager, setMcpVerbose, getGlobalMcpManager } from "../mcp/manager.js";
+import {
+  McpManager,
+  setMcpVerbose,
+  getGlobalMcpManager,
+  setGlobalMcpManager,
+  globToRegex,
+} from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
@@ -143,13 +137,15 @@ function formatArgs(args: Record<string, unknown> | undefined): string {
   return entries.length > 0 ? ` (${entries.join(", ")})` : "";
 }
 
-function displayToolExecutionPlain(te: {
+type ToolExecutionDisplay = {
   name: string;
   status: "running" | "complete" | "error";
   args?: Record<string, unknown>;
   output?: string;
   error?: string;
-}): void {
+};
+
+function displayToolExecutionPlain(te: ToolExecutionDisplay): void {
   const argsStr = formatArgs(te.args);
   if (te.status === "running") {
     process.stdout.write(`  ${te.name}${argsStr} ...\n`);
@@ -171,13 +167,7 @@ function displayToolExecutionPlain(te: {
   }
 }
 
-function displayToolExecutionInk(te: {
-  name: string;
-  status: "running" | "complete" | "error";
-  args?: Record<string, unknown>;
-  output?: string;
-  error?: string;
-}): void {
+function displayToolExecutionInk(te: ToolExecutionDisplay): void {
   if (te.status === "running") {
     return;
   }
@@ -194,16 +184,7 @@ function displayToolExecutionInk(te: {
   unmount();
 }
 
-function displayToolExecution(
-  te: {
-    name: string;
-    status: "running" | "complete" | "error";
-    args?: Record<string, unknown>;
-    output?: string;
-    error?: string;
-  },
-  useInk: boolean,
-): void {
+function displayToolExecution(te: ToolExecutionDisplay, useInk: boolean): void {
   if (useInk) {
     displayToolExecutionInk(te);
   } else {
@@ -232,51 +213,65 @@ function parseArgs(): {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? "";
-    if (arg === "--help" || arg === "-h") {
-      options.help = true;
-    } else if (arg === "--model" && i + 1 < args.length) {
-      options.model = args[i + 1];
-      i++;
-    } else if (arg === "--provider" && i + 1 < args.length) {
-      options.provider = args[i + 1];
-      i++;
-    } else if (arg === "-v" || arg === "--verbose") {
-      options.verbose = true;
-    } else if (arg === "--save") {
-      options.save = true;
-    } else if (arg === "--no-memory") {
-      options.noMemory = true;
-    } else if (arg === "--no-track-context") {
-      options.noTrackContext = true;
-    } else if (arg === "--no-status") {
-      options.noStatus = true;
-    } else if (arg === "--agents-md" && i + 1 < args.length) {
-      options.agentsMd = args[i + 1];
-      i++;
-    } else if (arg === "--allow-all" || arg === "-y") {
-      options.allowAll = true;
-    } else if (arg === "--no-color") {
-      options.noColor = true;
-    } else if (arg === "--json") {
-      options.json = true;
-    } else if (arg === "--skills-dir" && i + 1 < args.length) {
-      const dirValue = args[i + 1];
-      if (dirValue) {
-        if (!options.skillsDir) {
-          options.skillsDir = [];
+    switch (arg) {
+      case "--help":
+      case "-h":
+        options.help = true;
+        break;
+      case "--model":
+        options.model = args[++i];
+        break;
+      case "--provider":
+        options.provider = args[++i];
+        break;
+      case "-v":
+      case "--verbose":
+        options.verbose = true;
+        break;
+      case "--save":
+        options.save = true;
+        break;
+      case "--no-memory":
+        options.noMemory = true;
+        break;
+      case "--no-track-context":
+        options.noTrackContext = true;
+        break;
+      case "--no-status":
+        options.noStatus = true;
+        break;
+      case "--agents-md":
+        options.agentsMd = args[++i];
+        break;
+      case "--allow-all":
+      case "-y":
+        options.allowAll = true;
+        break;
+      case "--no-color":
+        options.noColor = true;
+        break;
+      case "--json":
+        options.json = true;
+        break;
+      case "--skills-dir": {
+        const dirValue = args[++i];
+        if (dirValue) {
+          (options.skillsDir ??= []).push(dirValue);
         }
-        options.skillsDir.push(dirValue);
+        break;
       }
-      i++;
-    } else if (arg && !arg.startsWith("-")) {
-      positionalArgs.push(arg);
+      default:
+        if (arg && !arg.startsWith("-")) {
+          positionalArgs.push(arg);
+        }
     }
   }
 
-  const command = positionalArgs[0] || "chat";
-  const commandArgs = positionalArgs.slice(1);
-
-  return { command, args: commandArgs, options };
+  return {
+    command: positionalArgs[0] || "chat",
+    args: positionalArgs.slice(1),
+    options,
+  };
 }
 
 async function createLLMClient(
@@ -308,12 +303,6 @@ function createMemoryStore(
 
 async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
   const registry = new ToolRegistry();
-
-  // Convert glob pattern to regex
-  const globToRegex = (pattern: string): RegExp => {
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    return new RegExp(`^${escaped}$`);
-  };
 
   // Check if tool name matches any disabled pattern
   const isDisabledByPattern = (name: string): boolean => {
@@ -373,7 +362,9 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
   // Initialize and register MCP tools if configured
   if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
     const mcpManager = new McpManager(config.disabledMcpPatterns ?? []);
-    setMcpVerbose(true); // Enable MCP verbose logging
+    setGlobalMcpManager(mcpManager);
+    // Disable verbose logging by default - UI will show MCP status in header
+    setMcpVerbose(false);
 
     for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
       await mcpManager.addServer(serverName, serverConfig);
@@ -392,6 +383,10 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
         }
       }
     }
+    // Update status line with MCP server count (count servers with tools = connected)
+    const serverStatus = mcpManager.getServerStatus();
+    const connectedServers = serverStatus.filter((s) => s.connected && s.toolCount > 0).length;
+    statusLineManager.setMcpServerCount(connectedServers);
   }
 
   return registry;
@@ -880,7 +875,7 @@ async function handleConfig(config: ReturnType<typeof loadConfig>, args: string[
   process.exit(0);
 }
 
-async function handleMcp(config: ReturnType<typeof loadConfig>, args: string[]): Promise<void> {
+async function handleMcp(args: string[]): Promise<void> {
   const subCommand = args[0] || "list";
   const configPath = getConfigPath();
 
@@ -986,10 +981,13 @@ async function handleMcp(config: ReturnType<typeof loadConfig>, args: string[]):
       console.log();
     }
 
-    // Read current config
-    const content = await readFile(configPath, "utf-8");
+    // Read current config (or start fresh if config doesn't exist)
+    let content = "";
+    if (existsSync(configPath)) {
+      content = await readFile(configPath, "utf-8");
+    }
     const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = parseYaml(content) as Record<string, unknown>;
+    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
 
     // Initialize mcpServers if needed
     if (!parsed.mcpServers) {
@@ -1036,10 +1034,13 @@ async function handleMcp(config: ReturnType<typeof loadConfig>, args: string[]):
       console.log();
     }
 
-    // Read current config
-    const content = await readFile(configPath, "utf-8");
+    // Read current config (or start fresh if config doesn't exist)
+    let content = "";
+    if (existsSync(configPath)) {
+      content = await readFile(configPath, "utf-8");
+    }
     const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = parseYaml(content) as Record<string, unknown>;
+    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
 
     // Initialize mcpServers if needed
     if (!parsed.mcpServers) {
@@ -1063,10 +1064,13 @@ async function handleMcp(config: ReturnType<typeof loadConfig>, args: string[]):
       process.exit(1);
     }
 
-    // Read current config
-    const content = await readFile(configPath, "utf-8");
+    // Read current config (or start fresh if config doesn't exist)
+    let content = "";
+    if (existsSync(configPath)) {
+      content = await readFile(configPath, "utf-8");
+    }
     const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = parseYaml(content) as Record<string, unknown>;
+    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
 
     if (!parsed.mcpServers || !(parsed.mcpServers as Record<string, unknown>)[name]) {
       console.log(`MCP server "${name}" is not configured`);
@@ -1229,8 +1233,19 @@ async function handleSkill(
     }
 
     try {
-      const { readFile } = await import("node:fs/promises");
-      const content = await readFile(skill.location, "utf-8");
+      let content: string;
+      if (skill.location.startsWith("builtin://")) {
+        const { getEmbeddedSkillContent } = await import("../skills/builtin-registry.js");
+        const builtinContent = getEmbeddedSkillContent(skill.name);
+        if (!builtinContent) {
+          console.error(`Error: Built-in skill content not found: ${skill.name}`);
+          process.exit(1);
+        }
+        content = builtinContent;
+      } else {
+        const { readFile } = await import("node:fs/promises");
+        content = await readFile(skill.location, "utf-8");
+      }
 
       if (_options.json) {
         console.log(
@@ -1265,7 +1280,8 @@ async function handleSkill(
       process.exit(1);
     }
 
-    if (!/^[a-z][a-z0-9-]*[a-z0-9]$/.test(skillName) || skillName.includes("--")) {
+    // Validate skill name using the same pattern as parser.ts
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName)) {
       console.error(
         "Error: Invalid skill name. Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens or consecutive hyphens.",
       );
@@ -1370,7 +1386,7 @@ export async function main(): Promise<void> {
     } else if (command === "skill") {
       await handleSkill(config, args, options);
     } else if (command === "mcp") {
-      await handleMcp(config, args);
+      await handleMcp(args);
     } else {
       console.error(`Unknown command: ${command}`);
       console.error("Available commands: chat, run <prompt>, config, status, memory, skill, mcp");

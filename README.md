@@ -302,8 +302,8 @@ tiny-agent mcp add <name> <cmd>  # Add a custom MCP server
 **Examples:**
 
 ```bash
-# Enable context7 (disabled by default)
-tiny-agent mcp enable context7
+# Enable serena (opt-in, requires uv)
+tiny-agent mcp enable serena
 
 # Disable serena
 tiny-agent mcp disable serena

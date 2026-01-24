@@ -72,7 +72,7 @@ description: Invalid name
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+        "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
       );
     });
 
@@ -85,7 +85,7 @@ description: Invalid name
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+        "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
       );
     });
 
@@ -97,9 +97,7 @@ description: Invalid name
 
 Body`;
 
-      expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be 1-64 characters",
-      );
+      expect(() => parseSkillFrontmatter(content)).toThrow("Skill name must be 1-64 characters");
     });
 
     it("should reject name over 64 characters", () => {
@@ -111,9 +109,7 @@ description: Invalid name
 
 Body`;
 
-      expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be 1-64 characters",
-      );
+      expect(() => parseSkillFrontmatter(content)).toThrow("Skill name must be 1-64 characters");
     });
 
     it("should reject name starting with hyphen", () => {
@@ -125,7 +121,7 @@ description: Invalid name
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+        "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
       );
     });
 
@@ -138,7 +134,7 @@ description: Invalid name
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+        "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
       );
     });
 
@@ -151,7 +147,7 @@ description: Invalid name
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid skill name: must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+        "Skill name must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
       );
     });
   });
@@ -165,9 +161,7 @@ description: ""
 
 Body`;
 
-      expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid description: must be 1-1024 characters",
-      );
+      expect(() => parseSkillFrontmatter(content)).toThrow("Description must be 1-1024 characters");
     });
 
     it("should reject description over 1024 characters", () => {
@@ -179,9 +173,7 @@ description: ${longDescription}
 
 Body`;
 
-      expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid description: must be 1-1024 characters",
-      );
+      expect(() => parseSkillFrontmatter(content)).toThrow("Description must be 1-1024 characters");
     });
 
     it("should reject whitespace-only description", () => {
@@ -193,7 +185,7 @@ description: "   "
 Body`;
 
       expect(() => parseSkillFrontmatter(content)).toThrow(
-        "Invalid description: must not be empty or whitespace only",
+        "Description must not be empty or whitespace only",
       );
     });
   });

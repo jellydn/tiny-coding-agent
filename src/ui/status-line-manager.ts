@@ -6,6 +6,7 @@ export interface StatusLineState {
   tokensUsed?: number;
   tokensMax?: number;
   tool?: string;
+  mcpServerCount?: number;
 }
 
 type StatusLineListener = (state: StatusLineState) => void;
@@ -15,8 +16,8 @@ class StatusLineManager {
   private listeners: Set<StatusLineListener> = new Set();
   private _showStatusLine = true;
 
-  getState(): StatusLineState {
-    return { ...this.state };
+  getState(): Readonly<StatusLineState> {
+    return this.state;
   }
 
   get showStatusLine(): boolean {
@@ -25,6 +26,8 @@ class StatusLineManager {
 
   subscribe(listener: StatusLineListener): () => void {
     this.listeners.add(listener);
+    // Immediately notify with current state so late subscribers get initial values
+    listener(this.getState());
     return () => {
       this.listeners.delete(listener);
     };
@@ -58,16 +61,16 @@ class StatusLineManager {
   }
 
   setTool(tool?: string): void {
-    if (tool) {
-      this.state.tool = tool;
-    } else {
-      this.state.tool = undefined;
-    }
+    this.state.tool = tool;
     this.notify();
   }
 
   clearTool(): void {
-    this.state.tool = undefined;
+    this.setTool(undefined);
+  }
+
+  setMcpServerCount(count?: number): void {
+    this.state.mcpServerCount = count;
     this.notify();
   }
 

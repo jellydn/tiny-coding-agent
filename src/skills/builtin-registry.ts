@@ -1,9 +1,3 @@
-/**
- * Registry for embedded builtin skills.
- * This module provides a fallback mechanism when the builtin skills
- * directory is not accessible (e.g., in compiled binaries).
- */
-
 import type { SkillMetadata } from "./types.js";
 import { parseSkillFrontmatter } from "./parser.js";
 
@@ -129,25 +123,16 @@ Remember: The goal is cleaner code that serves the same purpose, not fewer lines
 ];
 
 export function getEmbeddedBuiltinSkills(): SkillMetadata[] {
-  const skills: SkillMetadata[] = [];
-
-  for (const embedded of EMBEDDED_SKILLS) {
-    try {
-      const parsed = parseSkillFrontmatter(embedded.content);
-      skills.push({
-        name: parsed.frontmatter.name,
-        description: parsed.frontmatter.description,
-        location: `builtin://${embedded.name}`,
-        isBuiltin: true,
-      });
-    } catch (err) {
-      console.warn(
-        `Warning: Failed to parse embedded skill ${embedded.name}: ${(err as Error).message}`,
-      );
-    }
-  }
-
-  return skills;
+  return EMBEDDED_SKILLS.map((embedded) => {
+    const { frontmatter } = parseSkillFrontmatter(embedded.content);
+    return {
+      name: frontmatter.name,
+      description: frontmatter.description,
+      location: `builtin://${embedded.name}`,
+      isBuiltin: true,
+      allowedTools: frontmatter.allowedTools,
+    };
+  });
 }
 
 export function getEmbeddedSkillContent(name: string): string | null {

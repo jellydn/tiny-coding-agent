@@ -33,28 +33,23 @@ export class McpClient {
   }
 
   async connect(): Promise<void> {
-    if (this._connected) {
-      return;
-    }
+    if (this._connected) return;
 
     try {
-      // Suppress server logs by not inheriting stderr - logs go to terminal but not captured
       this._transport = new StdioClientTransport({
         command: this._config.command,
         args: this._config.args,
         env: {
           ...this._config.env,
-          // Suppress verbose logging from MCP servers
           DEBUG: "",
           RUST_LOG: "error",
           LOG_LEVEL: "error",
         },
-        stderr: "pipe", // Capture stderr separately to avoid polluting stdout
+        stderr: "ignore",
       });
 
       await this._client.connect(this._transport);
       this._connected = true;
-
       await this._discoverTools();
     } catch (error) {
       this._connected = false;
@@ -84,17 +79,18 @@ export class McpClient {
 
   private async _discoverTools(): Promise<void> {
     const response = await this._client.listTools();
-    this._tools = response.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description ?? "",
-      inputSchema: {
-        type: "object" as const,
-        properties: (tool.inputSchema as Record<string, unknown>)?.properties as
-          | Record<string, unknown>
-          | undefined,
-        required: (tool.inputSchema as Record<string, unknown>)?.required as string[] | undefined,
-      },
-    }));
+    this._tools = response.tools.map((tool) => {
+      const schema = tool.inputSchema as Record<string, unknown> | undefined;
+      return {
+        name: tool.name,
+        description: tool.description ?? "",
+        inputSchema: {
+          type: "object" as const,
+          properties: schema?.properties as Record<string, unknown> | undefined,
+          required: schema?.required as string[] | undefined,
+        },
+      };
+    });
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<McpToolCallResult> {

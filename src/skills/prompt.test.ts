@@ -30,7 +30,7 @@ describe("generateSkillsPrompt", () => {
     );
   });
 
-  it("should handle skills with special characters in description", () => {
+  it("should escape special characters in skill metadata (XML injection protection)", () => {
     const skills: SkillMetadata[] = [
       {
         name: "my-skill",
@@ -39,8 +39,9 @@ describe("generateSkillsPrompt", () => {
       },
     ];
     const result = generateSkillsPrompt(skills);
+    // XML special characters should be escaped to prevent injection
     expect(result).toBe(
-      "<available_skills><skill><name>my-skill</name><description>A skill with <brackets> & ampersands</description><location>/path/skill</location></skill></available_skills>",
+      "<available_skills><skill><name>my-skill</name><description>A skill with &lt;brackets&gt; &amp; ampersands</description><location>/path/skill</location></skill></available_skills>",
     );
   });
 

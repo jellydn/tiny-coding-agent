@@ -33,7 +33,7 @@
   - The pattern of merging CLI and config values works well: `options.x ? [...(config.x || []), ...options.x] : config.x`
   - There are two places where Agent is instantiated: handleRun and handleInteractiveChat - both need to be updated
 ---
-## Sat Jan 25 2025 - US-012
+## Sat Jan 25 2026 - US-012
 [Session: https://opncd.ai/s/ralph-session-002]
 - Added unit tests for allowed-tools frontmatter parsing in skill-tool.test.ts
 - Added unit tests for agent tool filtering with skill restrictions in agent.test.ts

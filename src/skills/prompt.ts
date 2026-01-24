@@ -1,4 +1,5 @@
 import type { SkillMetadata } from "./types.js";
+import { escapeXml } from "../utils/xml.js";
 
 export function generateSkillsPrompt(skills: SkillMetadata[]): string {
   if (skills.length === 0) {
@@ -8,7 +9,7 @@ export function generateSkillsPrompt(skills: SkillMetadata[]): string {
   const skillElements = skills
     .map(
       (skill) =>
-        `<skill><name>${skill.name}</name><description>${skill.description}</description><location>${skill.location}</location></skill>`,
+        `<skill><name>${escapeXml(skill.name)}</name><description>${escapeXml(skill.description)}</description><location>${escapeXml(skill.location)}</location></skill>`,
     )
     .join("");
 
