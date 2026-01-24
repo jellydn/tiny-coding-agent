@@ -4,6 +4,9 @@ import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { EnabledProviders } from "./components/ModelPicker.js";
+import type { SkillMetadata } from "../skills/types.js";
+import * as fs from "node:fs/promises";
+import { parseSkillFrontmatter } from "../skills/parser.js";
 
 import type { Agent } from "@/core/agent.js";
 import { useCommandHandler } from "./hooks/useCommandHandler.js";
@@ -107,9 +110,7 @@ export function ChatApp(): React.ReactElement {
     [addMessage, currentModel, setCurrentModel],
   );
 
-  const [skillItems, setSkillItems] = useState<
-    Array<{ name: string; description: string; location: string }>
-  >([]);
+  const [skillItems, setSkillItems] = useState<SkillMetadata[]>([]);
 
   useEffect(() => {
     if (!agent) return;
@@ -120,6 +121,42 @@ export function ChatApp(): React.ReactElement {
     };
     loadSkills();
   }, [agent]);
+
+  const handleSkillSelect = useCallback(
+    async (skill: SkillMetadata) => {
+      if (!agent) {
+        addMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
+        return;
+      }
+
+      try {
+        const content = await fs.readFile(skill.location, "utf-8");
+        let allowedTools: string[] | undefined;
+
+        try {
+          const parsed = parseSkillFrontmatter(content);
+          allowedTools = parsed.frontmatter.allowedTools;
+        } catch {
+          console.warn(`[WARN] Could not parse frontmatter for skill: ${skill.name}`);
+        }
+
+        if (allowedTools) {
+          agent._setSkillRestriction(allowedTools);
+          addMessage(
+            MessageRole.ASSISTANT,
+            `Loaded skill: **@${skill.name}**\nRestricted tools to: ${allowedTools.join(", ")}`,
+          );
+        } else {
+          agent._clearSkillRestriction();
+          addMessage(MessageRole.ASSISTANT, `Loaded skill: **@${skill.name}**\nAll tools available.`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        addMessage(MessageRole.ASSISTANT, `Error loading skill: ${message}`);
+      }
+    },
+    [agent, addMessage],
+  );
 
   const displayMessages = isThinking
     ? [
@@ -142,6 +179,7 @@ export function ChatApp(): React.ReactElement {
         onInputSubmit={handleInputSubmit}
         onCommandSelect={handleCommandSelect}
         onModelSelect={handleModelSelect}
+        onSkillSelect={handleSkillSelect}
         inputDisabled={isThinking}
         showModelPicker={showModelPicker}
         inputPlaceholder={

@@ -13,6 +13,7 @@ import {
   type EnabledProviders,
   type ModelPickerItem,
 } from "./ModelPicker.js";
+import { SkillPicker } from "./SkillPicker.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
 
 interface ChatLayoutProps {
@@ -23,6 +24,7 @@ interface ChatLayoutProps {
   onInputSubmit: (value: string) => void;
   onCommandSelect?: (command: Command) => void;
   onModelSelect?: (modelId: string) => void;
+  onSkillSelect?: (skill: SkillMetadata) => void;
   inputPlaceholder?: string;
   inputDisabled?: boolean;
   showModelPicker?: boolean;
@@ -42,8 +44,9 @@ function WelcomeMessage(): React.ReactElement {
 `}
       </Text>
       <Text dimColor>by ITMan.fyi</Text>
-      <Text>Type a message or / for commands</Text>
+      <Text>Type a message, / for commands, @ for skills</Text>
       <Text>/model - Switch model /clear - Clear /exit - Exit</Text>
+      <Text>@skill-name - Load a skill</Text>
     </Box>
   );
 }
@@ -56,6 +59,7 @@ export function ChatLayout({
   onInputSubmit,
   onCommandSelect,
   onModelSelect,
+  onSkillSelect,
   inputPlaceholder,
   inputDisabled,
   showModelPicker = false,
@@ -65,6 +69,8 @@ export function ChatLayout({
   const statusContext = useStatusLine();
   const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
   const commandFilter = showCommandMenu ? inputValue.slice(1) : "";
+  const showSkillPicker = !inputDisabled && inputValue.startsWith("@") && skillItems.length > 0;
+  const skillFilter = showSkillPicker ? inputValue.slice(1) : "";
 
   const availableModels: ModelPickerItem[] = enabledProviders
     ? getModelsForProviders(enabledProviders)
@@ -81,6 +87,13 @@ export function ChatLayout({
     if (onModelSelect) {
       onModelSelect(modelId);
     }
+  };
+
+  const handleSkillSelect = (skill: SkillMetadata) => {
+    if (onSkillSelect) {
+      onSkillSelect(skill);
+    }
+    onInputChange("");
   };
 
   return (
@@ -118,7 +131,15 @@ export function ChatLayout({
             onClose={() => onModelSelect?.("")}
           />
         )}
-        {!showCommandMenu && !showModelPicker && (
+        {showSkillPicker && (
+          <SkillPicker
+            skills={skillItems}
+            filter={skillFilter}
+            onSelect={handleSkillSelect}
+            onClose={() => onInputChange("")}
+          />
+        )}
+        {!showCommandMenu && !showModelPicker && !showSkillPicker && (
           <TextInput
             value={inputValue}
             onChange={onInputChange}

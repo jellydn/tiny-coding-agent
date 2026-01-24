@@ -50,7 +50,7 @@ export function useCommandHandler({
             .join("\n");
           onAddMessage(
             MessageRole.ASSISTANT,
-            `Available skills:\n\n${skillDescriptions}\n\nUse /skill <name> to load a specific skill.`,
+            `Available skills:\n\n${skillDescriptions}\n\nType @skill-name to load a skill.`,
           );
         }
         return;
@@ -68,7 +68,7 @@ export function useCommandHandler({
         const availableSkills = Array.from(skillRegistry.keys()).join(", ");
         onAddMessage(
           MessageRole.ASSISTANT,
-          `Skill not found: ${skillName}\n\nAvailable skills: ${availableSkills || "none"}`,
+          `Skill not found: ${skillName}\n\nAvailable skills: ${availableSkills || "none"}\n\nType @skill-name to load a skill.`,
         );
         return;
       }

@@ -18,3 +18,4 @@ export {
   getModelsForProviders,
 } from "./ModelPicker.js";
 export { ChatLayout } from "./ChatLayout.js";
+export { SkillPicker } from "./SkillPicker.js";
