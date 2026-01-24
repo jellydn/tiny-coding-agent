@@ -444,15 +444,14 @@ async function handleRun(
   const useInk = shouldUseInk();
 
   if (!jsonMode) {
-    const parts = [`${toolCount} tools`];
-    if (skillCount > 0) {
-      parts.push(`${skillCount} skill${skillCount > 1 ? "s" : ""}`);
-    }
-    parts.push(memoryStatus);
-    if (agentsMdStatus) {
-      parts.push(agentsMdStatus);
-    }
-    console.log(`[${parts.join(", ")}]`);
+    const statusItems = [
+      `${toolCount} tools`,
+      skillCount > 0 && `${skillCount} skill${skillCount === 1 ? "" : "s"}`,
+      memoryStatus,
+      agentsMdStatus,
+    ].filter(Boolean);
+    
+    console.log(`[${statusItems.join(", ")}]`);
   }
 
   if (jsonMode) {

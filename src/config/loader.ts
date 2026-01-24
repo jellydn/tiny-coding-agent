@@ -44,6 +44,19 @@ function getDefaultConfig(): Config {
         command: "npx",
         args: ["-y", "@upstash/context7-mcp"],
       },
+      serena: {
+        command: "uvx",
+        args: [
+          "--from",
+          "git+https://github.com/oraios/serena",
+          "serena",
+          "start-mcp-server",
+          "--context",
+          "ide",
+          "--project",
+          ".",
+        ],
+      },
     },
     tools: {},
   };

@@ -1,17 +1,40 @@
+import { execSync } from "node:child_process";
 import type { McpServerConfig } from "../config/schema.js";
 import type { Tool, ToolResult } from "../tools/types.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { McpClient } from "./client.js";
 import type { McpToolDefinition, McpConnection } from "./types.js";
 
+/**
+ * Check if a command is available in PATH.
+ * Returns true if found, false otherwise.
+ */
+function isCommandAvailable(command: string): boolean {
+  try {
+    execSync(`command -v ${JSON.stringify(command)}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class McpManager {
   private _clients: Map<string, McpClient> = new Map();
   private _restartAttempts: Map<string, number> = new Map();
   private _maxRestartAttempts = 3;
 
-  async addServer(name: string, config: McpServerConfig): Promise<void> {
+  async addServer(name: string, config: McpServerConfig): Promise<boolean> {
     if (this._clients.has(name)) {
       throw new Error(`MCP server "${name}" is already registered`);
+    }
+
+    // Check if command exists before attempting to connect
+    if (!isCommandAvailable(config.command)) {
+      console.warn(
+        `[MCP] Command "${config.command}" not found. Skipping server "${name}". ` +
+          `Install the required dependency to enable this MCP server.`,
+      );
+      return false;
     }
 
     const client = new McpClient(name, config);
@@ -19,6 +42,7 @@ export class McpManager {
     this._restartAttempts.set(name, 0);
 
     await this._connectClient(name, client);
+    return true;
   }
 
   private async _connectClient(name: string, client: McpClient): Promise<void> {
