@@ -252,32 +252,37 @@ export class OllamaProvider implements LLMClient {
         body: JSON.stringify({ name: model }),
       });
 
-      if (showResponse.ok) {
-        const modelInfo = (await showResponse.json()) as {
-          details?: {
-            supports_function_calling?: boolean;
-            supports_thinking?: boolean;
-            context_length?: number;
-            num_ctx?: number;
-          };
-        };
-        const details = modelInfo.details ?? {};
-
-        return {
-          modelName: model,
-          supportsTools: details.supports_function_calling ?? true,
-          supportsStreaming: true,
-          supportsSystemPrompt: true,
-          supportsToolStreaming: false,
-          supportsThinking: details.supports_thinking ?? false,
-          contextWindow: details.context_length ?? 128000,
-          maxOutputTokens: details.num_ctx ?? 4096,
-        };
+      if (!showResponse.ok) {
+        console.warn(`Failed to fetch model details for ${model}: HTTP ${showResponse.status}`);
+        return this._getDefaultCapabilities(model);
       }
+
+      const { details = {} } = (await showResponse.json()) as {
+        details?: {
+          supports_function_calling?: boolean;
+          supports_thinking?: boolean;
+          context_length?: number;
+          num_ctx?: number;
+        };
+      };
+
+      return {
+        modelName: model,
+        supportsTools: details.supports_function_calling ?? true,
+        supportsStreaming: true,
+        supportsSystemPrompt: true,
+        supportsToolStreaming: false,
+        supportsThinking: details.supports_thinking ?? false,
+        contextWindow: details.context_length ?? 128000,
+        maxOutputTokens: details.num_ctx ?? 4096,
+      };
     } catch (error) {
       console.warn(`Failed to fetch model details for ${model}: ${error}`);
+      return this._getDefaultCapabilities(model);
     }
+  }
 
+  private _getDefaultCapabilities(model: string): ModelCapabilities {
     return {
       modelName: model,
       supportsTools: true,
