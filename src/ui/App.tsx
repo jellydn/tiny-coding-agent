@@ -148,7 +148,10 @@ export function ChatApp(): React.ReactElement {
           );
         } else {
           agent._clearSkillRestriction();
-          addMessage(MessageRole.ASSISTANT, `Loaded skill: **@${skill.name}**\nAll tools available.`);
+          addMessage(
+            MessageRole.ASSISTANT,
+            `Loaded skill: **@${skill.name}**\nAll tools available.`,
+          );
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
