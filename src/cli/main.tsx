@@ -433,16 +433,26 @@ async function handleRun(
   });
   toolRegistry.register(skillTool);
 
+  // Wait for skills to be initialized before getting the count
+  await agent.waitForSkills();
+
   const toolCount = toolRegistry.list().length;
+  const skillCount = agent.getSkillRegistry().size;
   const memoryStatus = enableMemory ? "memory enabled" : "no memory";
   const agentsMdStatus = agentsMdPath ? "AGENTS.md loaded" : "";
   const jsonMode = isJsonMode();
   const useInk = shouldUseInk();
 
   if (!jsonMode) {
-    console.log(
-      `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
-    );
+    const parts = [`${toolCount} tools`];
+    if (skillCount > 0) {
+      parts.push(`${skillCount} skill${skillCount > 1 ? "s" : ""}`);
+    }
+    parts.push(memoryStatus);
+    if (agentsMdStatus) {
+      parts.push(agentsMdStatus);
+    }
+    console.log(`[${parts.join(", ")}]`);
   }
 
   if (jsonMode) {
