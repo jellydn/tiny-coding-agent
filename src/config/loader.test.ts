@@ -73,12 +73,10 @@ describe("Config Loader - Config Merging", () => {
     expect(config.mcpServers).toBeDefined();
     expect(config.mcpServers?.context7).toBeDefined();
     expect(config.mcpServers?.context7?.command).toBe("npx");
-    expect(config.mcpServers?.serena).toBeDefined();
-    expect(config.mcpServers?.serena?.command).toBe("uvx");
   });
 
   it("should only use user-configured mcpServers, not merge with defaults", async () => {
-    // Config with only context7 - serena should NOT appear
+    // Config with only context7 - no serena since it's opt-in
     fs.writeFileSync(
       tempConfigFile,
       `defaultModel: custom-model
@@ -95,7 +93,6 @@ mcpServers:
     // Only user's configured servers should be present
     expect(Object.keys(config.mcpServers!)).toEqual(["context7"]);
     expect(config.mcpServers?.context7).toBeDefined();
-    expect(config.mcpServers?.serena).toBeUndefined();
   });
 
   it("should preserve user-configured values over defaults", async () => {

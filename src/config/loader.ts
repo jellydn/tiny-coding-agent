@@ -6,17 +6,28 @@ import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
 export const CONFIG_DIR = join(homedir(), ".tiny-agent");
-export const YAML_PATH = process.env.TINY_AGENT_CONFIG_YAML ?? join(CONFIG_DIR, "config.yaml");
-export const JSON_PATH = process.env.TINY_AGENT_CONFIG_JSON ?? join(CONFIG_DIR, "config.json");
+
+export function getYamlPath(): string {
+  return process.env.TINY_AGENT_CONFIG_YAML ?? join(CONFIG_DIR, "config.yaml");
+}
+
+export function getJsonPath(): string {
+  return process.env.TINY_AGENT_CONFIG_JSON ?? join(CONFIG_DIR, "config.json");
+}
+
+export const YAML_PATH = getYamlPath();
+export const JSON_PATH = getJsonPath();
 
 export function getConfigPath(): string {
-  if (existsSync(YAML_PATH)) {
-    return YAML_PATH;
+  const yamlPath = getYamlPath();
+  const jsonPath = getJsonPath();
+  if (existsSync(yamlPath)) {
+    return yamlPath;
   }
-  if (existsSync(JSON_PATH)) {
-    return JSON_PATH;
+  if (existsSync(jsonPath)) {
+    return jsonPath;
   }
-  return YAML_PATH;
+  return yamlPath;
 }
 
 const SYSTEM_PROMPT = `You are a helpful AI coding assistant with access to tools. Use available tools to help the user.
@@ -137,17 +148,20 @@ export function loadConfig(): Config {
   let rawConfig: unknown;
   let configSource = "default config";
 
-  if (existsSync(YAML_PATH)) {
-    configSource = YAML_PATH;
-    const content = readFileSync(YAML_PATH, "utf-8");
+  const yamlPath = getYamlPath();
+  const jsonPath = getJsonPath();
+
+  if (existsSync(yamlPath)) {
+    configSource = yamlPath;
+    const content = readFileSync(yamlPath, "utf-8");
     rawConfig = parseYaml(content);
-  } else if (existsSync(JSON_PATH)) {
-    configSource = JSON_PATH;
-    const content = readFileSync(JSON_PATH, "utf-8");
+  } else if (existsSync(jsonPath)) {
+    configSource = jsonPath;
+    const content = readFileSync(jsonPath, "utf-8");
     rawConfig = JSON.parse(content);
   } else {
     createDefaultConfig();
-    const content = readFileSync(YAML_PATH, "utf-8");
+    const content = readFileSync(yamlPath, "utf-8");
     rawConfig = parseYaml(content);
   }
 
