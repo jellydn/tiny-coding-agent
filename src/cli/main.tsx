@@ -868,6 +868,8 @@ async function handleConfig(config: ReturnType<typeof loadConfig>, args: string[
   console.log(`    OpenAI: ${config.providers.openai ? "configured" : "not configured"}`);
   console.log(`    Anthropic: ${config.providers.anthropic ? "configured" : "not configured"}`);
   console.log(`    Ollama: ${config.providers.ollama ? "configured" : "not configured"}`);
+  console.log(`    OllamaCloud: ${config.providers.ollamaCloud ? "configured" : "not configured"}`);
+  console.log(`    OpenCode: ${config.providers.opencode ? "configured" : "not configured"}`);
 
   if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
     console.log("\n  MCP Servers:");

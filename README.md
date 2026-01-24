@@ -117,7 +117,6 @@ A default config is automatically created on first run with:
 
 - **Local LLM**: Ollama with llama3.2 model
 - **Context7 MCP**: Up-to-date library documentation (no API key needed)
-- **Serena MCP**: Semantic code operations (symbol search, find references, rename) - requires `uv`
 - **All Tools**: Enabled by default (can be disabled in config)
 
 To customize, create `~/.tiny-agent/config.yaml`:
@@ -164,28 +163,27 @@ mcpServers:
     command: npx
     args: ["-y", "@upstash/context7-mcp"]
 
-  # Serena: Semantic code operations (requires uv: curl -LsSf https://astral.sh/uv/install.sh | sh)
-  serena:
-    command: uvx
-    args:
-      [
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena-mcp-server",
-        "--context",
-        "ide",
-        "--project",
-        ".",
-        "--open-web-dashboard",
-        "false",
-      ]
+  # Serena: Semantic code operations (optional, requires uv)
+  # Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh
+  # serena:
+  #   command: uvx
+  #   args:
+  #     [
+  #       "--from",
+  #       "git+https://github.com/oraios/serena",
+  #       "serena-mcp-server",
+  #       "--context",
+  #       "ide",
+  #       "--project",
+  #       ".",
+  #       "--open-web-dashboard",
+  #       "false",
+  #     ]
 
 # Disable specific MCP tools by pattern (glob-style matching)
 # disabledMcpPatterns:
-#   - "mcp_serena_*memories*"    # Disable memory tools
-#   - "mcp_serena_*_memory"      # Disable *_memory tools
-#   - "mcp_serena_*onboarding*"  # Disable onboarding tools
-#   - "mcp_serena_*think*"       # Disable think tools
+#   - "mcp_serena_*memories*"    # Disable Serena memory tools
+#   - "mcp_serena_*onboarding*"  # Disable Serena onboarding tools
 
 # Disable all MCP servers
 # mcpServers: {}

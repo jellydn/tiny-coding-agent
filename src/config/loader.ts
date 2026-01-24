@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
@@ -44,33 +44,8 @@ function getDefaultConfig(): Config {
         command: "npx",
         args: ["-y", "@upstash/context7-mcp"],
       },
-      serena: {
-        command: "uvx",
-        args: [
-          "--from",
-          "git+https://github.com/oraios/serena",
-          "serena-mcp-server",
-          "--context",
-          "ide",
-          "--project",
-          ".",
-          "--open-web-dashboard",
-          "false",
-        ],
-      },
     },
     tools: {},
-    // Patterns to disable specific MCP tool categories (glob-style matching)
-    disabledMcpPatterns: [
-      // Memory Management tools (Serena)
-      "mcp_serena_*memories*", // list_memories
-      "mcp_serena_*_memory", // delete_memory, edit_memory, read_memory, write_memory
-      // Onboarding & Initialization tools
-      "mcp_serena_*onboarding*",
-      "mcp_serena_initial*",
-      // Think/Reasoning tools
-      "mcp_serena_*think*",
-    ],
   };
 }
 
@@ -79,9 +54,56 @@ function createDefaultConfig(): void {
     mkdirSync(CONFIG_DIR, { recursive: true });
   }
 
-  const defaultConfig = getDefaultConfig();
-  const configContent = stringifyYaml(defaultConfig);
-  writeFileSync(YAML_PATH, configContent, "utf-8");
+  // Write a commented YAML template with helpful examples
+  const configTemplate = `# Tiny Agent Configuration
+# See https://github.com/jellydn/tiny-coding-agent for full docs
+
+# Default model to use
+defaultModel: llama3.2
+
+# Provider configurations
+providers:
+  ollama:
+    baseUrl: http://localhost:11434
+  # openai:
+  #   apiKey: \${OPENAI_API_KEY}
+  # anthropic:
+  #   apiKey: \${ANTHROPIC_API_KEY}
+
+# MCP servers for extended capabilities
+mcpServers:
+  # Context7: Documentation lookups for libraries/frameworks (zero dependencies)
+  context7:
+    command: npx
+    args: ["-y", "@upstash/context7-mcp"]
+
+  # Serena: Semantic code operations (optional, requires uv)
+  # Install: curl -LsSf https://astral.sh/uv/install.sh | sh
+  # serena:
+  #   command: uvx
+  #   args:
+  #     - "--from"
+  #     - "git+https://github.com/oraios/serena"
+  #     - "serena-mcp-server"
+  #     - "--context"
+  #     - "ide"
+  #     - "--project"
+  #     - "."
+  #     - "--open-web-dashboard"
+  #     - "false"
+
+# Skill directories for custom skills
+skillDirectories:
+  - ~/.tiny-agent/skills/
+  - .skills/
+
+# Disable specific MCP tools by pattern (glob-style matching)
+# disabledMcpPatterns:
+#   - "mcp_serena_*memories*"    # Disable Serena memory tools
+#   - "mcp_serena_*onboarding*"  # Disable Serena onboarding tools
+`;
+
+  writeFileSync(YAML_PATH, configTemplate, "utf-8");
 }
 
 function interpolateEnvVars(value: string): string {
