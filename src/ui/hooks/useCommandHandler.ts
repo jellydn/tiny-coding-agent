@@ -7,6 +7,7 @@ import { useCallback } from "react";
 import { MessageRole } from "../types/enums.js";
 import type { Command } from "../components/CommandMenu.js";
 import type { Agent } from "../../core/agent.js";
+import { getGlobalMcpManager } from "../../mcp/manager.js";
 
 interface UseCommandHandlerProps {
   onAddMessage: (role: MessageRole, content: string) => void;
@@ -100,6 +101,33 @@ export function useCommandHandler({
     [agent, onAddMessage],
   );
 
+  const handleMcpCommand = useCallback(() => {
+    const mcpManager = getGlobalMcpManager();
+    if (!mcpManager) {
+      onAddMessage(MessageRole.ASSISTANT, "No MCP servers configured.");
+      return;
+    }
+
+    const servers = mcpManager.getServerStatus();
+    if (servers.length === 0) {
+      onAddMessage(MessageRole.ASSISTANT, "No MCP servers registered.");
+      return;
+    }
+
+    const lines = servers
+      .map((s) => {
+        const status = s.connected ? "●" : "○";
+        const tools = s.toolCount > 0 ? ` (${s.toolCount} tools)` : "";
+        return `  ${status} ${s.name}${tools}`;
+      })
+      .join("\n");
+
+    onAddMessage(
+      MessageRole.ASSISTANT,
+      `MCP Servers:\n\n${lines}\n\nUse a tool from an MCP server to connect it.`,
+    );
+  }, [onAddMessage]);
+
   const handleCommand = useCallback(
     (commandName: string, args: string = "") => {
       switch (commandName) {
@@ -117,12 +145,16 @@ export function useCommandHandler({
   /help   - Show this help
   /clear  - Clear conversation
   /model  - Switch model
+  /mcp    - Show MCP server status
   /skill  - Load a skill or list available skills
   /exit   - Exit`,
           );
           break;
         case "/model":
           onSetShowModelPicker(true);
+          break;
+        case "/mcp":
+          handleMcpCommand();
           break;
         case "/skill":
           handleSkillCommand(args);
@@ -131,7 +163,14 @@ export function useCommandHandler({
           onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
       }
     },
-    [onAddMessage, onClearMessages, onSetShowModelPicker, onExit, handleSkillCommand],
+    [
+      onAddMessage,
+      onClearMessages,
+      onSetShowModelPicker,
+      onExit,
+      handleSkillCommand,
+      handleMcpCommand,
+    ],
   );
 
   const handleCommandSelect = useCallback(

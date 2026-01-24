@@ -11,17 +11,14 @@ bun run lint:fix         # Auto-fix lint issues
 bun run format           # Format code (oxfmt)
 bun run format:check     # Check formatting only
 bun test                 # Run all tests
-bun test <file>          # Run single test file (e.g., src/core/memory.test.ts)
-bun test <pattern>       # Run tests matching pattern (e.g., "MemoryStore")
+bun test <file>          # Run single test file
+bun test <pattern>       # Run tests matching pattern
 bun test:watch           # Watch mode for TDD
 
 # Release workflow
-bun run release:patch    # Patch release (run tests, typecheck, lint, bump patch)
+bun run release:patch    # Patch release
 bun run release:minor    # Minor release
 bun run release:major    # Major release
-
-# After changes
-bun run format && bun run typecheck && bun run lint
 ```
 
 ## Code Style
@@ -41,7 +38,7 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 
 - ES modules with TypeScript 5+, strict mode
 - Compiler: `verbatimModuleSyntax`, `noUncheckedIndexedAccess`, `noImplicitOverride`
-- Note: `noUnusedLocals: false`, `noUnusedParameters: false` (unused code allowed)
+- `noUnusedLocals: false`, `noUnusedParameters: false` (unused code allowed)
 - Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
 - Use `satisfies` for type narrowing with validation
 
@@ -91,10 +88,6 @@ async function fetchData(url: string): Promise<Result<Data>> {
 - **Helper Variables**: Extract complex expressions
 - **Dead Code**: Delete unused code
 - **Normalize Symmetries**: Use consistent patterns
-
-### Registry Pattern
-
-Use Map with CRUD: `register`, `unregister`, `get`, `list`, `clear`.
 
 ### Tool Pattern
 
@@ -159,12 +152,6 @@ src/
 ```
 
 Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
-
-## Core Principles
-
-- **Small, Safe Steps**: Make big changes through small, reversible steps
-- **Human Relationships**: Code is communication between humans
-- **Eliminate Problems**: Remove complexity rather than managing it
 
 ## Agent Workflow
 

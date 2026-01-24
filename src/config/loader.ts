@@ -49,16 +49,28 @@ function getDefaultConfig(): Config {
         args: [
           "--from",
           "git+https://github.com/oraios/serena",
-          "serena",
-          "start-mcp-server",
+          "serena-mcp-server",
           "--context",
           "ide",
           "--project",
           ".",
+          "--open-web-dashboard",
+          "false",
         ],
       },
     },
     tools: {},
+    // Patterns to disable specific MCP tool categories (glob-style matching)
+    disabledMcpPatterns: [
+      // Memory Management tools (Serena)
+      "mcp_serena_*memories*", // list_memories
+      "mcp_serena_*_memory", // delete_memory, edit_memory, read_memory, write_memory
+      // Onboarding & Initialization tools
+      "mcp_serena_*onboarding*",
+      "mcp_serena_initial*",
+      // Think/Reasoning tools
+      "mcp_serena_*think*",
+    ],
   };
 }
 
@@ -128,10 +140,9 @@ export function loadConfig(): Config {
       ...defaultConfig.providers,
       ...(userConfig.providers as Record<string, unknown>),
     },
-    mcpServers: {
-      ...defaultConfig.mcpServers,
-      ...(userConfig.mcpServers as Record<string, unknown>),
-    },
+    // Only add default MCP servers if user has NO mcpServers config at all
+    // If user defines any mcpServers, use only those (opt-in model)
+    ...(userConfig.mcpServers === undefined ? { mcpServers: defaultConfig.mcpServers } : {}),
     // Merge arrays (skillDirectories)
     skillDirectories: userConfig.skillDirectories ?? defaultConfig.skillDirectories,
     // Merge tools object

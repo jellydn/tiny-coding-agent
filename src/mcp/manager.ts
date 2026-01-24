@@ -28,10 +28,49 @@ function isCommandAvailable(command: string): boolean {
   }
 }
 
+let _globalMcpManager: McpManager | null = null;
+
+export function setGlobalMcpManager(manager: McpManager): void {
+  _globalMcpManager = manager;
+}
+
+export function getGlobalMcpManager(): McpManager | null {
+  return _globalMcpManager;
+}
+
 export class McpManager {
   private _clients: Map<string, McpClient> = new Map();
   private _restartAttempts: Map<string, number> = new Map();
   private _maxRestartAttempts = 3;
+  private _disabledPatterns: string[] = [];
+
+  constructor(disabledPatterns: string[] = []) {
+    // Auto-register as global instance
+    setGlobalMcpManager(this);
+    this._disabledPatterns = disabledPatterns;
+  }
+
+  /**
+   * Convert glob pattern to regex for matching tool names
+   */
+  private _globToRegex(pattern: string): RegExp {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?"); // Use non-greedy matching
+    return new RegExp(`^${escaped}$`);
+  }
+
+  /**
+   * Check if a tool name matches any disabled pattern
+   */
+  private _isDisabledByPattern(name: string): boolean {
+    if (this._disabledPatterns.length === 0) {
+      return false;
+    }
+    // Only check patterns for MCP tools
+    if (!name.startsWith("mcp_")) {
+      return false;
+    }
+    return this._disabledPatterns.some((pattern) => this._globToRegex(pattern).test(name));
+  }
 
   async addServer(name: string, config: McpServerConfig): Promise<boolean> {
     if (this._clients.has(name)) {
@@ -53,7 +92,20 @@ export class McpManager {
     this._clients.set(name, client);
     this._restartAttempts.set(name, 0);
 
-    // Lazy connect: defer connection until first tool call
+    // Try to connect immediately to discover tools, but don't fail if it errors
+    // Connection will be retried lazily when a tool is called
+    try {
+      await client.connect();
+      this._restartAttempts.set(name, 0);
+      if (_verbose) {
+        console.log(`[MCP] Connected ${name} with ${client.tools.length} tools`);
+      }
+    } catch {
+      // Silently ignore connection errors - will retry lazily on first tool use
+      if (_verbose) {
+        console.warn(`[MCP] ${name}: will connect on first tool use`);
+      }
+    }
     return true;
   }
 
@@ -61,23 +113,25 @@ export class McpManager {
     try {
       await client.connect();
       this._restartAttempts.set(name, 0);
-    } catch (error) {
+      if (_verbose) {
+        console.log(`[MCP] Connected ${name} with ${client.tools.length} tools`);
+      }
+    } catch {
       const attempts = this._restartAttempts.get(name) ?? 0;
       if (attempts < this._maxRestartAttempts) {
         this._restartAttempts.set(name, attempts + 1);
         if (_verbose) {
-          console.error(
-            `MCP server "${name}" connection failed (attempt ${attempts + 1}/${this._maxRestartAttempts}): ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+          console.warn(
+            `[MCP] ${name} connection failed (attempt ${attempts + 1}/${this._maxRestartAttempts}), retrying...`,
           );
         }
         await this._delay(1000 * (attempts + 1));
         await this._connectClient(name, client);
       } else {
-        throw new Error(
-          `MCP server "${name}" failed to connect after ${this._maxRestartAttempts} attempts`,
-        );
+        // Don't throw - let the tool call fail gracefully
+        if (_verbose) {
+          console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
+        }
       }
     }
   }
@@ -133,14 +187,12 @@ export class McpManager {
     }
 
     if (!client.isConnected) {
-      try {
-        await this._connectClient(serverName, client);
-      } catch (error) {
+      await this._connectClient(serverName, client);
+      // Check if connection succeeded
+      if (!client.isConnected) {
         return {
           success: false,
-          error: `MCP server "${serverName}" is not connected: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          error: `MCP server "${serverName}" is not available. Install required dependencies or disable with './tiny-agent mcp disable ${serverName}'`,
         };
       }
     }
@@ -177,6 +229,23 @@ export class McpManager {
 
   isServerConnected(name: string): boolean {
     return this._clients.get(name)?.isConnected ?? false;
+  }
+
+  getServerStatus(): Array<{ name: string; connected: boolean; toolCount: number }> {
+    const result: Array<{ name: string; connected: boolean; toolCount: number }> = [];
+    for (const [name, client] of this._clients) {
+      // Filter out disabled tools when counting
+      const enabledTools = client.tools.filter((toolDef) => {
+        const prefixedName = `mcp_${name}_${toolDef.name}`;
+        return !this._isDisabledByPattern(prefixedName);
+      });
+      result.push({
+        name,
+        connected: client.isConnected,
+        toolCount: enabledTools.length,
+      });
+    }
+    return result;
   }
 
   registerToolsWithRegistry(registry: ToolRegistry): void {

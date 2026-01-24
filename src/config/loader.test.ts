@@ -77,6 +77,27 @@ describe("Config Loader - Config Merging", () => {
     expect(config.mcpServers?.serena?.command).toBe("uvx");
   });
 
+  it("should only use user-configured mcpServers, not merge with defaults", async () => {
+    // Config with only context7 - serena should NOT appear
+    fs.writeFileSync(
+      tempConfigFile,
+      `defaultModel: custom-model
+mcpServers:
+  context7:
+    command: npx
+    args: ["-y", "@upstash/context7-mcp"]
+`,
+      "utf-8",
+    );
+
+    const { loadConfig } = await import("./loader.js");
+    const config = loadConfig();
+    // Only user's configured servers should be present
+    expect(Object.keys(config.mcpServers!)).toEqual(["context7"]);
+    expect(config.mcpServers?.context7).toBeDefined();
+    expect(config.mcpServers?.serena).toBeUndefined();
+  });
+
   it("should preserve user-configured values over defaults", async () => {
     // Update config with custom model
     fs.writeFileSync(

@@ -40,6 +40,12 @@ export interface Config {
   };
   mcpServers?: Record<string, McpServerConfig>;
   tools?: Record<string, ToolConfig>;
+  /**
+   * Array of glob patterns to disable MCP tools.
+   * Tools matching any pattern will be excluded.
+   * Example: ["*_memory_*", "*_task_*", "mcp_serena_*"]
+   */
+  disabledMcpPatterns?: string[];
 }
 
 export interface ConfigValidationError {
@@ -123,6 +129,24 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
               message: `MCP server ${name} requires a command string`,
             });
           }
+        }
+      }
+    }
+  }
+
+  if (c.disabledMcpPatterns !== undefined) {
+    if (!Array.isArray(c.disabledMcpPatterns)) {
+      errors.push({
+        field: "disabledMcpPatterns",
+        message: "disabledMcpPatterns must be an array",
+      });
+    } else {
+      for (let i = 0; i < c.disabledMcpPatterns.length; i++) {
+        if (typeof c.disabledMcpPatterns[i] !== "string") {
+          errors.push({
+            field: `disabledMcpPatterns[${i}]`,
+            message: `disabledMcpPatterns[${i}] must be a string`,
+          });
         }
       }
     }

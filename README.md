@@ -157,27 +157,43 @@ providers:
   opencode:
     apiKey: ${OPENCODE_API_KEY}
 
-# MCP servers for extended capabilities
+# MCP servers for extended capabilities (opt-in - only configured servers are enabled)
 mcpServers:
   # Context7: Documentation lookups for libraries/frameworks
   context7:
     command: npx
     args: ["-y", "@upstash/context7-mcp"]
 
-  # Serena: Semantic code operations (requires uv)
+  # Serena: Semantic code operations (requires uv: curl -LsSf https://astral.sh/uv/install.sh | sh)
   serena:
     command: uvx
     args:
       [
         "--from",
         "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server",
+        "serena-mcp-server",
         "--context",
         "ide",
         "--project",
         ".",
+        "--open-web-dashboard",
+        "false",
       ]
+
+# Disable specific MCP tools by pattern (glob-style matching)
+# disabledMcpPatterns:
+#   - "mcp_serena_*memories*"    # Disable memory tools
+#   - "mcp_serena_*_memory"      # Disable *_memory tools
+#   - "mcp_serena_*onboarding*"  # Disable onboarding tools
+#   - "mcp_serena_*think*"       # Disable think tools
+
+# Disable all MCP servers
+# mcpServers: {}
+
+# Or use CLI to manage MCP servers:
+# tiny-agent mcp list              # List available servers
+# tiny-agent mcp enable context7   # Enable context7
+# tiny-agent mcp disable serena    # Disable serena
 
 # Tool configurations
 tools:
@@ -267,6 +283,36 @@ tiny-agent --provider opencode --model qwen3-coder "write a function"
 | `tiny-agent run "prompt"` | Single prompt, then exit  |
 | `tiny-agent config`       | Show current config       |
 | `tiny-agent status`       | Show provider, MCP, tools |
+| `tiny-agent mcp`          | Manage MCP servers        |
+| `tiny-agent memory`       | Manage memories           |
+| `tiny-agent skill`        | Manage skills             |
+
+### MCP Server Management
+
+```
+tiny-agent mcp list              # List available MCP servers
+tiny-agent mcp enable <name>     # Enable a default MCP server
+tiny-agent mcp disable <name>    # Disable an MCP server
+tiny-agent mcp add <name> <cmd>  # Add a custom MCP server
+```
+
+**Default MCP Servers:**
+
+- **context7**: Documentation lookup via `@upstash/context7-mcp`
+- **serena**: Semantic code operations (requires `uv`)
+
+**Examples:**
+
+```bash
+# Enable context7 (disabled by default)
+tiny-agent mcp enable context7
+
+# Disable serena
+tiny-agent mcp disable serena
+
+# Add a custom MCP server
+tiny-agent mcp add myserver npx -y @org/mcp-server
+```
 
 ### Options
 

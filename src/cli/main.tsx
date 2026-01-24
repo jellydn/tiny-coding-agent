@@ -1,7 +1,21 @@
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
+import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { loadConfig, getConfigPath } from "../config/loader.js";
+
+/**
+ * Check if a command is available in PATH.
+ */
+function isCommandAvailable(command: string): boolean {
+  try {
+    execSync(`command -v ${JSON.stringify(command)}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
@@ -14,7 +28,7 @@ import {
   createSkillTool,
 } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
-import { McpManager } from "../mcp/manager.js";
+import { McpManager, setMcpVerbose, getGlobalMcpManager } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
@@ -295,7 +309,29 @@ function createMemoryStore(
 async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
   const registry = new ToolRegistry();
 
+  // Convert glob pattern to regex
+  const globToRegex = (pattern: string): RegExp => {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp(`^${escaped}$`);
+  };
+
+  // Check if tool name matches any disabled pattern
+  const isDisabledByPattern = (name: string): boolean => {
+    if (!config.disabledMcpPatterns || config.disabledMcpPatterns.length === 0) {
+      return false;
+    }
+    // Only check patterns for MCP tools
+    if (!name.startsWith("mcp_")) {
+      return false;
+    }
+    return config.disabledMcpPatterns.some((pattern) => globToRegex(pattern).test(name));
+  };
+
   const isToolEnabled = (name: string): boolean => {
+    // Check if disabled by pattern first (for MCP tools)
+    if (isDisabledByPattern(name)) {
+      return false;
+    }
     if (config.tools === undefined) {
       return true;
     }
@@ -336,7 +372,9 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
 
   // Initialize and register MCP tools if configured
   if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    const mcpManager = new McpManager();
+    const mcpManager = new McpManager(config.disabledMcpPatterns ?? []);
+    setMcpVerbose(true); // Enable MCP verbose logging
+
     for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
       await mcpManager.addServer(serverName, serverConfig);
     }
@@ -614,8 +652,18 @@ async function handleStatus(
 
   if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
     console.log("\nMCP Servers:");
-    for (const [name] of Object.entries(config.mcpServers)) {
-      console.log(`  - ${name}`);
+    const mcpManager = getGlobalMcpManager();
+    if (mcpManager) {
+      const serverStatus = mcpManager.getServerStatus();
+      for (const server of serverStatus) {
+        const status = server.connected ? "●" : "○";
+        const tools = server.toolCount > 0 ? ` (${server.toolCount} tools)` : "";
+        console.log(`  ${status} ${server.name}${tools}`);
+      }
+    } else {
+      for (const [name] of Object.entries(config.mcpServers)) {
+        console.log(`  - ${name}`);
+      }
     }
   }
 
@@ -828,6 +876,213 @@ async function handleConfig(config: ReturnType<typeof loadConfig>, args: string[
     }
   }
   process.exit(0);
+}
+
+async function handleMcp(config: ReturnType<typeof loadConfig>, args: string[]): Promise<void> {
+  const subCommand = args[0] || "list";
+  const configPath = getConfigPath();
+
+  // Default MCP servers
+  const defaultServers: Record<string, { command: string; args: string[] }> = {
+    context7: {
+      command: "npx",
+      args: ["-y", "@upstash/context7-mcp"],
+    },
+    serena: {
+      command: "uvx",
+      args: [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena-mcp-server",
+        "--context",
+        "ide",
+        "--project",
+        ".",
+        "--open-web-dashboard",
+        "false",
+      ],
+    },
+  };
+
+  // Read actual config file to see what's explicitly configured
+  const { parse: parseYaml } = await import("yaml");
+  let fileConfig: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    const content = await readFile(configPath, "utf-8");
+    fileConfig = parseYaml(content) as Record<string, unknown>;
+  }
+  const userServers = ((fileConfig.mcpServers || {}) as Record<string, unknown>) || {};
+  const enabledServers = Object.keys(userServers);
+
+  if (subCommand === "list") {
+    console.log("MCP Servers");
+    console.log("===========\n");
+
+    const hasUserMcpConfig = enabledServers.length > 0;
+
+    if (!hasUserMcpConfig) {
+      console.log("No mcpServers configured. Using defaults:");
+      console.log("(Set 'mcpServers: {}' in config to disable all)\n");
+    }
+
+    // Default servers
+    console.log("Available MCP Servers:");
+    for (const [name, serverConfig] of Object.entries(defaultServers)) {
+      const isEnabled = enabledServers.includes(name);
+      const status = isEnabled ? "● enabled" : "○ disabled";
+      const argsStr = serverConfig.args.join(" ");
+      console.log(`  ${status} ${name}`);
+      console.log(`    Command: ${serverConfig.command} ${argsStr}`);
+
+      // Check if command is available
+      if (!isCommandAvailable(serverConfig.command)) {
+        console.log(
+          `    ⚠ Command "${serverConfig.command}" not found. Install required dependency.`,
+        );
+      }
+    }
+
+    // User-added servers (not in defaults)
+    const userAdded = Object.entries(userServers).filter(([name]) => !defaultServers[name]);
+    if (userAdded.length > 0) {
+      console.log("\nCustom Servers:");
+      for (const [name, serverConfig] of userAdded) {
+        const cfg = serverConfig as { command: string; args?: string[] };
+        const argsStr = (cfg.args || []).join(" ");
+        console.log(`  ● ${name}`);
+        console.log(`    Command: ${cfg.command} ${argsStr}`);
+        if (!isCommandAvailable(cfg.command)) {
+          console.log(`    ⚠ Command "${cfg.command}" not found.`);
+        }
+      }
+    }
+
+    console.log("\nUse './tiny-agent mcp add <name> <command> [args...]' to add a server");
+    console.log("Use './tiny-agent mcp enable <name>' to enable a default server");
+    console.log("Use './tiny-agent mcp disable <name>' to disable a server");
+    process.exit(0);
+  }
+
+  if (subCommand === "add") {
+    const name = args[1];
+    const command = args[2];
+
+    if (!name || !command) {
+      console.log("Usage: ./tiny-agent mcp add <name> <command> [args...]");
+      console.log("Example: ./tiny-agent mcp add myserver npx -y @org/mcp-server");
+      process.exit(1);
+    }
+
+    const serverArgs = args.slice(3);
+
+    // Check if command is available
+    if (!isCommandAvailable(command)) {
+      console.log(`⚠ Warning: Command "${command}" not found.`);
+      console.log(
+        `   The server "${name}" will not work until you install the required dependency.`,
+      );
+      console.log();
+    }
+
+    // Read current config
+    const content = await readFile(configPath, "utf-8");
+    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
+    const parsed = parseYaml(content) as Record<string, unknown>;
+
+    // Initialize mcpServers if needed
+    if (!parsed.mcpServers) {
+      parsed.mcpServers = {};
+    }
+
+    // Add the new server
+    (parsed.mcpServers as Record<string, unknown>)[name] = {
+      command,
+      args: serverArgs,
+    };
+
+    // Write back
+    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    console.log(`Added MCP server: ${name}`);
+    console.log(`  Command: ${command} ${serverArgs.join(" ")}`);
+    process.exit(0);
+  }
+
+  if (subCommand === "enable") {
+    const name = args[1];
+
+    if (!name) {
+      console.log("Usage: ./tiny-agent mcp enable <name>");
+      console.log("Example: ./tiny-agent mcp enable serena");
+      process.exit(1);
+    }
+
+    if (!defaultServers[name]) {
+      console.log(`Unknown MCP server: ${name}`);
+      console.log("Available: context7, serena");
+      process.exit(1);
+    }
+
+    const serverConfig = defaultServers[name];
+
+    // Check if command is available
+    if (!isCommandAvailable(serverConfig.command)) {
+      console.log(`⚠ Warning: Command "${serverConfig.command}" not found.`);
+      console.log(
+        `   The server "${name}" will not work until you install the required dependency.`,
+      );
+      console.log(`   For serena, install uv: curl -LsSf https://astral.sh/uv/install.sh | sh`);
+      console.log();
+    }
+
+    // Read current config
+    const content = await readFile(configPath, "utf-8");
+    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
+    const parsed = parseYaml(content) as Record<string, unknown>;
+
+    // Initialize mcpServers if needed
+    if (!parsed.mcpServers) {
+      parsed.mcpServers = {};
+    }
+
+    // Add the default server config
+    (parsed.mcpServers as Record<string, unknown>)[name] = serverConfig;
+
+    // Write back
+    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    console.log(`Enabled MCP server: ${name}`);
+    process.exit(0);
+  }
+
+  if (subCommand === "disable") {
+    const name = args[1];
+
+    if (!name) {
+      console.log("Usage: ./tiny-agent mcp disable <name>");
+      process.exit(1);
+    }
+
+    // Read current config
+    const content = await readFile(configPath, "utf-8");
+    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
+    const parsed = parseYaml(content) as Record<string, unknown>;
+
+    if (!parsed.mcpServers || !(parsed.mcpServers as Record<string, unknown>)[name]) {
+      console.log(`MCP server "${name}" is not configured`);
+      process.exit(1);
+    }
+
+    // Remove the server
+    delete (parsed.mcpServers as Record<string, unknown>)[name];
+
+    // Write back
+    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    console.log(`Disabled MCP server: ${name}`);
+    process.exit(0);
+  }
+
+  console.log(`Unknown subcommand: ${subCommand}`);
+  console.log("Usage: ./tiny-agent mcp [list|add|enable|disable]");
+  process.exit(1);
 }
 
 async function handleMemory(
@@ -1112,9 +1367,11 @@ export async function main(): Promise<void> {
       await handleMemory(config, args, options);
     } else if (command === "skill") {
       await handleSkill(config, args, options);
+    } else if (command === "mcp") {
+      await handleMcp(config, args);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error("Available commands: chat, run <prompt>, config, status, memory, skill");
+      console.error("Available commands: chat, run <prompt>, config, status, memory, skill, mcp");
       console.error(
         "Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help",
       );
