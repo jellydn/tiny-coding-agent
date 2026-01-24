@@ -13,6 +13,7 @@ import { z } from "zod";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
 import { createProvider, detectProvider } from "../providers/factory.js";
+import { discoverSkills, generateSkillsPrompt, type SkillMetadata } from "../skills/index.js";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -45,6 +46,7 @@ export interface AgentOptions {
   agentsMdPath?: string;
   thinking?: ThinkingConfig;
   providerConfigs?: ProviderConfigs;
+  skillDirectories?: string[];
 }
 
 export interface RuntimeConfig {
@@ -92,6 +94,9 @@ export class Agent {
   private _trackContextUsage: boolean;
   private _thinking?: ThinkingConfig;
   private _conversationHistory: Message[] = [];
+  private _skills: Map<string, SkillMetadata> = new Map();
+  private _skillsInitialized: boolean = false;
+  private _skillsInitPromise?: Promise<void>;
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._defaultLlmClient = llmClient;
@@ -113,6 +118,14 @@ export class Agent {
       }
     }
 
+    if (options.skillDirectories && options.skillDirectories.length > 0) {
+      this._skillsInitPromise = this._initializeSkills(
+        options.skillDirectories,
+        effectiveSystemPrompt,
+        options.verbose,
+      );
+    }
+
     this._systemPrompt = effectiveSystemPrompt;
     this._verbose = options.verbose ?? false;
     this._conversationFile = options.conversationFile;
@@ -124,6 +137,29 @@ export class Agent {
     if (options.memoryFile) {
       this._memoryStore = new MemoryStore({ filePath: options.memoryFile });
     }
+  }
+
+  private async _initializeSkills(
+    skillDirectories: string[],
+    systemPrompt: string,
+    verbose?: boolean,
+  ): Promise<void> {
+    if (this._skillsInitialized) return;
+
+    const discoveredSkills = await discoverSkills(skillDirectories);
+    for (const skill of discoveredSkills) {
+      this._skills.set(skill.name, skill);
+    }
+    const skillsPrompt = generateSkillsPrompt(discoveredSkills);
+    if (skillsPrompt) {
+      this._systemPrompt = `${systemPrompt}\n\n${skillsPrompt}`;
+      if (verbose) {
+        console.log(
+          `[Loaded ${discoveredSkills.length} skills from ${skillDirectories.length} directories]`,
+        );
+      }
+    }
+    this._skillsInitialized = true;
   }
 
   private _getLlmClientForModel(model: string): LLMClient {
@@ -162,6 +198,10 @@ export class Agent {
     runtimeConfig?: RuntimeConfig,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
+    if (this._skillsInitPromise) {
+      await this._skillsInitPromise;
+    }
+
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     const llmClient = this._getLlmClientForModel(effectiveModel);
@@ -568,6 +608,10 @@ export class Agent {
       iterations,
       messages: this._conversationHistory,
     };
+  }
+
+  getSkillRegistry(): Map<string, SkillMetadata> {
+    return this._skills;
   }
 
   private _getToolDefinitions(): ToolDefinition[] {

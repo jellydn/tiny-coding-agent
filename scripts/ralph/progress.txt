@@ -89,3 +89,38 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Include available skills list in error messages for better developer experience
   - Error messages should include helpful context (like available skills) when appropriate
 
+
+## Sat Jan 24 2026 - US-006
+- Session: https://opncd.ai/s/Demo
+- Implemented skills configuration to config schema
+- Added skillDirectories?: string[] to Config interface
+- Added validation for optional array of strings in validateConfig
+- Added default directories ['~/.tiny-agent/skills/', './.skills/'] in getDefaultConfig
+- Added ~ to homedir() expansion in loadConfig for skillDirectories
+- Files changed:
+  - src/config/schema.ts (added skillDirectories property and validation)
+  - src/config/loader.ts (added default directories and ~ expansion)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use Array.isArray() to validate array types in config validation
+  - When expanding ~ to homedir, use path.join(homedir(), dir.slice(2)) for paths starting with ~/
+  - Run format (oxfmt) before committing as it's enforced by husky pre-commit
+---
+
+## Sat Jan 24 2026 - US-007
+- Session: https://opncd.ai/s/Demo
+- Implemented skills integration into Agent class
+- Added skillDirectories option to AgentOptions interface
+- Added _skills Map and _skillsInitialized flag as private fields
+- Added _initializeSkills private async method for lazy skill loading
+- Modified constructor to trigger skills discovery via _skillsInitPromise
+- Updated runStream to await skills initialization before processing
+- Added getSkillRegistry() public method for skill tool access
+- Files changed:
+  - src/core/agent.ts (added skills support)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Constructors cannot be async in TypeScript; use lazy initialization with promises
+  - Use a private promise field to track async initialization without blocking constructor
+  - Await the initialization promise at the start of runStream or other entry points
+  - The _skills Map provides the registry for skill tool access via getSkillRegistry()
