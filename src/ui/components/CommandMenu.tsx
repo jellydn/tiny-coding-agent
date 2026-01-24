@@ -20,7 +20,7 @@ const STATIC_COMMANDS: Command[] = [
   { name: "/model", description: "Switch the model" },
   { name: "/memory", description: "Manage memories" },
   { name: "/exit", description: "Exit the session" },
-  { name: "/skill", description: "Load a skill or list available skills" },
+  { name: "/skill", description: "Load a skill (invokes once per message) or list available skills" },
 ];
 
 export function CommandMenu({

@@ -85,6 +85,8 @@ export function ChatApp(): React.ReactElement {
       const trimmed = value.trim();
       if (!trimmed || isThinking) return;
 
+      skillInvokedThisMessageRef.current.clear();
+
       if (trimmed.startsWith("/")) {
         setInputValue("");
         handleSlashCommand(trimmed);
@@ -111,6 +113,7 @@ export function ChatApp(): React.ReactElement {
   );
 
   const [skillItems, setSkillItems] = useState<SkillMetadata[]>([]);
+  const skillInvokedThisMessageRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!agent) return;
@@ -128,6 +131,11 @@ export function ChatApp(): React.ReactElement {
         addMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
         return;
       }
+
+      if (skillInvokedThisMessageRef.current.has(skill.name)) {
+        return;
+      }
+      skillInvokedThisMessageRef.current.add(skill.name);
 
       try {
         const content = await fs.readFile(skill.location, "utf-8");
