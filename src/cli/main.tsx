@@ -701,12 +701,16 @@ USAGE:
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
     tiny-agent memory [command]        Manage memories
+    tiny-agent skill [command]         Manage skills
 
 COMMANDS:
     memory list                        List all stored memories
     memory add <content>               Add a new memory
     memory clear                       Clear all memories
     memory stats                       Show memory statistics
+    skill list                         List all discovered skills
+    skill show <name>                  Show full skill content
+    skill init <name>                  Initialize a new skill
 
 OPTIONS:
     --model <model>                    Override default model
@@ -861,6 +865,63 @@ async function handleMemory(
   process.exit(0);
 }
 
+async function handleSkill(
+  config: ReturnType<typeof loadConfig>,
+  args: string[],
+  _options: CliOptions,
+): Promise<void> {
+  const subCommand = args[0] || "list";
+
+  if (subCommand === "list") {
+    const skillDirectories = config.skillDirectories || [];
+    const { discoverSkills } = await import("../skills/loader.js");
+    const skills = await discoverSkills(skillDirectories);
+
+    if (_options.json) {
+      console.log(
+        JSON.stringify(
+          skills.map((s) => ({
+            name: s.name,
+            description: s.description,
+            location: s.location,
+          })),
+        ),
+      );
+    } else {
+      console.log("\nSkills");
+      console.log("======\n");
+
+      if (skills.length === 0) {
+        console.log("No skills found.");
+        if (skillDirectories.length > 0) {
+          console.log(`  Configured directories: ${skillDirectories.join(", ")}`);
+        } else {
+          console.log("  No skill directories configured.");
+        }
+        console.log("\n  To add skills, configure skillDirectories in config.yaml");
+        console.log("  or run: tiny-agent skill init <name>\n");
+      } else {
+        for (const skill of skills) {
+          const truncatedDesc =
+            skill.description.length > 60
+              ? `${skill.description.slice(0, 60)}...`
+              : skill.description;
+          console.log(`  ${skill.name}`);
+          console.log(`    ${truncatedDesc}`);
+          console.log();
+        }
+        console.log(`Total: ${skills.length} skill(s)\n`);
+      }
+    }
+  } else {
+    console.error(`Unknown skill command: ${subCommand}`);
+    console.error("Available commands: list");
+    process.exit(1);
+  }
+
+  process.exit(0);
+}
+
 export async function main(): Promise<void> {
   try {
     const { command, args, options } = parseArgs();
@@ -894,6 +955,8 @@ export async function main(): Promise<void> {
       await handleStatus(config, options);
     } else if (command === "memory") {
       await handleMemory(config, args, options);
+    } else if (command === "skill") {
+      await handleSkill(config, args, options);
     } else {
       console.error(`Unknown command: ${command}`);
       console.error("Available commands: chat, run <prompt>, config, status, memory");

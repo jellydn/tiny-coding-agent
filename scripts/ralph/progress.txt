@@ -139,3 +139,18 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Skill tool needs agent's skill registry, so must be created after agent instantiation
   - Pattern: create agent first, then get registry, create tool, register tool
   - Both handleRun and handleInteractiveChat need the same skill tool registration pattern
+
+## Sat Jan 24 2026 - US-009
+- Session: https://opncd.ai/s/Demo
+- Implemented skill list CLI command
+- Added handleSkill function to main.tsx
+- Updated main() to handle 'skill' command
+- Updated help text to include skill commands
+- Added dynamic import of discoverSkills in handleSkill
+- Files changed:
+  - src/cli/main.tsx (added skill command handling)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Use dynamic imports for modules that may not be needed in all execution paths
+  - Follow the same pattern as handleMemory for consistency
+  - Truncate description to 60 chars for list view
