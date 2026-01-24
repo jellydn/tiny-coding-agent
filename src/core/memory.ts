@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { countTokens } from "./tokens.js";
+import { countTokensSync } from "./tokens.js";
+
+const SAVE_DEBOUNCE_MS = 100;
 
 export type MemoryCategory = "user" | "project" | "codebase";
 
@@ -35,6 +37,8 @@ export class MemoryStore {
   private _memories: Map<string, Memory> = new Map();
   private _filePath?: string;
   private _maxMemories: number;
+  private _saveTimeout?: NodeJS.Timeout;
+  private _dirty = false;
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
@@ -58,7 +62,7 @@ export class MemoryStore {
 
     this._memories.set(memory.id, memory);
     this._evictIfNeeded();
-    this._save();
+    this._scheduleSave();
 
     return memory;
   }
@@ -68,7 +72,7 @@ export class MemoryStore {
     if (memory) {
       memory.lastAccessedAt = new Date().toISOString();
       memory.accessCount++;
-      this._save();
+      this._scheduleSave();
     }
     return memory;
   }
@@ -86,14 +90,14 @@ export class MemoryStore {
   remove(id: string): boolean {
     const removed = this._memories.delete(id);
     if (removed) {
-      this._save();
+      this._scheduleSave();
     }
     return removed;
   }
 
   clear(): void {
     this._memories.clear();
-    this._save();
+    this._scheduleSave();
   }
 
   count(): number {
@@ -138,7 +142,7 @@ export class MemoryStore {
     });
 
     if (results.length > 0) {
-      this._save();
+      this._scheduleSave();
     }
 
     return results;
@@ -159,9 +163,22 @@ export class MemoryStore {
 
   countTokens(): number {
     return Array.from(this._memories.values()).reduce(
-      (total, m) => total + countTokens(m.content) + countTokens(m.category),
+      (total, m) => total + countTokensSync(m.content) + countTokensSync(m.category),
       0,
     );
+  }
+
+  private _scheduleSave(): void {
+    this._dirty = true;
+    if (this._saveTimeout) return;
+
+    this._saveTimeout = setTimeout(() => {
+      this._saveTimeout = undefined;
+      if (this._dirty) {
+        this._dirty = false;
+        this._save();
+      }
+    }, SAVE_DEBOUNCE_MS);
   }
 
   private _load(): void {
@@ -213,10 +230,17 @@ export class MemoryStore {
 
   private _evictIfNeeded(): void {
     while (this._memories.size > this._maxMemories) {
-      const oldest = Array.from(this._memories.values()).reduce((a, b) =>
-        new Date(a.lastAccessedAt) < new Date(b.lastAccessedAt) ? a : b,
-      );
-      this._memories.delete(oldest.id);
+      let oldestId: string | undefined;
+      let oldestTime = Infinity;
+
+      for (const [id, memory] of this._memories) {
+        const accessTime = new Date(memory.lastAccessedAt).getTime();
+        if (accessTime < oldestTime) {
+          oldestTime = accessTime;
+          oldestId = id;
+        }
+      }
+      if (oldestId) this._memories.delete(oldestId);
     }
   }
 }
@@ -254,13 +278,13 @@ export function buildContextWithMemory(
   memoryBudget: number,
   conversationBudget: number,
 ): { context: Array<{ role: string; content: string }>; stats: ContextStats } {
-  const systemTokens = countTokens(systemPrompt);
+  const systemTokens = countTokensSync(systemPrompt);
 
   let memoryTokens = 0;
   const includedMemories: string[] = [];
 
   for (const memory of memories) {
-    const tokens = countTokens(memory.content);
+    const tokens = countTokensSync(memory.content);
     if (memoryTokens + tokens <= memoryBudget) {
       memoryTokens += tokens;
       includedMemories.push(`[${memory.category}] ${memory.content}`);
@@ -283,7 +307,7 @@ export function buildContextWithMemory(
 
   for (let i = 0; i < conversationMessages.length; i++) {
     const msg = conversationMessages[i] as { role: string; content: string };
-    const tokens = countTokens(msg.content);
+    const tokens = countTokensSync(msg.content);
     if (conversationTokens + tokens <= conversationBudget) {
       conversationTokens += tokens;
       includedMessages.push(msg);

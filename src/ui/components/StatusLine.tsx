@@ -101,9 +101,7 @@ export function StatusLine({
   if (status) {
     const statusLabel = STATUS_CONFIG.LABELS[status] || status;
     const statusColor = STATUS_CONFIG.COLORS[status];
-    elements.push(
-      <Text key={`sep-s-${elements.length}`}> | </Text>,
-    );
+    elements.push(<Text key={`sep-s-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="status" color={statusColor}>
         {statusLabel}
@@ -114,9 +112,7 @@ export function StatusLine({
   // Show tool with timer when running
   if (tool) {
     const timeStr = `${elapsed.toFixed(1)}s`;
-    elements.push(
-      <Text key={`sep-t-${elements.length}`}> | </Text>,
-    );
+    elements.push(<Text key={`sep-t-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="tool" color="cyan">
         ⚙ {tool} {timeStr}
@@ -125,9 +121,7 @@ export function StatusLine({
   } else if (status === "thinking") {
     // Show thinking timer when thinking (no tool)
     const timeStr = `${elapsed.toFixed(1)}s`;
-    elements.push(
-      <Text key={`sep-th-${elements.length}`}> | </Text>,
-    );
+    elements.push(<Text key={`sep-th-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="thinking" color="yellow">
         ⏳ {timeStr}

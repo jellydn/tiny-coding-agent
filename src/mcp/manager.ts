@@ -71,9 +71,7 @@ export class McpManager {
     for (let attempts = 0; attempts < this._maxRestartAttempts; attempts++) {
       try {
         await client.connect();
-        if (this._verbose) {
-          console.warn(`[MCP] Connected ${name} with ${client.tools.length} tools`);
-        }
+        if (this._verbose) console.warn(`[MCP] Connected ${name} with ${client.tools.length} tools`);
         return;
       } catch {
         if (attempts < this._maxRestartAttempts - 1) {
@@ -81,9 +79,7 @@ export class McpManager {
         }
       }
     }
-    if (this._verbose) {
-      console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
-    }
+    if (this._verbose) console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
   }
 
   async removeServer(name: string): Promise<void> {

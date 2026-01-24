@@ -86,7 +86,15 @@ async function searchFiles(
   regex: RegExp,
   includePattern: string | undefined,
   results: string[],
+  currentDepth = 0,
+  maxDepth = 20,
 ): Promise<void> {
+  // Early exit if depth exceeded
+  if (currentDepth > maxDepth) {
+    console.warn(`Search depth limit (${maxDepth}) reached at ${searchPath}`);
+    return;
+  }
+
   const stat = await fs.stat(searchPath);
 
   if (stat.isFile()) {
@@ -113,7 +121,7 @@ async function searchFiles(
       }
 
       if (entry.isDirectory()) {
-        await searchFiles(entryPath, regex, includePattern, results);
+        await searchFiles(entryPath, regex, includePattern, results, currentDepth + 1, maxDepth);
       } else if (entry.isFile()) {
         if (!includePattern || matchesGlob(entry.name, includePattern)) {
           await searchInFile(entryPath, regex, results);
@@ -140,15 +148,31 @@ async function searchInFile(filePath: string, regex: RegExp, results: string[]):
         results.push(`${filePath}:${lineNum}: ${truncatedLine.trim()}`);
       }
     }
-  } catch {
-    // Skip files that can't be read
+  } catch (err) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === "EACCES") {
+      // Log permission errors but continue
+      console.warn(`Skipping ${filePath}: permission denied`);
+    } else if (error.code === "EISDIR") {
+      // Skip directories silently
+    } else if (error.code !== "ENOENT") {
+      // Log unexpected errors (ENOENT is common due to race conditions)
+      console.warn(`Skipping ${filePath}: ${error.message}`);
+    }
   }
 }
 
 function matchesGlob(filename: string, pattern: string): boolean {
-  const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".");
+  const normalizedPath = filename.split(path.sep).join("/");
+
+  let regexPattern = pattern
+    .replace(/\./g, "\\.")
+    .replace(/\*\*/g, ".*")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, ".");
+
   const regex = new RegExp(`^${regexPattern}$`, "i");
-  return regex.test(filename);
+  return regex.test(normalizedPath);
 }
 
 export const globTool: Tool = {
@@ -214,7 +238,7 @@ async function globFiles(
 
   const stat = await fs.stat(currentPath);
   if (!stat.isDirectory()) {
-    if (matchesGlobPattern(relativePath || path.basename(basePath), pattern)) {
+    if (matchesGlob(relativePath || path.basename(basePath), pattern)) {
       results.push(currentPath);
     }
     return;
@@ -242,7 +266,7 @@ async function globFiles(
         await globFiles(basePath, pattern, entryRelativePath, results);
       }
     } else if (entry.isFile()) {
-      if (matchesGlobPattern(entryRelativePath, pattern)) {
+      if (matchesGlob(entryRelativePath, pattern)) {
         results.push(entryFullPath);
       }
     }
@@ -263,20 +287,6 @@ function shouldDescendIntoDir(pattern: string, dirPath: string): boolean {
     }
   }
   return true;
-}
-
-function matchesGlobPattern(filePath: string, pattern: string): boolean {
-  const normalizedPath = filePath.split(path.sep).join("/");
-
-  let regexPattern = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*\*\//g, "(.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, ".");
-
-  const regex = new RegExp(`^${regexPattern}$`);
-  return regex.test(normalizedPath);
 }
 
 export const searchTools: Tool[] = [grepTool, globTool];

@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { statusLineManager, type StatusLineState } from "../status-line-manager.js";
 import { StatusType } from "../types/enums.js";
 
@@ -51,9 +58,5 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
     [state],
   );
 
-  return (
-    <StatusLineContext.Provider value={contextValue}>
-      {children}
-    </StatusLineContext.Provider>
-  );
+  return <StatusLineContext.Provider value={contextValue}>{children}</StatusLineContext.Provider>;
 }

@@ -90,7 +90,7 @@ export class ToolRegistry {
   > {
     const dangerousCalls = calls.filter((c) => this.isDangerous(c.name, c.args));
 
-    // No dangerous calls or no handler - execute all
+    // No dangerous calls - execute all
     if (dangerousCalls.length === 0) {
       return Promise.all(calls.map(async (c) => ({ name: c.name, result: await this.execute(c.name, c.args) })));
     }
@@ -110,23 +110,23 @@ export class ToolRegistry {
 
     // All declined - execute only safe tools
     if (approved === false) {
-      return Promise.all(calls.map(async (c) => {
-        if (this.isDangerous(c.name, c.args)) {
-          return { name: c.name, result: { success: false, error: "User declined confirmation" } };
-        }
-        return { name: c.name, result: await this.execute(c.name, c.args) };
-      }));
+      return Promise.all(calls.map(async (c) => ({
+        name: c.name,
+        result: this.isDangerous(c.name, c.args)
+          ? { success: false, error: "User declined confirmation" }
+          : await this.execute(c.name, c.args),
+      })));
     }
 
     // Partial approval - execute only selected dangerous tool plus safe tools
     if (typeof approved === "object" && approved.type === "partial") {
       const selectedToolName = dangerousCalls[approved.selectedIndex]?.name;
-      return Promise.all(calls.map(async (c) => {
-        if (this.isDangerous(c.name, c.args) && c.name !== selectedToolName) {
-          return { name: c.name, result: { success: false, error: "User declined confirmation" } };
-        }
-        return { name: c.name, result: await this.execute(c.name, c.args) };
-      }));
+      return Promise.all(calls.map(async (c) => ({
+        name: c.name,
+        result: this.isDangerous(c.name, c.args) && c.name !== selectedToolName
+          ? { success: false, error: "User declined confirmation" }
+          : await this.execute(c.name, c.args),
+      })));
     }
 
     // All approved - execute all

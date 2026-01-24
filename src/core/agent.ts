@@ -3,7 +3,7 @@ import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { countTokens, truncateMessages } from "./tokens.js";
+import { countTokensSync, truncateMessages } from "./tokens.js";
 import { escapeXml } from "../utils/xml.js";
 import {
   MemoryStore,
@@ -87,7 +87,7 @@ export interface AgentResponse {
 function isValidToolCall(text: string): boolean {
   try {
     const parsed = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null && typeof parsed.name === "string";
+    return typeof parsed?.name === "string";
   } catch {
     return false;
   }
@@ -201,8 +201,8 @@ export class Agent {
     this._conversationManager.startSession();
   }
 
-  _updateConversationHistory(messages: Message[]): void {
-    this._conversationManager.setHistory(messages);
+  async _updateConversationHistory(messages: Message[]): Promise<void> {
+    await this._conversationManager.setHistory(messages);
   }
 
   async *runStream(
@@ -237,25 +237,24 @@ export class Agent {
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
-    const systemTokens = countTokens(this._systemPrompt);
+    const systemTokens = countTokensSync(this._systemPrompt);
 
-    const makeContextStats = (memTokens: number, trunc: boolean): ContextStats => {
-      const convTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
-      const stats: ContextStats = {
-        systemPromptTokens: systemTokens,
-        memoryTokens: memTokens,
-        conversationTokens: convTokens,
-        totalTokens: systemTokens + memTokens + convTokens,
-        maxContextTokens: this._maxContextTokens ?? 0,
-        truncationApplied: trunc,
-        memoryCount: 0,
-      };
-      return stats;
-    };
+    const makeContextStats = (memTokens: number, trunc: boolean): ContextStats => ({
+      systemPromptTokens: systemTokens,
+      memoryTokens: memTokens,
+      conversationTokens: messages.reduce((s, m) => s + countTokensSync(m.content), 0),
+      totalTokens: systemTokens + memTokens + messages.reduce((s, m) => s + countTokensSync(m.content), 0),
+      maxContextTokens: this._maxContextTokens ?? 0,
+      truncationApplied: trunc,
+      memoryCount: 0,
+    });
 
     if (!this._maxContextTokens) {
       // No context limit - track stats for display only
-      const conversationTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
+      const conversationTokens = messages.reduce(
+        (sum, msg) => sum + countTokensSync(msg.content),
+        0,
+      );
       contextStats = {
         systemPromptTokens: systemTokens,
         memoryTokens: 0,
@@ -291,15 +290,16 @@ export class Agent {
       if (availableTokens <= 0) {
         truncationApplied = false;
       } else {
-        const truncated = truncateMessages(messages, availableTokens);
+        const truncated = await truncateMessages(messages, availableTokens);
         truncationApplied = truncated.length < messages.length;
         if (truncationApplied) messages = truncated as Message[];
       }
       contextStats = {
         systemPromptTokens: systemTokens,
         memoryTokens: 0,
-        conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
-        totalTokens: systemTokens + (messages.reduce((sum, msg) => sum + countTokens(msg.content), 0)),
+        conversationTokens: messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0),
+        totalTokens:
+          systemTokens + messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0),
         maxContextTokens: this._maxContextTokens,
         truncationApplied,
         memoryCount: 0,
@@ -342,17 +342,7 @@ export class Agent {
       if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
       if (!contextStats) {
-        contextStats = {
-          systemPromptTokens: countTokens(this._systemPrompt),
-          memoryTokens: memoryTokensUsed,
-          conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
-          totalTokens: 0,
-          maxContextTokens: this._maxContextTokens ?? 0,
-          truncationApplied,
-          memoryCount: 0,
-        };
-        contextStats.totalTokens =
-          contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
+        contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
       }
 
       if (this._verbose) {
@@ -427,7 +417,7 @@ export class Agent {
           console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
         }
 
-        this._updateConversationHistory(messages);
+        await this._updateConversationHistory(messages);
 
         yield {
           content: "",
@@ -534,17 +524,7 @@ export class Agent {
             `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
           );
         }
-        contextStats = {
-          systemPromptTokens: countTokens(this._systemPrompt),
-          memoryTokens: memoryTokensUsed,
-          conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
-          totalTokens: 0,
-          maxContextTokens: this._maxContextTokens ?? 0,
-          truncationApplied,
-          memoryCount: 0,
-        };
-        contextStats.totalTokens =
-          contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
+        contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
         continue;
       }
 
@@ -564,17 +544,7 @@ export class Agent {
         }
       }
 
-      contextStats = {
-        systemPromptTokens: countTokens(this._systemPrompt),
-        memoryTokens: memoryTokensUsed,
-        conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
-        totalTokens: 0,
-        maxContextTokens: this._maxContextTokens ?? 0,
-        truncationApplied,
-        memoryCount: 0,
-      };
-      contextStats.totalTokens =
-        contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
+      contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
     }
 
     if (loopDetected) {
@@ -607,7 +577,7 @@ export class Agent {
         }
       }
 
-      this._updateConversationHistory(messages);
+      await this._updateConversationHistory(messages);
       yield {
         content: "",
         iterations: iteration + 1,
@@ -621,7 +591,7 @@ export class Agent {
       console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
     }
 
-    this._updateConversationHistory(messages);
+    await this._updateConversationHistory(messages);
 
     yield {
       content: "",

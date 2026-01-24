@@ -58,7 +58,61 @@ function isSensitiveFile(filePath: string): boolean {
   return SENSITIVE_PATTERNS.some((pattern) => pattern.test(filePath) || pattern.test(basename));
 }
 
-export { isSensitiveFile };
+interface PathValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+function validatePath(filePath: string): PathValidationResult {
+  const normalized = path.normalize(filePath);
+
+  // Check for directory traversal attempts
+  if (normalized.includes("..")) {
+    return { valid: false, error: 'Path cannot contain ".." for security reasons' };
+  }
+
+  const resolved = path.resolve(filePath);
+
+  // Check if path attempts to write to sensitive system locations
+  const sensitivePaths = [
+    "/etc/",
+    "/usr/",
+    "/bin/",
+    "/sbin/",
+    "/sys/",
+    "/proc/",
+    "/dev/",
+    "/root/",
+  ];
+
+  // Expand home directory for comparison
+  const homeDir = process.env.HOME ?? "";
+  const homeSensitivePaths = [
+    path.join(homeDir, ".ssh"),
+    path.join(homeDir, ".aws"),
+    path.join(homeDir, ".gnupg"),
+    path.join(homeDir, ".pki"),
+  ];
+
+  for (const sensitive of sensitivePaths) {
+    if (resolved.startsWith(sensitive)) {
+      return { valid: false, error: `Cannot write to system path: ${sensitive}` };
+    }
+  }
+
+  for (const sensitive of homeSensitivePaths) {
+    if (resolved.startsWith(sensitive)) {
+      return {
+        valid: false,
+        error: `Cannot write to sensitive directory: ${path.basename(sensitive)}`,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+export { isSensitiveFile, validatePath };
 
 export const readFileTool: Tool = {
   name: "read_file",
@@ -154,6 +208,17 @@ export const writeFileTool: Tool = {
     }
 
     const { path: filePath, content } = parsed.data;
+
+    // Validate path for security
+    const pathValidation = validatePath(filePath);
+    if (!pathValidation.valid) {
+      return { success: false, error: pathValidation.error };
+    }
+
+    // Check for sensitive file patterns
+    if (isSensitiveFile(filePath)) {
+      return { success: false, error: `Cannot write to sensitive file: ${filePath}` };
+    }
 
     try {
       const dir = path.dirname(filePath);

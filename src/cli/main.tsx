@@ -16,7 +16,12 @@ import {
   createSkillTool,
 } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
-import { McpManager, getGlobalMcpManager, setGlobalMcpManager, globToRegex } from "../mcp/manager.js";
+import {
+  McpManager,
+  getGlobalMcpManager,
+  setGlobalMcpManager,
+  globToRegex,
+} from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
@@ -968,7 +973,9 @@ async function handleMcp(args: string[]): Promise<void> {
 
     if (!isCommandAvailable(command)) {
       console.log(`⚠ Warning: Command "${command}" not found.`);
-      console.log(`   The server "${name}" will not work until you install the required dependency.`);
+      console.log(
+        `   The server "${name}" will not work until you install the required dependency.`,
+      );
       console.log();
     }
 
@@ -999,7 +1006,9 @@ async function handleMcp(args: string[]): Promise<void> {
 
     if (!isCommandAvailable(serverConfig.command)) {
       console.log(`⚠ Warning: Command "${serverConfig.command}" not found.`);
-      console.log(`   The server "${name}" will not work until you install the required dependency.`);
+      console.log(
+        `   The server "${name}" will not work until you install the required dependency.`,
+      );
       console.log(`   For serena, install uv: curl -LsSf https://astral.sh/uv/install.sh | sh`);
       console.log();
     }

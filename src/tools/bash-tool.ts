@@ -43,9 +43,14 @@ const DESTRUCTIVE_PATTERNS = [
   /\bmv\s/, // mv command
   /\bgit\s+(commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase)\b/, // dangerous git
   /\brmdir\b/,
-  />[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|>][^|]*/, // output redirection to file (but not /dev, /proc, /sys)
-  />>[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|>][^|]*/, // append redirection to file (but not /dev, /proc, /sys)
-  /<[ \t]*(?!\s*(?:\/|dev\/|proc\/|sys\/))[^\s|][^|]*/, // input redirection from file (but not /dev, /proc, /sys)
+  // Output redirection to file (but not /dev/, /proc/, /sys/)
+  // Matches: > file.txt, > /tmp/file.txt, > /home/user/file
+  // Doesn't match: > /dev/null, > /proc/version, > echo test
+  />[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
+  // Append redirection to file (same rules as output)
+  />>[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
+  // Input redirection from file (same rules)
+  /<[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
 ];
 
 export function isDestructiveCommand(command: string): boolean {
@@ -64,6 +69,36 @@ export function isDestructiveCommand(command: string): boolean {
   }
 
   return false;
+}
+
+const SENSITIVE_ENV_PATTERNS = [
+  /API_KEY/i,
+  /SECRET/i,
+  /PASSWORD/i,
+  /TOKEN/i,
+  /CREDENTIALS/i,
+  /PRIVATE_KEY/i,
+  /AWS_/i,
+  /AZURE_/i,
+  /GOOGLE_/i,
+  /OPENAI_/i,
+  /ANTHROPIC_/i,
+];
+
+const SAFE_ENV_KEYS = ["PATH", "HOME", "USER", "SHELL", "LANG", "TERM", "NODE_ENV", "TZ"];
+
+function filterSafeEnvironment(): NodeJS.ProcessEnv {
+  const safeEnv: NodeJS.ProcessEnv = {};
+  const isSafeKey = (key: string) => SAFE_ENV_KEYS.includes(key);
+  const isSensitive = (key: string) => SENSITIVE_ENV_PATTERNS.some((p) => p.test(key));
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && (isSafeKey(key) || !isSensitive(key))) {
+      safeEnv[key] = value;
+    }
+  }
+
+  return safeEnv;
 }
 
 const bashArgsSchema = z.object({
@@ -118,7 +153,7 @@ export const bashTool: Tool = {
       const child = spawn(command, [], {
         shell: true,
         cwd,
-        env: process.env,
+        env: filterSafeEnvironment(),
       });
 
       const timeoutId = setTimeout(() => {

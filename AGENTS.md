@@ -89,17 +89,6 @@ async function fetchData(url: string): Promise<Result<Data>> {
 - **Dead Code**: Delete unused code
 - **Normalize Symmetries**: Use consistent patterns
 
-### Tool Pattern
-
-```typescript
-export const tool: Tool = {
-  name: "name",
-  description: "Does X",
-  parameters: { type: "object", properties: {...}, required: ["arg"] },
-  async execute(args) { return { success: true, output: "..." }; },
-};
-```
-
 ## Testing
 
 Use bun:test with `describe`, `it`, `expect`. Clean up resources in beforeEach/afterEach:
@@ -111,13 +100,6 @@ describe("MemoryStore", () => {
   const tempFile = "/tmp/test-memory.json";
 
   beforeEach(() => {
-    try {
-      unlinkSync(tempFile);
-    } catch {
-      /* ignore */
-    }
-  });
-  afterEach(() => {
     try {
       unlinkSync(tempFile);
     } catch {
@@ -159,3 +141,13 @@ Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotoco
 2. **Plan First**: Propose a plan before editing, break into manageable steps
 3. **Test-Driven**: Run tests after changes to verify correctness
 4. **Typecheck & Lint**: Always run `bun run typecheck && bun run lint` after changes
+
+## General Guidelines
+
+- Keep responses concise and actionable
+- Never run destructive commands
+- Use our conventions for file names, tests, and commands
+- Keep code clean and organized; avoid over-engineering
+- Write clear, modular code with meaningful names
+- Prefer self-documenting code; add comments where necessary
+- Avoid tight coupling and excessive dependencies
