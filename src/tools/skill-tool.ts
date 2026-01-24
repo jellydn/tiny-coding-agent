@@ -2,8 +2,12 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
 import type { SkillMetadata } from "../skills/types.js";
+import { parseSkillFrontmatter } from "../skills/parser.js";
 
-export function createSkillTool(skillRegistry: Map<string, SkillMetadata>): Tool {
+export function createSkillTool(
+  skillRegistry: Map<string, SkillMetadata>,
+  onSkillLoaded?: (allowedTools: string[] | undefined) => void,
+): Tool {
   return {
     name: "skill",
     description:
@@ -36,6 +40,19 @@ export function createSkillTool(skillRegistry: Map<string, SkillMetadata>): Tool
 
       try {
         const content = await fs.readFile(skillMetadata.location, "utf-8");
+
+        let allowedTools: string[] | undefined;
+        try {
+          const parsed = parseSkillFrontmatter(content);
+          allowedTools = parsed.frontmatter.allowedTools;
+        } catch {
+          console.warn(`[WARN] Could not parse frontmatter for skill: ${skillName}`);
+        }
+
+        if (onSkillLoaded) {
+          onSkillLoaded(allowedTools);
+        }
+
         const baseDir = path.dirname(skillMetadata.location);
         const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${content}\n</loaded_skill>`;
         return { success: true, output: wrappedContent };

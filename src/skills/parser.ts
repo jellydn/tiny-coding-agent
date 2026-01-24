@@ -64,7 +64,7 @@ export function parseSkillFrontmatter(content: string): ParsedSkill {
     license: parsed.license,
     compatibility: parsed.compatibility,
     metadata: parsed.metadata,
-    allowedTools: parsed.allowedTools,
+    allowedTools: parseAllowedTools(parsed.allowedTools),
   };
 
   return { frontmatter, body };
@@ -73,6 +73,23 @@ export function parseSkillFrontmatter(content: string): ParsedSkill {
 interface ValidationResult {
   valid: boolean;
   error?: string;
+}
+
+function parseAllowedTools(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return undefined;
+    }
+    return trimmed.split(/\s+/).filter((tool) => tool.length > 0);
+  }
+  return undefined;
 }
 
 function validateSkillName(name: string): ValidationResult {

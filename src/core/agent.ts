@@ -97,6 +97,7 @@ export class Agent {
   private _skills: Map<string, SkillMetadata> = new Map();
   private _skillsInitialized: boolean = false;
   private _skillsInitPromise?: Promise<void>;
+  private _activeSkillAllowedTools: string[] | undefined;
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._defaultLlmClient = llmClient;
@@ -201,6 +202,8 @@ export class Agent {
     if (this._skillsInitPromise) {
       await this._skillsInitPromise;
     }
+
+    this._clearSkillRestriction();
 
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
@@ -614,12 +617,27 @@ export class Agent {
     return this._skills;
   }
 
+  _setSkillRestriction(allowedTools: string[] | undefined): void {
+    this._activeSkillAllowedTools = allowedTools;
+  }
+
+  _clearSkillRestriction(): void {
+    this._activeSkillAllowedTools = undefined;
+  }
+
   private _getToolDefinitions(): ToolDefinition[] {
-    return this._toolRegistry.list().map((tool) => ({
+    const allTools = this._toolRegistry.list().map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters as unknown as Record<string, unknown>,
     }));
+
+    if (!this._activeSkillAllowedTools || this._activeSkillAllowedTools.length === 0) {
+      return allTools;
+    }
+
+    const allowedSet = new Set(this._activeSkillAllowedTools);
+    return allTools.filter((tool) => allowedSet.has(tool.name));
   }
 
   private _loadConversation(): Message[] {

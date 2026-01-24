@@ -16,7 +16,7 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -34,7 +34,7 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -52,7 +52,7 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -67,7 +67,7 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -86,7 +86,7 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -101,7 +101,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -117,7 +117,7 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -129,10 +129,11 @@
         "Register skill tool in src/tools/index.ts exports",
         "Update main.tsx to pass config.skillDirectories to Agent",
         "Update main.tsx to register skill tool with agent's skill registry",
+        "Add --skills-dir <path> CLI option to add custom directories",
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -147,7 +148,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -161,7 +162,7 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -177,6 +178,22 @@
         "Typecheck passes"
       ],
       "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Enforce allowed-tools restriction",
+      "description": "As a skill author, I want to restrict which tools a skill can use via allowed-tools frontmatter.",
+      "acceptanceCriteria": [
+        "Parse allowed-tools from skill frontmatter (space-delimited string)",
+        "Store activeSkillAllowedTools in Agent when skill is loaded",
+        "Filter tool definitions to only allowed tools when skill is active",
+        "Clear restriction when skill execution completes or new message starts",
+        "Unit test for tool filtering with allowed-tools",
+        "Typecheck passes"
+      ],
+      "priority": 12,
       "passes": true,
       "notes": ""
     }

@@ -413,7 +413,9 @@ async function handleRun(
     skillDirectories: config.skillDirectories,
   });
 
-  const skillTool = createSkillTool(agent.getSkillRegistry());
+  const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+    agent._setSkillRestriction(allowedTools);
+  });
   toolRegistry.register(skillTool);
 
   const toolCount = toolRegistry.list().length;
@@ -656,7 +658,9 @@ async function handleInteractiveChat(
     skillDirectories: config.skillDirectories,
   });
 
-  const skillTool = createSkillTool(agent.getSkillRegistry());
+  const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+    agent._setSkillRestriction(allowedTools);
+  });
   toolRegistry.register(skillTool);
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
