@@ -28,6 +28,7 @@ export interface Config {
   memoryFile?: string;
   maxMemoryTokens?: number;
   trackContextUsage?: boolean;
+  skillDirectories?: string[];
   thinking?: ThinkingConfig;
   providers: {
     openai?: ProviderConfig;
@@ -76,6 +77,24 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
           errors.push({
             field: `providers.${name}`,
             message: `Provider ${name} must be an object`,
+          });
+        }
+      }
+    }
+  }
+
+  if (c.skillDirectories !== undefined) {
+    if (!Array.isArray(c.skillDirectories)) {
+      errors.push({
+        field: "skillDirectories",
+        message: "skillDirectories must be an array",
+      });
+    } else {
+      for (let i = 0; i < c.skillDirectories.length; i++) {
+        if (typeof c.skillDirectories[i] !== "string") {
+          errors.push({
+            field: `skillDirectories[${i}]`,
+            message: `skillDirectories[${i}] must be a string`,
           });
         }
       }

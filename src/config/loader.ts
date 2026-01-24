@@ -38,6 +38,7 @@ function getDefaultConfig(): Config {
         baseUrl: "http://localhost:11434",
       },
     },
+    skillDirectories: ["~/.tiny-agent/skills/", "./.skills/"],
     mcpServers: {
       context7: {
         command: "npx",
@@ -142,6 +143,12 @@ export function loadConfig(): Config {
         config = { ...config, [override.key]: envValue };
       }
     }
+  }
+
+  if (config.skillDirectories) {
+    config.skillDirectories = config.skillDirectories.map((dir) =>
+      dir.startsWith("~/") ? join(homedir(), dir.slice(2)) : dir,
+    );
   }
 
   return config;
