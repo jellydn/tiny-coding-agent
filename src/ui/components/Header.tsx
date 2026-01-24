@@ -4,9 +4,10 @@ import { detectProvider } from "../../providers/model-registry.js";
 
 interface HeaderProps {
   model?: string;
+  skillCount?: number;
 }
 
-export function Header({ model }: HeaderProps): React.ReactElement {
+export function Header({ model, skillCount }: HeaderProps): React.ReactElement {
   let providerDisplay = "";
   let modelDisplay = model ?? "";
 
@@ -30,9 +31,16 @@ export function Header({ model }: HeaderProps): React.ReactElement {
       paddingX={1}
       width="100%"
     >
-      <Text bold color="cyan">
-        🤖 tiny-agent
-      </Text>
+      <Box flexDirection="row" gap={1}>
+        <Text bold color="cyan">
+          🤖 tiny-agent
+        </Text>
+        {skillCount !== undefined && skillCount > 0 && (
+          <Text color="gray">
+            [{skillCount} skill{skillCount !== 1 ? "s" : ""}]
+          </Text>
+        )}
+      </Box>
       {model ? (
         <Text>
           <Text color="gray">{providerDisplay}: </Text>

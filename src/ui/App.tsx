@@ -107,6 +107,20 @@ export function ChatApp(): React.ReactElement {
     [addMessage, currentModel, setCurrentModel],
   );
 
+  const [skillItems, setSkillItems] = useState<
+    Array<{ name: string; description: string; location: string }>
+  >([]);
+
+  useEffect(() => {
+    if (!agent) return;
+    const loadSkills = async () => {
+      await agent.waitForSkills();
+      const registry = agent.getSkillRegistry();
+      setSkillItems(Array.from(registry.values()));
+    };
+    loadSkills();
+  }, [agent]);
+
   const displayMessages = isThinking
     ? [
         ...messages,
@@ -117,8 +131,6 @@ export function ChatApp(): React.ReactElement {
         },
       ]
     : messages;
-
-  const skillItems = agent?.getSkillRegistry() ? Array.from(agent.getSkillRegistry().values()) : [];
 
   return (
     <Box flexDirection="column" height="100%">

@@ -622,6 +622,12 @@ export class Agent {
     return this._skills;
   }
 
+  async waitForSkills(): Promise<void> {
+    if (this._skillsInitPromise) {
+      await this._skillsInitPromise;
+    }
+  }
+
   _setSkillRestriction(allowedTools: string[] | undefined): void {
     this._activeSkillAllowedTools = allowedTools;
   }

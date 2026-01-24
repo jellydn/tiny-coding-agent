@@ -85,7 +85,7 @@ export function ChatLayout({
 
   return (
     <Box flexDirection="column" height="100%">
-      <Header model={currentModel} />
+      <Header model={currentModel} skillCount={skillItems.length} />
 
       <Box flexDirection="column" flexGrow={1}>
         {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}
