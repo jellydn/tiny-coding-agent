@@ -124,3 +124,18 @@ Started: Sat Jan 24 10:54:47 +08 2026
   - Use a private promise field to track async initialization without blocking constructor
   - Await the initialization promise at the start of runStream or other entry points
   - The _skills Map provides the registry for skill tool access via getSkillRegistry()
+
+## Sat Jan 24 2026 - US-008
+- Session: https://opncd.ai/s/Demo
+- Implemented skill tool registration and CLI wiring
+- Added createSkillTool import to main.tsx
+- Updated handleRun to pass config.skillDirectories to Agent constructor
+- Updated handleRun to create and register skill tool with agent's skill registry
+- Updated handleInteractiveChat with same changes
+- Files changed:
+  - src/cli/main.tsx (added skill tool registration)
+  - scripts/ralph/prd.json (updated passes: true)
+- **Learnings for future iterations:**
+  - Skill tool needs agent's skill registry, so must be created after agent instantiation
+  - Pattern: create agent first, then get registry, create tool, register tool
+  - Both handleRun and handleInteractiveChat need the same skill tool registration pattern

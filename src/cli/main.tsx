@@ -5,7 +5,14 @@ import { loadConfig, getConfigPath } from "../config/loader.js";
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
-import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
+import {
+  fileTools,
+  bashTool,
+  searchTools,
+  webSearchTool,
+  loadPlugins,
+  createSkillTool,
+} from "../tools/index.js";
 import { Agent } from "../core/agent.js";
 import { McpManager } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
@@ -403,7 +410,11 @@ async function handleRun(
     agentsMdPath,
     thinking: config.thinking,
     providerConfigs: config.providers,
+    skillDirectories: config.skillDirectories,
   });
+
+  const skillTool = createSkillTool(agent.getSkillRegistry());
+  toolRegistry.register(skillTool);
 
   const toolCount = toolRegistry.list().length;
   const memoryStatus = enableMemory ? "memory enabled" : "no memory";
@@ -642,7 +653,11 @@ async function handleInteractiveChat(
     agentsMdPath,
     thinking: config.thinking,
     providerConfigs: config.providers,
+    skillDirectories: config.skillDirectories,
   });
+
+  const skillTool = createSkillTool(agent.getSkillRegistry());
+  toolRegistry.register(skillTool);
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
