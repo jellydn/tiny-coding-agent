@@ -128,6 +128,27 @@ export function useCommandHandler({
     );
   }, [onAddMessage]);
 
+  const handleMemoryCommand = useCallback(() => {
+    if (!agent) {
+      onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
+      return;
+    }
+
+    const memoryStore = agent.getMemoryStore();
+    if (!memoryStore) {
+      onAddMessage(MessageRole.ASSISTANT, "Memory not configured. Set memoryFile in config.yaml.");
+      return;
+    }
+
+    const memories = memoryStore.list();
+    if (memories.length === 0) {
+      onAddMessage(MessageRole.ASSISTANT, "No memories stored.");
+    } else {
+      const list = memories.map((m) => `  • [${m.category}] ${m.content}`).join("\n");
+      onAddMessage(MessageRole.ASSISTANT, `Memories:\n\n${list}`);
+    }
+  }, [agent, onAddMessage]);
+
   const handleCommand = useCallback(
     (commandName: string, args: string = "") => {
       switch (commandName) {
@@ -142,12 +163,13 @@ export function useCommandHandler({
           onAddMessage(
             MessageRole.ASSISTANT,
             `Available commands:
-  /help   - Show this help
-  /clear  - Clear conversation
-  /model  - Switch model
-  /mcp    - Show MCP server status
-  /skill  - Load a skill or list available skills
-  /exit   - Exit`,
+  /help    - Show this help
+  /clear   - Clear conversation
+  /model   - Switch model
+  /mcp     - Show MCP server status
+  /memory  - List memories
+  /skill   - List skills
+  /exit    - Exit`,
           );
           break;
         case "/model":
@@ -158,6 +180,9 @@ export function useCommandHandler({
           break;
         case "/skill":
           handleSkillCommand(args);
+          break;
+        case "/memory":
+          handleMemoryCommand();
           break;
         default:
           onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
@@ -170,6 +195,7 @@ export function useCommandHandler({
       onExit,
       handleSkillCommand,
       handleMcpCommand,
+      handleMemoryCommand,
     ],
   );
 

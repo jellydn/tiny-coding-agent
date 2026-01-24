@@ -105,7 +105,10 @@ export function ChatProvider({
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-  }, []);
+    if (agent) {
+      agent.startChatSession();
+    }
+  }, [agent]);
 
   const setThinking = useCallback((thinking: boolean) => {
     setThinkingState(thinking);
@@ -119,10 +122,8 @@ export function ChatProvider({
     setCurrentModelState(model);
   }, []);
 
-  const MAX_ARG_LENGTH = 40;
-  const MAX_OUTPUT_LINES = 10;
-
   const formatToolCall = useCallback((te: ToolExecution): string => {
+    const MAX_ARG_LENGTH = 40;
     const argsStr = te.args
       ? Object.entries(te.args)
           .filter(([, v]) => v !== undefined)
@@ -138,6 +139,7 @@ export function ChatProvider({
   const formatToolOutput = useCallback((te: ToolExecution): string => {
     const output = te.error || te.output || "";
     if (!output) return "";
+    const MAX_OUTPUT_LINES = 10;
     const allLines = output.split("\n");
     const lines = allLines.slice(0, MAX_OUTPUT_LINES);
     const prefix = te.error ? "✗" : "✓";
@@ -146,22 +148,18 @@ export function ChatProvider({
 
   const handleChatError = useCallback(
     (err: unknown): void => {
-      let errorMsg: string;
-
-      if (
+      const isKnownError =
         err instanceof AgentNotInitializedError ||
         err instanceof MessageEmptyError ||
-        err instanceof StreamError
-      ) {
-        errorMsg = err.message;
-      } else {
-        errorMsg = `Unexpected error: ${err instanceof Error ? err.message : String(err)}`;
-      }
+        err instanceof StreamError;
+      const errorMsg = isKnownError
+        ? (err as Error).message
+        : `Unexpected error: ${err instanceof Error ? err.message : String(err)}`;
 
       addMessage(MessageRole.ASSISTANT, `Error: ${errorMsg}`);
       statusLineManager.setStatus(StatusType.ERROR);
     },
-    [addMessage], // statusLineManager is a module-level singleton, no need in deps
+    [addMessage],
   );
 
   const sendMessage = useCallback(

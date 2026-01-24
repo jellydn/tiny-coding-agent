@@ -19,11 +19,11 @@ const STATIC_COMMANDS: Command[] = [
   { name: "/clear", description: "Clear the conversation" },
   { name: "/model", description: "Switch the model" },
   { name: "/mcp", description: "Show MCP server status" },
-  { name: "/memory", description: "Manage memories" },
+  { name: "/memory", description: "List memories" },
   { name: "/exit", description: "Exit the session" },
   {
     name: "/skill",
-    description: "Load a skill (invokes once per message) or list available skills",
+    description: "List skills",
   },
 ];
 

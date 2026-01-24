@@ -231,26 +231,20 @@ export class Agent {
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     const llmClient = this._getLlmClientForModel(effectiveModel);
 
-    // Load or continue conversation history
     let messages: Message[] = this._conversationFile
       ? this._loadConversation()
       : this._conversationHistory;
 
     const isContinuation = userPrompt === "continue";
-    if (!isContinuation) {
-      if (messages.length === 0) {
-        messages = [{ role: "user", content: userPrompt }];
-      } else {
-        messages.push({ role: "user", content: userPrompt });
-      }
+    if (isContinuation || messages.length > 0) {
+      messages.push({ role: "user", content: userPrompt });
+    } else {
+      messages = [{ role: "user", content: userPrompt }];
     }
 
     const updateContextStats = (memoryTokens: number, truncationApplied: boolean): ContextStats => {
       const systemTokens = countTokens(this._systemPrompt);
-      let conversationTokens = 0;
-      for (const msg of messages) {
-        conversationTokens += countTokens(msg.content);
-      }
+      const conversationTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
       return {
         systemPromptTokens: systemTokens,
         memoryTokens,
@@ -266,7 +260,6 @@ export class Agent {
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
-    // Use memory store if available
     if (this._maxContextTokens && this._memoryStore) {
       const systemTokens = countTokens(this._systemPrompt);
       const { memoryBudget, conversationBudget } = calculateContextBudget(
@@ -288,9 +281,7 @@ export class Agent {
       contextStats = result.stats;
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
-    }
-    // Truncate conversation if no memory store
-    else if (this._maxContextTokens) {
+    } else if (this._maxContextTokens) {
       const systemTokens = countTokens(this._systemPrompt);
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
       if (availableTokens <= 0) {
@@ -499,8 +490,14 @@ export class Agent {
       const notFoundErrors = toolExecutionResults.filter(
         ({ result }) => !result.success && result.error?.includes("not found"),
       );
+      const hasNotFoundErrors = notFoundErrors.length > 0;
 
-      if (notFoundErrors.length > 0) {
+      const declinedErrors = toolExecutionResults.filter(
+        ({ result }) => !result.success && result.error?.includes("User declined confirmation"),
+      );
+      const hasDeclinedErrors = declinedErrors.length > 0;
+
+      if (hasNotFoundErrors) {
         const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
         messages.push({
           role: "system",
@@ -513,11 +510,7 @@ export class Agent {
         break;
       }
 
-      const declinedErrors = toolExecutionResults.filter(
-        ({ result }) => !result.success && result.error?.includes("User declined confirmation"),
-      );
-
-      if (declinedErrors.length > 0) {
+      if (hasDeclinedErrors) {
         const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
 
         if (declinedErrors.length === toolExecutionResults.length) {
@@ -635,6 +628,10 @@ export class Agent {
 
   getSkillRegistry(): Map<string, SkillMetadata> {
     return this._skills;
+  }
+
+  getMemoryStore(): MemoryStore | undefined {
+    return this._memoryStore;
   }
 
   async waitForSkills(): Promise<void> {

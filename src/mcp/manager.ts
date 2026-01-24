@@ -7,18 +7,10 @@ import type { McpToolDefinition, McpConnection } from "./types.js";
 
 let _verbose = false;
 
-/**
- * Enable verbose logging for MCP operations.
- * Call this with true to see connection logs, false to suppress.
- */
 export function setMcpVerbose(verbose: boolean): void {
   _verbose = verbose;
 }
 
-/**
- * Check if a command is available in PATH.
- * Returns true if found, false otherwise.
- */
 function isCommandAvailable(command: string): boolean {
   try {
     execSync(`command -v ${JSON.stringify(command)}`, { stdio: "ignore" });
@@ -30,7 +22,7 @@ function isCommandAvailable(command: string): boolean {
 
 let _globalMcpManager: McpManager | null = null;
 
-export function setGlobalMcpManager(manager: McpManager): void {
+export function setGlobalMcpManager(manager: McpManager | null): void {
   _globalMcpManager = manager;
 }
 
@@ -45,42 +37,22 @@ export class McpManager {
   private _disabledPatterns: string[] = [];
 
   constructor(disabledPatterns: string[] = []) {
-    // Auto-register as global instance
     setGlobalMcpManager(this);
     this._disabledPatterns = disabledPatterns;
   }
 
-  /**
-   * Convert glob pattern to regex for matching tool names
-   */
   private _globToRegex(pattern: string): RegExp {
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?"); // Use non-greedy matching
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*?");
     return new RegExp(`^${escaped}$`);
   }
 
-  /**
-   * Check if a tool name matches any disabled pattern
-   */
   private _isDisabledByPattern(name: string): boolean {
-    if (this._disabledPatterns.length === 0 || !name.startsWith("mcp_")) {
-      return false;
-    }
+    if (this._disabledPatterns.length === 0 || !name.startsWith("mcp_")) return false;
     return this._disabledPatterns.some((pattern) => this._globToRegex(pattern).test(name));
   }
 
   async addServer(name: string, config: McpServerConfig): Promise<boolean> {
     if (this._clients.has(name)) {
-      throw new Error(`MCP server "${name}" is already registered`);
-    }
-
-    // Check if command exists before attempting to connect
-    if (!isCommandAvailable(config.command)) {
-      if (_verbose) {
-        console.warn(
-          `[MCP] Command "${config.command}" not found. Skipping server "${name}". ` +
-            `Install the required dependency to enable this MCP server.`,
-        );
-      }
       return false;
     }
 
@@ -88,18 +60,25 @@ export class McpManager {
     this._clients.set(name, client);
     this._restartAttempts.set(name, 0);
 
-    // Try to connect immediately to discover tools, but don't fail if it errors
-    // Connection will be retried lazily when a tool is called
+    if (!isCommandAvailable(config.command)) {
+      if (_verbose) {
+        console.warn(
+          `[MCP] Command "${config.command}" not found for server "${name}". ` +
+            `Install the required dependency to enable this MCP server.`,
+        );
+      }
+      return false;
+    }
+
     try {
       await client.connect();
       this._restartAttempts.set(name, 0);
       if (_verbose) {
-        console.log(`[MCP] Connected ${name} with ${client.tools.length} tools`);
+        process.stderr.write(`[MCP] Connected ${name} with ${client.tools.length} tools\n`);
       }
     } catch {
-      // Silently ignore connection errors - will retry lazily on first tool use
       if (_verbose) {
-        console.warn(`[MCP] ${name}: will connect on first tool use`);
+        process.stderr.write(`[MCP] ${name}: will connect on first tool use\n`);
       }
     }
     return true;
@@ -109,10 +88,9 @@ export class McpManager {
     const maxAttempts = this._maxRestartAttempts;
     const attempts = this._restartAttempts.get(name) ?? 0;
 
-    // Check if already exhausted attempts
     if (attempts >= maxAttempts) {
       if (_verbose) {
-        console.warn(`[MCP] ${name} unavailable - will retry on next tool use`);
+        process.stderr.write(`[MCP] ${name} unavailable - will retry on next tool use\n`);
       }
       return;
     }
@@ -121,18 +99,20 @@ export class McpManager {
       await client.connect();
       this._restartAttempts.set(name, 0);
       if (_verbose) {
-        console.log(`[MCP] Connected ${name} with ${client.tools.length} tools`);
+        process.stderr.write(`[MCP] Connected ${name} with ${client.tools.length} tools\n`);
       }
+      return;
     } catch {
       this._restartAttempts.set(name, attempts + 1);
       if (_verbose) {
-        console.warn(
-          `[MCP] ${name} connection failed (attempt ${attempts + 1}/${maxAttempts}), retrying...`,
+        process.stderr.write(
+          `[MCP] ${name} connection failed (attempt ${attempts + 1}/${maxAttempts}), retrying...\n`,
         );
       }
-      await this._delay(1000 * (attempts + 1));
-      await this._connectClient(name, client);
     }
+
+    await this._delay(1000 * (attempts + 1));
+    await this._connectClient(name, client);
   }
 
   private _delay(ms: number): Promise<void> {
@@ -151,7 +131,7 @@ export class McpManager {
   async restartServer(name: string): Promise<void> {
     const client = this._clients.get(name);
     if (!client) {
-      throw new Error(`MCP server "${name}" not found`);
+      return;
     }
 
     await client.disconnect();
@@ -187,11 +167,10 @@ export class McpManager {
 
     if (!client.isConnected) {
       await this._connectClient(serverName, client);
-      // Check if connection succeeded
       if (!client.isConnected) {
         return {
           success: false,
-          error: `MCP server "${serverName}" is not available. Install required dependencies or disable with './tiny-agent mcp disable ${serverName}'`,
+          error: `MCP server "${serverName}" not available. Install required dependencies or disable with './tiny-agent mcp disable ${serverName}'`,
         };
       }
     }
@@ -231,20 +210,17 @@ export class McpManager {
   }
 
   getServerStatus(): Array<{ name: string; connected: boolean; toolCount: number }> {
-    const result: Array<{ name: string; connected: boolean; toolCount: number }> = [];
-    for (const [name, client] of this._clients) {
-      // Filter out disabled tools when counting
+    return Array.from(this._clients.entries()).map(([name, client]) => {
       const enabledTools = client.tools.filter((toolDef) => {
         const prefixedName = `mcp_${name}_${toolDef.name}`;
         return !this._isDisabledByPattern(prefixedName);
       });
-      result.push({
+      return {
         name,
         connected: client.isConnected,
         toolCount: enabledTools.length,
-      });
-    }
-    return result;
+      };
+    });
   }
 
   registerToolsWithRegistry(registry: ToolRegistry): void {

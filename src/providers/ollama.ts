@@ -41,6 +41,22 @@ export function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function convertMessages(messages: Message[]): OllamaMessage[] {
+  return messages.map((msg) => {
+    if (msg.role === "tool") {
+      return {
+        role: "tool",
+        content: msg.content,
+        tool_name: msg.toolCallId,
+      };
+    }
+    return {
+      role: msg.role as "system" | "user" | "assistant",
+      content: msg.content,
+    };
+  });
+}
+
 function convertTools(tools: ToolDefinition[]): OllamaTool[] {
   return tools.map((tool) => ({
     type: "function",
@@ -61,31 +77,9 @@ function parseToolCalls(toolCalls?: OllamaToolCall[]): ToolCall[] | undefined {
   }));
 }
 
-function convertMessages(messages: Message[]): OllamaMessage[] {
-  return messages.map((msg) => {
-    if (msg.role === "tool") {
-      return {
-        role: "tool",
-        content: msg.content,
-        tool_name: msg.toolCallId,
-      };
-    }
-    return {
-      role: msg.role as "system" | "user" | "assistant",
-      content: msg.content,
-    };
-  });
-}
-
 function mapFinishReason(doneReason: string | undefined): ChatResponse["finishReason"] {
-  switch (doneReason) {
-    case "stop":
-      return "stop";
-    case "length":
-      return "length";
-    default:
-      return "stop";
-  }
+  if (doneReason === "length") return "length";
+  return "stop";
 }
 
 export class OllamaProvider implements LLMClient {
@@ -151,9 +145,9 @@ export class OllamaProvider implements LLMClient {
         body: JSON.stringify(body),
         signal: options.signal,
       });
-    } catch (err) {
+    } catch (error) {
       if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      throw err instanceof Error ? err : new Error(String(err));
+      throw error instanceof Error ? error : new Error(String(error));
     }
 
     if (!response.ok) {
@@ -235,9 +229,9 @@ export class OllamaProvider implements LLMClient {
           }
         }
       }
-    } catch (err) {
+    } catch (error) {
       if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      throw err instanceof Error ? err : new Error(String(err));
+      throw error instanceof Error ? error : new Error(String(error));
     }
 
     yield { done: true };
@@ -280,8 +274,8 @@ export class OllamaProvider implements LLMClient {
           maxOutputTokens: details.num_ctx ?? 4096,
         };
       }
-    } catch (err) {
-      console.warn(`Failed to fetch model details for ${model}: ${err}`);
+    } catch (error) {
+      console.warn(`Failed to fetch model details for ${model}: ${error}`);
     }
 
     return {
