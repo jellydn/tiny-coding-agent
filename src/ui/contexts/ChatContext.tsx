@@ -49,6 +49,7 @@ interface ChatContextValue {
   currentToolExecutions: ToolExecution[];
   cancelActiveRequest: () => void;
   enabledProviders?: EnabledProviders;
+  agent?: Agent;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -305,6 +306,7 @@ export function ChatProvider({
         currentToolExecutions,
         cancelActiveRequest,
         enabledProviders,
+        agent,
       }}
     >
       {children}

@@ -27,6 +27,7 @@ export function ChatApp(): React.ReactElement {
     clearMessages,
     cancelActiveRequest,
     enabledProviders,
+    agent,
   } = useChatContext();
 
   const { handleCommandSelect, handleSlashCommand } = useCommandHandler({
@@ -34,6 +35,7 @@ export function ChatApp(): React.ReactElement {
     onClearMessages: clearMessages,
     onSetShowModelPicker: setShowModelPicker,
     onExit: () => process.exit(0),
+    agent: agent ?? undefined,
   });
 
   useEffect(() => {
@@ -116,6 +118,8 @@ export function ChatApp(): React.ReactElement {
       ]
     : messages;
 
+  const skillItems = agent?.getSkillRegistry() ? Array.from(agent.getSkillRegistry().values()) : [];
+
   return (
     <Box flexDirection="column" height="100%">
       <ChatLayout
@@ -134,6 +138,7 @@ export function ChatApp(): React.ReactElement {
             : "Type a message... (/ for commands)"
         }
         enabledProviders={enabledProviders}
+        skillItems={skillItems}
       />
     </Box>
   );

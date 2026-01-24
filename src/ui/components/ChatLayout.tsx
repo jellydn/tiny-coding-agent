@@ -5,6 +5,7 @@ import { MessageList, type ChatMessage } from "./MessageList.js";
 import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
 import { CommandMenu, type Command } from "./CommandMenu.js";
+import type { SkillMetadata } from "../../skills/types.js";
 import {
   ModelPicker,
   DEFAULT_MODELS,
@@ -26,6 +27,7 @@ interface ChatLayoutProps {
   inputDisabled?: boolean;
   showModelPicker?: boolean;
   enabledProviders?: EnabledProviders;
+  skillItems?: SkillMetadata[];
 }
 
 function WelcomeMessage(): React.ReactElement {
@@ -58,6 +60,7 @@ export function ChatLayout({
   inputDisabled,
   showModelPicker = false,
   enabledProviders,
+  skillItems = [],
 }: ChatLayoutProps): React.ReactElement {
   const statusContext = useStatusLine();
   const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
@@ -104,6 +107,7 @@ export function ChatLayout({
             filter={commandFilter}
             onSelect={handleCommandSelect}
             onClose={() => onInputChange("")}
+            skillItems={skillItems}
           />
         )}
         {showModelPicker && (
