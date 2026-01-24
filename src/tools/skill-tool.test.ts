@@ -212,12 +212,13 @@ allowed-tools:
 
       const skillRegistry = new Map<
         string,
-        { name: string; description: string; location: string }
+        { name: string; description: string; location: string; allowedTools?: string[] }
       >();
       skillRegistry.set("test-skill", {
         name: "test-skill",
         description: "A test skill",
         location: testSkillPath,
+        allowedTools: ["read", "bash", "glob"],
       });
 
       let capturedAllowedTools: string[] | undefined;

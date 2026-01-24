@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSkillFrontmatter, type ParsedSkill } from "./parser.js";
 import type { SkillMetadata } from "./types.js";
+import { getEmbeddedBuiltinSkills } from "./builtin-registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,9 +53,10 @@ export async function discoverSkills(
   const skills: SkillMetadata[] = [];
   const seenLocations = new Set<string>();
 
-  if (builtinDir) {
-    let builtinDirPath: string | undefined;
+  let builtinDirPath: string | undefined;
+  let builtinDirExists = false;
 
+  if (builtinDir) {
     try {
       builtinDirPath = path.resolve(builtinDir);
     } catch {
@@ -62,33 +64,45 @@ export async function discoverSkills(
     }
 
     if (builtinDirPath) {
-      let dirExists = false;
-
       try {
-        dirExists = await isDirectory(builtinDirPath);
+        builtinDirExists = await isDirectory(builtinDirPath);
       } catch {
         console.warn(`Warning: Cannot access built-in skill directory: ${builtinDirPath}`);
       }
+    }
+  }
 
-      if (dirExists) {
-        const builtinSkillFiles = await findSkillFiles(builtinDirPath);
+  if (builtinDirExists && builtinDirPath) {
+    const builtinSkillFiles = await findSkillFiles(builtinDirPath);
 
-        for (const filePath of builtinSkillFiles) {
-          const parsed = await parseFrontmatterOnly(filePath);
+    for (const filePath of builtinSkillFiles) {
+      const parsed = await parseFrontmatterOnly(filePath);
 
-          if (!parsed) {
-            continue;
-          }
-
-          skills.push({
-            name: parsed.frontmatter.name,
-            description: parsed.frontmatter.description,
-            location: filePath,
-            isBuiltin: true,
-          });
-          seenLocations.add(filePath);
-        }
+      if (!parsed) {
+        continue;
       }
+
+      skills.push({
+        name: parsed.frontmatter.name,
+        description: parsed.frontmatter.description,
+        location: filePath,
+        isBuiltin: true,
+        allowedTools: parsed.frontmatter.allowedTools,
+      });
+      seenLocations.add(filePath);
+    }
+
+    const hasBuiltinSkills = skills.some((s) => s.isBuiltin);
+    if (!hasBuiltinSkills) {
+      const embeddedSkills = getEmbeddedBuiltinSkills();
+      for (const skill of embeddedSkills) {
+        skills.push(skill);
+      }
+    }
+  } else {
+    const embeddedSkills = getEmbeddedBuiltinSkills();
+    for (const skill of embeddedSkills) {
+      skills.push(skill);
     }
   }
 
@@ -132,6 +146,7 @@ export async function discoverSkills(
         name: parsed.frontmatter.name,
         description: parsed.frontmatter.description,
         location: filePath,
+        allowedTools: parsed.frontmatter.allowedTools,
       });
     }
   }

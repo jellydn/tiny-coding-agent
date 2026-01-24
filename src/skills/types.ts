@@ -3,6 +3,7 @@ export interface SkillMetadata {
   description: string;
   location: string;
   isBuiltin?: boolean;
+  allowedTools?: string[];
 }
 
 export interface SkillFrontmatter {

@@ -5,6 +5,8 @@ import { discoverSkills } from "./loader.js";
 
 const tempDir = path.join("/tmp", "test-skills", Date.now().toString());
 
+const EMBEDDED_SKILL_COUNT = 1;
+
 async function createSkillFile(
   skillDir: string,
   name: string,
@@ -49,6 +51,29 @@ async function createNestedSkill(
   return createSkillFile(nestedDir, name, description);
 }
 
+async function createSkillWithAllowedTools(
+  skillDir: string,
+  name: string,
+  description: string,
+  allowedTools: string[],
+): Promise<string> {
+  const skillPath = path.join(skillDir, name);
+  await fs.promises.mkdir(skillPath, { recursive: true });
+  const filePath = path.join(skillPath, "SKILL.md");
+  await fs.promises.writeFile(
+    filePath,
+    `---
+name: ${name}
+description: ${description}
+allowed-tools:
+${allowedTools.map((t) => `  - ${t}`).join("\n")}
+---
+# Body content
+`,
+  );
+  return filePath;
+}
+
 beforeEach(async () => {
   try {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
@@ -72,11 +97,11 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([tempDir]);
 
-    expect(skills.length).toBe(1);
-    const skill = skills[0]!;
-    expect(skill.name).toBe("test-skill");
-    expect(skill.description).toBe("A test skill");
-    expect(skill.location).toContain("test-skill/SKILL.md");
+    expect(skills.length).toBe(1 + EMBEDDED_SKILL_COUNT);
+    const skill = skills.find((s) => s.name === "test-skill");
+    expect(skill).toBeDefined();
+    expect(skill!.description).toBe("A test skill");
+    expect(skill!.location).toContain("test-skill/SKILL.md");
   });
 
   it("should discover multiple skills from directory", async () => {
@@ -85,9 +110,9 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([tempDir]);
 
-    expect(skills.length).toBe(2);
+    expect(skills.length).toBe(2 + EMBEDDED_SKILL_COUNT);
     const names = skills.map((s) => s.name).sort();
-    expect(names).toEqual(["skill-one", "skill-two"]);
+    expect(names).toEqual(["code-simplifier", "skill-one", "skill-two"]);
   });
 
   it("should discover skills from nested subdirectories", async () => {
@@ -95,14 +120,17 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([tempDir]);
 
-    expect(skills.length).toBe(1);
-    expect(skills[0]!.name).toBe("nested-skill");
+    expect(skills.length).toBe(1 + EMBEDDED_SKILL_COUNT);
+    const nestedSkill = skills.find((s) => s.name === "nested-skill");
+    expect(nestedSkill).toBeDefined();
   });
 
   it("should skip missing directories gracefully", async () => {
     const skills = await discoverSkills(["/nonexistent/path"]);
 
-    expect(skills.length).toBe(0);
+    expect(skills.length).toBe(EMBEDDED_SKILL_COUNT);
+    const embeddedSkill = skills.find((s) => s.name === "code-simplifier");
+    expect(embeddedSkill).toBeDefined();
   });
 
   it("should skip directories that exist but contain no skills", async () => {
@@ -110,7 +138,7 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([tempDir]);
 
-    expect(skills.length).toBe(0);
+    expect(skills.length).toBe(EMBEDDED_SKILL_COUNT);
   });
 
   it("should skip invalid SKILL.md files with warning", async () => {
@@ -120,7 +148,7 @@ describe("discoverSkills", () => {
     const skills = await discoverSkills([tempDir]);
     consoleWarn.mockRestore();
 
-    expect(skills.length).toBe(0);
+    expect(skills.length).toBe(EMBEDDED_SKILL_COUNT);
   });
 
   it("should handle multiple directories", async () => {
@@ -133,8 +161,9 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([dir1, dir2]);
 
-    expect(skills.length).toBe(2);
-    expect(skills.map((s) => s.name).sort()).toEqual(["skill-from-dir1", "skill-from-dir2"]);
+    expect(skills.length).toBe(2 + EMBEDDED_SKILL_COUNT);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toEqual(["code-simplifier", "skill-from-dir1", "skill-from-dir2"]);
   });
 
   it("should return skills with absolute path to SKILL.md", async () => {
@@ -143,14 +172,20 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([absoluteDir]);
 
-    expect(skills.length).toBe(1);
-    expect(skills[0]!.location).toBe(path.join(absoluteDir, "my-skill", "SKILL.md"));
+    expect(skills.length).toBe(1 + EMBEDDED_SKILL_COUNT);
+    const mySkill = skills.find((s) => s.name === "my-skill");
+    expect(mySkill).toBeDefined();
+    expect(mySkill!.location).toBe(path.join(absoluteDir, "my-skill", "SKILL.md"));
   });
 
-  it("should return empty array when given empty directories array", async () => {
+  it("should return embedded skills when given empty directories array", async () => {
     const skills = await discoverSkills([]);
 
-    expect(skills.length).toBe(0);
+    expect(skills.length).toBe(EMBEDDED_SKILL_COUNT);
+    const embeddedSkill = skills.find((s) => s.name === "code-simplifier");
+    expect(embeddedSkill).toBeDefined();
+    expect(embeddedSkill!.isBuiltin).toBe(true);
+    expect(embeddedSkill!.location).toBe("builtin://code-simplifier");
   });
 
   it("should handle deeply nested skill files", async () => {
@@ -158,8 +193,9 @@ describe("discoverSkills", () => {
 
     const skills = await discoverSkills([tempDir]);
 
-    expect(skills.length).toBe(1);
-    expect(skills[0]!.name).toBe("deep-skill");
+    expect(skills.length).toBe(1 + EMBEDDED_SKILL_COUNT);
+    const deepSkill = skills.find((s) => s.name === "deep-skill");
+    expect(deepSkill).toBeDefined();
   });
 
   it("should mark skills from builtin directory as builtin", async () => {
@@ -170,8 +206,9 @@ describe("discoverSkills", () => {
     const skills = await discoverSkills([], builtinDir);
 
     expect(skills.length).toBe(1);
-    expect(skills[0]!.name).toBe("builtin-skill");
-    expect(skills[0]!.isBuiltin).toBe(true);
+    const builtinSkill = skills.find((s) => s.name === "builtin-skill");
+    expect(builtinSkill).toBeDefined();
+    expect(builtinSkill!.isBuiltin).toBe(true);
   });
 
   it("should discover skills from both builtin and user directories", async () => {
@@ -190,22 +227,88 @@ describe("discoverSkills", () => {
     expect(userSkills[0]!.name).toBe("user-skill");
   });
 
-  it("should handle missing builtin directory gracefully", async () => {
+  it("should fallback to embedded skills when builtin directory is missing", async () => {
     await createSkillFile(tempDir, "user-skill", "A user skill");
 
     const skills = await discoverSkills([tempDir], "/nonexistent/builtin");
 
-    expect(skills.length).toBe(1);
-    expect(skills[0]!.name).toBe("user-skill");
+    expect(skills.length).toBe(1 + EMBEDDED_SKILL_COUNT);
+    const userSkill = skills.find((s) => s.name === "user-skill");
+    expect(userSkill).toBeDefined();
+    const embeddedSkill = skills.find((s) => s.name === "code-simplifier");
+    expect(embeddedSkill).toBeDefined();
+    expect(embeddedSkill!.isBuiltin).toBe(true);
   });
 
-  it("should skip invalid skills in builtin directory", async () => {
+  it("should fallback to embedded skills when builtin directory has invalid skills", async () => {
     const builtinDir = path.join(tempDir, "builtin");
     await fs.promises.mkdir(builtinDir, { recursive: true });
     await createInvalidSkillFile(builtinDir);
 
     const skills = await discoverSkills([], builtinDir);
 
-    expect(skills.length).toBe(0);
+    expect(skills.length).toBe(EMBEDDED_SKILL_COUNT);
+    const embeddedSkill = skills.find((s) => s.name === "code-simplifier");
+    expect(embeddedSkill).toBeDefined();
+    expect(embeddedSkill!.isBuiltin).toBe(true);
+  });
+
+  it("should return embedded skills with correct metadata", async () => {
+    const skills = await discoverSkills([]);
+
+    const codeSimplifier = skills.find((s) => s.name === "code-simplifier");
+    expect(codeSimplifier).toBeDefined();
+    expect(codeSimplifier!.description).toBe(
+      "Refine code for clarity and maintainability while preserving functionality",
+    );
+    expect(codeSimplifier!.isBuiltin).toBe(true);
+    expect(codeSimplifier!.location).toBe("builtin://code-simplifier");
+  });
+
+  it("should parse allowed-tools from frontmatter", async () => {
+    await createSkillWithAllowedTools(tempDir, "restricted-skill", "A skill with tool restrictions", [
+      "read_file",
+      "list_files",
+    ]);
+
+    const skills = await discoverSkills([tempDir]);
+
+    const restrictedSkill = skills.find((s) => s.name === "restricted-skill");
+    expect(restrictedSkill).toBeDefined();
+    expect(restrictedSkill!.allowedTools).toEqual(["read_file", "list_files"]);
+  });
+
+  it("should parse allowed-tools as space-separated string", async () => {
+    const skillPath = path.join(tempDir, "space-separated-skill");
+    await fs.promises.mkdir(skillPath, { recursive: true });
+    const filePath = path.join(skillPath, "SKILL.md");
+    await fs.promises.writeFile(
+      filePath,
+      `---
+name: space-separated-skill
+description: A skill with space-separated tools
+allowed-tools:
+  - write_file
+  - grep
+---
+# Body content
+`,
+    );
+
+    const skills = await discoverSkills([tempDir]);
+
+    const skill = skills.find((s) => s.name === "space-separated-skill");
+    expect(skill).toBeDefined();
+    expect(skill!.allowedTools).toEqual(["write_file", "grep"]);
+  });
+
+  it("should set allowedTools to undefined when not specified", async () => {
+    await createSkillFile(tempDir, "no-restriction-skill", "A skill without tool restrictions");
+
+    const skills = await discoverSkills([tempDir]);
+
+    const skill = skills.find((s) => s.name === "no-restriction-skill");
+    expect(skill).toBeDefined();
+    expect(skill!.allowedTools).toBeUndefined();
   });
 });

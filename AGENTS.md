@@ -10,7 +10,8 @@ bun run lint             # Lint (oxlint)
 bun run lint:fix         # Auto-fix lint issues
 bun run format           # Format code (oxfmt)
 bun test                 # Run all tests
-bun test <file>          # Run single test (e.g., src/core/memory.test.ts)
+bun test <file>          # Run single test file (e.g., src/core/memory.test.ts)
+bun test <pattern>       # Run tests matching pattern (e.g., "MemoryStore")
 bun test:watch           # Watch mode for TDD
 bun run format && bun run typecheck && bun run lint  # After changes
 ```
@@ -72,41 +73,6 @@ Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 ### Registry Pattern
 
 Use Map with CRUD: `register`, `unregister`, `get`, `list`, `clear`.
-
-### React Context Pattern
-
-```typescript
-// contexts/MyContext.tsx
-import React, { createContext, useContext, useState, type ReactNode } from "react";
-
-interface MyContextValue {
-  value: string;
-  setValue: (v: string) => void;
-}
-
-const MyContext = createContext<MyContextValue | null>(null);
-
-export function useMyContext(): MyContextValue {
-  const context = useContext(MyContext);
-  if (!context) {
-    throw new Error("useMyContext must be used within a MyProvider");
-  }
-  return context;
-}
-
-export function MyProvider({ children }: { children: ReactNode }) {
-  const [value, setValue] = useState("");
-  return (
-    <MyContext.Provider value={{ value, setValue }}>
-      {children}
-    </MyContext.Provider>
-  );
-}
-```
-
-- Throw error if hook used outside provider (catches usage errors early)
-- Export types alongside hooks for consumers
-- Use helper functions that combine multiple state setters for atomic updates
 
 ### Tool Pattern
 
@@ -172,22 +138,16 @@ src/
 
 Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
 
-## CLI Usage
-
-```bash
-tiny-agent                         # Interactive chat
-tiny-agent run "fix this bug"      # Run single prompt
-tiny-agent --model claude-3-5-sonnet "help"  # Specify model
-tiny-agent --provider ollama run "help"      # Specify provider
-tiny-agent memory list              # List memories
-tiny-agent config                   # Show config
-tiny-agent status                   # Show capabilities
-```
-
-Options: `--model`, `--provider`, `--verbose`, `--save`, `--no-memory`, `--no-track-context`, `--agents-md <path>`, `--help`.
-
 ## Core Principles
 
 - **Small, Safe Steps**: Make big changes through small, reversible steps
 - **Human Relationships**: Code is communication between humans
 - **Eliminate Problems**: Remove complexity rather than managing it
+
+## Agent Workflow
+
+1. **Understand First**: Read relevant files before making changes
+2. **Plan First**: Propose a plan before editing, break into manageable steps
+3. **Test-Driven**: Run tests after changes to verify correctness
+4. **Typecheck & Lint**: Always run `bun run typecheck && bun run lint` after changes
+5. **One Thing at a Time**: Complete current task before starting new ones
