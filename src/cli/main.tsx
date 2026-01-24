@@ -16,13 +16,7 @@ import {
   createSkillTool,
 } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
-import {
-  McpManager,
-  setMcpVerbose,
-  getGlobalMcpManager,
-  setGlobalMcpManager,
-  globToRegex,
-} from "../mcp/manager.js";
+import { McpManager, getGlobalMcpManager, setGlobalMcpManager, globToRegex } from "../mcp/manager.js";
 import type { ModelCapabilities } from "../providers/capabilities.js";
 import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
@@ -87,29 +81,13 @@ class ThinkingTagFilter {
           this.buffer = this.buffer.slice(startIdx + 7);
           this.inThinkingBlock = true;
         } else {
-          const partialMatch = this.findPartialTag(this.buffer, "<think>");
-          if (partialMatch > 0) {
-            output += this.buffer.slice(0, this.buffer.length - partialMatch);
-            this.buffer = this.buffer.slice(-partialMatch);
-            break;
-          } else {
-            output += this.buffer;
-            this.buffer = "";
-          }
+          output += this.buffer;
+          this.buffer = "";
         }
       }
     }
 
     return output;
-  }
-
-  private findPartialTag(text: string, tag: string): number {
-    for (let i = 1; i < tag.length; i++) {
-      if (text.endsWith(tag.slice(0, i))) {
-        return i;
-      }
-    }
-    return 0;
   }
 
   flush(): string {
@@ -361,10 +339,8 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
 
   // Initialize and register MCP tools if configured
   if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    const mcpManager = new McpManager(config.disabledMcpPatterns ?? []);
+    const mcpManager = new McpManager({ disabledPatterns: config.disabledMcpPatterns ?? [] });
     setGlobalMcpManager(mcpManager);
-    // Disable verbose logging by default - UI will show MCP status in header
-    setMcpVerbose(false);
 
     for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
       await mcpManager.addServer(serverName, serverConfig);
@@ -491,11 +467,15 @@ async function handleRun(
     outputJson({ type: "user", content: prompt });
   }
 
+  // Initialize status line with model and context info
+  statusLineManager.setModel(model);
+  const contextMax = maxContextTokens ?? 32000;
+  statusLineManager.setContext(0, contextMax);
+
   const runPrompt = async (currentPrompt: string): Promise<void> => {
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
-    statusLineManager.setModel(model);
     statusLineManager.setStatus(StatusType.THINKING);
 
     for await (const chunk of agent.runStream(currentPrompt, model)) {
@@ -512,9 +492,8 @@ async function handleRun(
         const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
         if (runningTool) {
           statusLineManager.setTool(runningTool.name);
-        } else {
-          statusLineManager.clearTool();
         }
+        // Don't clear tool on complete - keep it visible until next tool starts
 
         if (jsonMode) {
           for (const te of chunk.toolExecutions) {
@@ -533,11 +512,14 @@ async function handleRun(
           for (const te of chunk.toolExecutions) {
             displayToolExecution(te, useInk);
           }
-          if (!options.noTrackContext && chunk.contextStats) {
-            const ctx = chunk.contextStats;
-            statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
-          }
         }
+      }
+
+      // Update context on every chunk (not just when tools execute)
+      if (!options.noTrackContext && chunk.contextStats) {
+        const ctx = chunk.contextStats;
+        const maxTokens = ctx.maxContextTokens ?? 32000;
+        statusLineManager.setContext(ctx.totalTokens, maxTokens);
       }
 
       if (chunk.done) {
@@ -568,9 +550,12 @@ async function handleRun(
 
   try {
     await runPrompt(prompt);
+    statusLineManager.clearTool();
+    statusLineManager.setStatus(StatusType.READY);
     process.exit(0);
   } catch (err) {
     statusLineManager.setStatus(StatusType.ERROR);
+    statusLineManager.clearTool();
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
     statusLineManager.setStatus(StatusType.READY);
@@ -734,6 +719,11 @@ async function handleInteractiveChat(
   });
   toolRegistry.register(skillTool);
 
+  // Initialize status line with model, context, and MCP info
+  statusLineManager.setModel(initialModel.replace(/^opencode\//, ""));
+  const contextMax = maxContextTokens ?? 32000;
+  statusLineManager.setContext(0, contextMax);
+
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
   const enabledProviders = {
@@ -881,10 +871,7 @@ async function handleMcp(args: string[]): Promise<void> {
 
   // Default MCP servers
   const defaultServers: Record<string, { command: string; args: string[] }> = {
-    context7: {
-      command: "npx",
-      args: ["-y", "@upstash/context7-mcp"],
-    },
+    context7: { command: "npx", args: ["-y", "@upstash/context7-mcp"] },
     serena: {
       command: "uvx",
       args: [
@@ -901,13 +888,21 @@ async function handleMcp(args: string[]): Promise<void> {
     },
   };
 
-  // Read actual config file to see what's explicitly configured
-  const { parse: parseYaml } = await import("yaml");
-  let fileConfig: Record<string, unknown> = {};
-  if (existsSync(configPath)) {
+  // Helper to read/write config
+  const readConfig = async (): Promise<Record<string, unknown>> => {
+    if (!existsSync(configPath)) return {};
     const content = await readFile(configPath, "utf-8");
-    fileConfig = parseYaml(content) as Record<string, unknown>;
-  }
+    const { parse: parseYaml } = await import("yaml");
+    return (parseYaml(content) as Record<string, unknown>) || {};
+  };
+
+  const writeConfig = async (config: Record<string, unknown>): Promise<void> => {
+    const { stringify: stringifyYaml } = await import("yaml");
+    await writeFile(configPath, stringifyYaml(config), "utf-8");
+  };
+
+  // Read config once for all operations
+  const fileConfig = await readConfig();
   const userServers = ((fileConfig.mcpServers || {}) as Record<string, unknown>) || {};
   const enabledServers = Object.keys(userServers);
 
@@ -931,7 +926,6 @@ async function handleMcp(args: string[]): Promise<void> {
       console.log(`  ${status} ${name}`);
       console.log(`    Command: ${serverConfig.command} ${argsStr}`);
 
-      // Check if command is available
       if (!isCommandAvailable(serverConfig.command)) {
         console.log(
           `    ⚠ Command "${serverConfig.command}" not found. Install required dependency.`,
@@ -972,36 +966,15 @@ async function handleMcp(args: string[]): Promise<void> {
 
     const serverArgs = args.slice(3);
 
-    // Check if command is available
     if (!isCommandAvailable(command)) {
       console.log(`⚠ Warning: Command "${command}" not found.`);
-      console.log(
-        `   The server "${name}" will not work until you install the required dependency.`,
-      );
+      console.log(`   The server "${name}" will not work until you install the required dependency.`);
       console.log();
     }
 
-    // Read current config (or start fresh if config doesn't exist)
-    let content = "";
-    if (existsSync(configPath)) {
-      content = await readFile(configPath, "utf-8");
-    }
-    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
-
-    // Initialize mcpServers if needed
-    if (!parsed.mcpServers) {
-      parsed.mcpServers = {};
-    }
-
-    // Add the new server
-    (parsed.mcpServers as Record<string, unknown>)[name] = {
-      command,
-      args: serverArgs,
-    };
-
-    // Write back
-    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    if (!fileConfig.mcpServers) fileConfig.mcpServers = {};
+    (fileConfig.mcpServers as Record<string, unknown>)[name] = { command, args: serverArgs };
+    await writeConfig(fileConfig);
     console.log(`Added MCP server: ${name}`);
     console.log(`  Command: ${command} ${serverArgs.join(" ")}`);
     process.exit(0);
@@ -1024,34 +997,16 @@ async function handleMcp(args: string[]): Promise<void> {
 
     const serverConfig = defaultServers[name];
 
-    // Check if command is available
     if (!isCommandAvailable(serverConfig.command)) {
       console.log(`⚠ Warning: Command "${serverConfig.command}" not found.`);
-      console.log(
-        `   The server "${name}" will not work until you install the required dependency.`,
-      );
+      console.log(`   The server "${name}" will not work until you install the required dependency.`);
       console.log(`   For serena, install uv: curl -LsSf https://astral.sh/uv/install.sh | sh`);
       console.log();
     }
 
-    // Read current config (or start fresh if config doesn't exist)
-    let content = "";
-    if (existsSync(configPath)) {
-      content = await readFile(configPath, "utf-8");
-    }
-    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
-
-    // Initialize mcpServers if needed
-    if (!parsed.mcpServers) {
-      parsed.mcpServers = {};
-    }
-
-    // Add the default server config
-    (parsed.mcpServers as Record<string, unknown>)[name] = serverConfig;
-
-    // Write back
-    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    if (!fileConfig.mcpServers) fileConfig.mcpServers = {};
+    (fileConfig.mcpServers as Record<string, unknown>)[name] = serverConfig;
+    await writeConfig(fileConfig);
     console.log(`Enabled MCP server: ${name}`);
     process.exit(0);
   }
@@ -1064,24 +1019,14 @@ async function handleMcp(args: string[]): Promise<void> {
       process.exit(1);
     }
 
-    // Read current config (or start fresh if config doesn't exist)
-    let content = "";
-    if (existsSync(configPath)) {
-      content = await readFile(configPath, "utf-8");
-    }
-    const { parse: parseYaml, stringify: stringifyYaml } = await import("yaml");
-    const parsed = content ? (parseYaml(content) as Record<string, unknown>) : {};
-
-    if (!parsed.mcpServers || !(parsed.mcpServers as Record<string, unknown>)[name]) {
+    if (!userServers[name]) {
       console.log(`MCP server "${name}" is not configured`);
       process.exit(1);
     }
 
-    // Remove the server
-    delete (parsed.mcpServers as Record<string, unknown>)[name];
-
-    // Write back
-    await writeFile(configPath, stringifyYaml(parsed), "utf-8");
+    delete userServers[name];
+    fileConfig.mcpServers = userServers;
+    await writeConfig(fileConfig);
     console.log(`Disabled MCP server: ${name}`);
     process.exit(0);
   }

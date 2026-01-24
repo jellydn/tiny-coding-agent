@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from "react";
 import { statusLineManager, type StatusLineState } from "../status-line-manager.js";
 import { StatusType } from "../types/enums.js";
 
@@ -33,23 +33,26 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
 
   useEffect(() => {
     return statusLineManager.subscribe((newState) => {
-      setState(newState);
+      setState((prevState) => ({ ...prevState, ...newState }));
     });
   }, []);
 
+  const contextValue = useMemo(
+    () => ({
+      ...state,
+      setStatus: statusLineManager.setStatus.bind(statusLineManager),
+      setModel: statusLineManager.setModel.bind(statusLineManager),
+      setContext: statusLineManager.setContext.bind(statusLineManager),
+      setTool: statusLineManager.setTool.bind(statusLineManager),
+      clearTool: statusLineManager.clearTool.bind(statusLineManager),
+      setMcpServerCount: statusLineManager.setMcpServerCount.bind(statusLineManager),
+      showStatusLine: statusLineManager.showStatusLine,
+    }),
+    [state],
+  );
+
   return (
-    <StatusLineContext.Provider
-      value={{
-        ...state,
-        setStatus: statusLineManager.setStatus.bind(statusLineManager),
-        setModel: statusLineManager.setModel.bind(statusLineManager),
-        setContext: statusLineManager.setContext.bind(statusLineManager),
-        setTool: statusLineManager.setTool.bind(statusLineManager),
-        clearTool: statusLineManager.clearTool.bind(statusLineManager),
-        setMcpServerCount: statusLineManager.setMcpServerCount.bind(statusLineManager),
-        showStatusLine: statusLineManager.showStatusLine,
-      }}
-    >
+    <StatusLineContext.Provider value={contextValue}>
       {children}
     </StatusLineContext.Provider>
   );

@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useEffect,
   useRef,
   type ReactNode,
 } from "react";
@@ -25,6 +26,31 @@ export interface ChatMessage {
 
 function generateMessageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+const MAX_ARG_LENGTH = 40;
+const MAX_OUTPUT_LINES = 10;
+
+function formatToolCall(te: ToolExecution): string {
+  const argsStr = te.args
+    ? Object.entries(te.args)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => {
+          const str = typeof v === "string" ? v : JSON.stringify(v);
+          return `${k}=${str.length > MAX_ARG_LENGTH ? str.slice(0, MAX_ARG_LENGTH) + "..." : str}`;
+        })
+        .join(" ")
+    : "";
+  return `🔧 ${te.name}${argsStr ? ` ${argsStr}` : ""}`;
+}
+
+function formatToolOutput(te: ToolExecution): string {
+  const output = te.error || te.output || "";
+  if (!output) return "";
+  const allLines = output.split("\n");
+  const lines = allLines.slice(0, MAX_OUTPUT_LINES);
+  const prefix = te.error ? "✗" : "✓";
+  return `\n${prefix} ${lines.join("\n  ")}${lines.length < allLines.length ? "\n  ..." : ""}`;
 }
 
 interface ChatContextValue {
@@ -83,6 +109,13 @@ export function ChatProvider({
   const seenToolsRef = useRef<Set<string>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Initialize status line with model on mount
+  useEffect(() => {
+    if (initialModel) {
+      statusLineManager.setModel(initialModel.replace(/^opencode\//, ""));
+    }
+  }, [initialModel]);
+
   const cancelActiveRequest = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -120,30 +153,6 @@ export function ChatProvider({
 
   const setCurrentModel = useCallback((model: string) => {
     setCurrentModelState(model);
-  }, []);
-
-  const formatToolCall = useCallback((te: ToolExecution): string => {
-    const MAX_ARG_LENGTH = 40;
-    const argsStr = te.args
-      ? Object.entries(te.args)
-          .filter(([, v]) => v !== undefined)
-          .map(([k, v]) => {
-            const str = typeof v === "string" ? v : JSON.stringify(v);
-            return `${k}=${str.length > MAX_ARG_LENGTH ? str.slice(0, MAX_ARG_LENGTH) + "..." : str}`;
-          })
-          .join(" ")
-      : "";
-    return `🔧 ${te.name}${argsStr ? ` ${argsStr}` : ""}`;
-  }, []);
-
-  const formatToolOutput = useCallback((te: ToolExecution): string => {
-    const output = te.error || te.output || "";
-    if (!output) return "";
-    const MAX_OUTPUT_LINES = 10;
-    const allLines = output.split("\n");
-    const lines = allLines.slice(0, MAX_OUTPUT_LINES);
-    const prefix = te.error ? "✗" : "✓";
-    return `\n${prefix} ${lines.join("\n  ")}${lines.length < allLines.length ? "\n  ..." : ""}`;
   }, []);
 
   const handleChatError = useCallback(
@@ -230,16 +239,13 @@ export function ChatProvider({
               );
               if (runningTool) {
                 statusLineManager.setTool(runningTool.name);
-              } else {
-                statusLineManager.clearTool();
               }
+              // Don't clear tool on complete - keep it visible until next tool starts
             }
 
             if (chunk.contextStats) {
-              statusLineManager.setContext(
-                chunk.contextStats.totalTokens,
-                chunk.contextStats.maxContextTokens,
-              );
+              const maxTokens = chunk.contextStats.maxContextTokens ?? 32000;
+              statusLineManager.setContext(chunk.contextStats.totalTokens, maxTokens);
             }
 
             if (chunk.done) {
@@ -267,6 +273,7 @@ export function ChatProvider({
         }
         handleChatError(err);
       } finally {
+        statusLineManager.clearTool();
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null;
         }
@@ -281,8 +288,6 @@ export function ChatProvider({
       addMessage,
       setThinking,
       setStreamingText,
-      formatToolCall,
-      formatToolOutput,
       handleChatError,
       cancelActiveRequest,
     ],

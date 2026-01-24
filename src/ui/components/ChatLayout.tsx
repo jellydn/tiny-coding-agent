@@ -119,6 +119,7 @@ export function ChatLayout({
           tokensUsed={statusContext.tokensUsed}
           tokensMax={statusContext.tokensMax}
           tool={statusContext.tool}
+          mcpServerCount={statusContext.mcpServerCount}
         />
       </Box>
 

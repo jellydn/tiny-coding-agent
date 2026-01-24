@@ -39,6 +39,8 @@ function getDefaultConfig(): Config {
   return {
     defaultModel: "llama3.2",
     systemPrompt: SYSTEM_PROMPT,
+    trackContextUsage: true,
+    maxContextTokens: 32000,
     providers: {
       ollama: {
         baseUrl: "http://localhost:11434",

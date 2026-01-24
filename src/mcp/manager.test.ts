@@ -9,7 +9,7 @@ describe("McpManager", () => {
 
   beforeEach(() => {
     originalGlobalManager = getGlobalMcpManager();
-    setGlobalMcpManager(new McpManager());
+    setGlobalMcpManager(new McpManager({}));
   });
 
   afterEach(() => {
@@ -104,9 +104,8 @@ describe("McpManager", () => {
       expect(addResult).toBe(false);
 
       const status = manager.getServerStatus();
-      expect(status.length).toBe(1);
-      expect(status[0]?.name).toBe("unavailable");
-      expect(status[0]?.connected).toBe(false);
+      // Server should not be added when command is unavailable
+      expect(status.length).toBe(0);
     });
   });
 
@@ -153,7 +152,7 @@ describe("McpManager", () => {
     });
 
     it("should filter tool count based on disabled patterns", async () => {
-      const manager = new McpManager(["test-*"]);
+      const manager = new McpManager({ disabledPatterns: ["test-*"] });
       const config: McpServerConfig = { command: "echo", args: [] };
       await manager.addServer("test", config);
 

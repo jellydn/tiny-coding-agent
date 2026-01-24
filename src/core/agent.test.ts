@@ -9,6 +9,7 @@ import type {
 } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { Agent } from "./agent.js";
+import { ConversationManager } from "./conversation.js";
 
 const tempConversationFile = "/tmp/test-agent-conversation.json";
 
@@ -66,7 +67,9 @@ describe("Agent", () => {
       agent.startChatSession();
 
       expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
+        (
+          agent as unknown as { _conversationManager: ConversationManager }
+        )._conversationManager.getHistory(),
       ).toEqual([]);
     });
   });
@@ -82,8 +85,9 @@ describe("Agent", () => {
         if (chunk.content) chunks.push(chunk.content);
       }
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
+      const history = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory();
       expect(history.length).toBeGreaterThanOrEqual(2);
       expect(history[0]).toEqual({
         role: "user",
@@ -99,15 +103,17 @@ describe("Agent", () => {
       for await (const _chunk of agent.runStream("Hello", "mock-model")) {
       }
 
-      const historyAfterFirst = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory.length;
+      const historyAfterFirst = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory().length;
       expect(historyAfterFirst).toBeGreaterThan(0);
 
       for await (const _chunk of agent.runStream("What's my name?", "mock-model")) {
       }
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
+      const history = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory();
       expect(history.length).toBeGreaterThan(historyAfterFirst);
       expect(history[0]).toEqual({
         role: "user",
@@ -124,19 +130,24 @@ describe("Agent", () => {
       }
 
       expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory.length,
+        (
+          agent as unknown as { _conversationManager: ConversationManager }
+        )._conversationManager.getHistory().length,
       ).toBeGreaterThan(0);
 
       agent.startChatSession();
       expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
+        (
+          agent as unknown as { _conversationManager: ConversationManager }
+        )._conversationManager.getHistory(),
       ).toEqual([]);
 
       for await (const _chunk of agent.runStream("Second session", "mock-model")) {
       }
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
+      const history = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory();
       expect(history[0]).toEqual({
         role: "user",
         content: "Second session",
@@ -165,8 +176,9 @@ describe("Agent", () => {
       for await (const _chunk of agent.runStream("New message", "mock-model")) {
       }
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
+      const history = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory();
       expect(history[0]).toEqual({
         role: "user",
         content: "Previous user message",
@@ -193,7 +205,9 @@ describe("Agent", () => {
       agent._updateConversationHistory(messages);
 
       expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
+        (
+          agent as unknown as { _conversationManager: ConversationManager }
+        )._conversationManager.getHistory(),
       ).toEqual(messages);
     });
   });
@@ -260,8 +274,9 @@ describe("Agent", () => {
       const lastChunk = chunks[chunks.length - 1] as { iterations: number };
       expect(lastChunk.iterations).toBe(1);
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
+      const history = (
+        agent as unknown as { _conversationManager: ConversationManager }
+      )._conversationManager.getHistory();
       const hasSystemError = history.some(
         (msg: Message) => msg.role === "system" && msg.content.includes("not available"),
       );

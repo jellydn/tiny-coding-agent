@@ -1,7 +1,6 @@
 import type { LLMClient, Message } from "../providers/types.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { countTokens, truncateMessages } from "./tokens.js";
@@ -12,7 +11,6 @@ import {
   buildContextWithMemory,
   type ContextStats,
 } from "./memory.js";
-import { z } from "zod";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
 import { createProvider, detectProvider } from "../providers/factory.js";
@@ -24,10 +22,7 @@ import {
 } from "../skills/index.js";
 import { parseSkillFrontmatter } from "../skills/parser.js";
 import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-}
+import { ConversationManager } from "./conversation.js";
 
 function redactApiKey(key?: string): string {
   if (!key) return "(not set)";
@@ -89,15 +84,10 @@ export interface AgentResponse {
   messages: Message[];
 }
 
-const toolCallSchema = z.object({
-  name: z.string(),
-  parameters: z.record(z.string(), z.unknown()).optional(),
-});
-
 function isValidToolCall(text: string): boolean {
   try {
     const parsed = JSON.parse(text);
-    return toolCallSchema.safeParse(parsed).success;
+    return typeof parsed === "object" && parsed !== null && typeof parsed.name === "string";
   } catch {
     return false;
   }
@@ -111,13 +101,12 @@ export class Agent {
   private _maxIterations: number;
   private _systemPrompt: string;
   private _verbose: boolean;
-  private _conversationFile?: string;
   private _maxContextTokens?: number;
   private _memoryStore?: MemoryStore;
   private _maxMemoryTokens?: number;
   private _trackContextUsage: boolean;
   private _thinking?: ThinkingConfig;
-  private _conversationHistory: Message[] = [];
+  private _conversationManager!: ConversationManager;
   private _skills: Map<string, SkillMetadata> = new Map();
   private _skillsInitialized: boolean = false;
   private _skillsInitPromise?: Promise<void>;
@@ -129,11 +118,11 @@ export class Agent {
     this._toolRegistry = toolRegistry;
     this._maxIterations = options.maxIterations ?? 20;
     this._verbose = options.verbose ?? false;
-    this._conversationFile = options.conversationFile;
     this._maxContextTokens = options.maxContextTokens;
     this._maxMemoryTokens = options.maxMemoryTokens;
     this._trackContextUsage = options.trackContextUsage ?? false;
     this._thinking = options.thinking;
+    this._conversationManager = new ConversationManager(options.conversationFile);
 
     let effectiveSystemPrompt =
       options.systemPrompt ??
@@ -209,12 +198,11 @@ export class Agent {
   }
 
   startChatSession(): void {
-    this._conversationHistory = [];
+    this._conversationManager.startSession();
   }
 
   _updateConversationHistory(messages: Message[]): void {
-    this._saveConversation(messages);
-    this._conversationHistory = messages;
+    this._conversationManager.setHistory(messages);
   }
 
   async *runStream(
@@ -233,9 +221,10 @@ export class Agent {
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     const llmClient = this._getLlmClientForModel(effectiveModel);
 
-    let messages: Message[] = this._conversationFile
-      ? this._loadConversation()
-      : this._conversationHistory;
+    const conversationFile = this._conversationManager.conversationFile;
+    let messages: Message[] = conversationFile
+      ? this._conversationManager.loadHistory()
+      : this._conversationManager.getHistory();
 
     const isContinuation = userPrompt === "continue";
     if (isContinuation || messages.length > 0) {
@@ -244,28 +233,39 @@ export class Agent {
       messages = [{ role: "user", content: userPrompt }];
     }
 
-    const updateContextStats = (memoryTokens: number, truncationApplied: boolean): ContextStats => {
-      const systemTokens = countTokens(this._systemPrompt);
-      const conversationTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
-      return {
-        systemPromptTokens: systemTokens,
-        memoryTokens,
-        conversationTokens,
-        totalTokens: systemTokens + memoryTokens + conversationTokens,
-        maxContextTokens: this._maxContextTokens ?? 0,
-        truncationApplied,
-        memoryCount: 0,
-      };
-    };
-
     let contextStats: ContextStats | undefined;
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
+    const systemTokens = countTokens(this._systemPrompt);
+
+    const makeContextStats = (memTokens: number, trunc: boolean): ContextStats => {
+      const convTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
+      const stats: ContextStats = {
+        systemPromptTokens: systemTokens,
+        memoryTokens: memTokens,
+        conversationTokens: convTokens,
+        totalTokens: systemTokens + memTokens + convTokens,
+        maxContextTokens: this._maxContextTokens ?? 0,
+        truncationApplied: trunc,
+        memoryCount: 0,
+      };
+      return stats;
+    };
+
     if (!this._maxContextTokens) {
-      // No context limit - skip context management
+      // No context limit - track stats for display only
+      const conversationTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
+      contextStats = {
+        systemPromptTokens: systemTokens,
+        memoryTokens: 0,
+        conversationTokens,
+        totalTokens: systemTokens + conversationTokens,
+        maxContextTokens: 0,
+        truncationApplied: false,
+        memoryCount: 0,
+      };
     } else if (this._memoryStore) {
-      const systemTokens = countTokens(this._systemPrompt);
       const { memoryBudget, conversationBudget } = calculateContextBudget(
         this._maxContextTokens,
         systemTokens,
@@ -286,18 +286,24 @@ export class Agent {
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
     } else {
-      const systemTokens = countTokens(this._systemPrompt);
+      // No memory store but has max context - truncate messages
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
       if (availableTokens <= 0) {
-        contextStats = updateContextStats(0, false);
+        truncationApplied = false;
       } else {
         const truncated = truncateMessages(messages, availableTokens);
         truncationApplied = truncated.length < messages.length;
-        if (truncationApplied) {
-          messages = truncated as Message[];
-        }
-        contextStats = updateContextStats(0, truncationApplied);
+        if (truncationApplied) messages = truncated as Message[];
       }
+      contextStats = {
+        systemPromptTokens: systemTokens,
+        memoryTokens: 0,
+        conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
+        totalTokens: systemTokens + (messages.reduce((sum, msg) => sum + countTokens(msg.content), 0)),
+        maxContextTokens: this._maxContextTokens,
+        truncationApplied,
+        memoryCount: 0,
+      };
     }
 
     const tools = this._getToolDefinitions();
@@ -321,6 +327,7 @@ export class Agent {
       console.log(`  System Prompt: ${this._systemPrompt.length} chars`);
       console.log(`  Messages: ${messages.length}`);
       console.log(`  Tools: ${tools.length}`);
+      console.log(`  maxContextTokens: ${this._maxContextTokens}`);
       if (this._memoryStore) {
         console.log(`  Memory: ${this._memoryStore.count()} memories stored`);
       }
@@ -332,10 +339,20 @@ export class Agent {
     let loopDetected = false;
 
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
-      throwIfAborted(options?.signal);
+      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
       if (!contextStats) {
-        contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
+        contextStats = {
+          systemPromptTokens: countTokens(this._systemPrompt),
+          memoryTokens: memoryTokensUsed,
+          conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
+          totalTokens: 0,
+          maxContextTokens: this._maxContextTokens ?? 0,
+          truncationApplied,
+          memoryCount: 0,
+        };
+        contextStats.totalTokens =
+          contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
       }
 
       if (this._verbose) {
@@ -421,7 +438,7 @@ export class Agent {
         return;
       }
 
-      throwIfAborted(options?.signal);
+      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
       yield {
         content: "",
@@ -464,7 +481,7 @@ export class Agent {
         contextStats,
       };
 
-      throwIfAborted(options?.signal);
+      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
       for (const { toolCall, result } of toolExecutionResults) {
         const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
@@ -517,7 +534,17 @@ export class Agent {
             `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
           );
         }
-        contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
+        contextStats = {
+          systemPromptTokens: countTokens(this._systemPrompt),
+          memoryTokens: memoryTokensUsed,
+          conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
+          totalTokens: 0,
+          maxContextTokens: this._maxContextTokens ?? 0,
+          truncationApplied,
+          memoryCount: 0,
+        };
+        contextStats.totalTokens =
+          contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
         continue;
       }
 
@@ -537,7 +564,17 @@ export class Agent {
         }
       }
 
-      contextStats = updateContextStats(memoryTokensUsed, truncationApplied);
+      contextStats = {
+        systemPromptTokens: countTokens(this._systemPrompt),
+        memoryTokens: memoryTokensUsed,
+        conversationTokens: messages.reduce((sum, msg) => sum + countTokens(msg.content), 0),
+        totalTokens: 0,
+        maxContextTokens: this._maxContextTokens ?? 0,
+        truncationApplied,
+        memoryCount: 0,
+      };
+      contextStats.totalTokens =
+        contextStats.systemPromptTokens + contextStats.memoryTokens + contextStats.conversationTokens;
     }
 
     if (loopDetected) {
@@ -565,7 +602,7 @@ export class Agent {
             content: chunk.content,
             iterations: iteration + 1,
             done: false,
-            contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+            contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
           };
         }
       }
@@ -575,7 +612,7 @@ export class Agent {
         content: "",
         iterations: iteration + 1,
         done: true,
-        contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+        contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
       };
       return;
     }
@@ -591,7 +628,7 @@ export class Agent {
       iterations: iteration,
       done: true,
       maxIterationsReached: true,
-      contextStats: updateContextStats(memoryTokensUsed, truncationApplied),
+      contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
     };
   }
 
@@ -609,7 +646,7 @@ export class Agent {
     return {
       content: fullContent,
       iterations,
-      messages: this._conversationHistory,
+      messages: this._conversationManager.getHistory(),
     };
   }
 
@@ -695,37 +732,6 @@ export class Agent {
 
     const allowedSet = new Set(this._activeSkillAllowedTools);
     return allTools.filter((tool) => allowedSet.has(tool.name));
-  }
-
-  private _loadConversation(): Message[] {
-    if (!this._conversationFile || !existsSync(this._conversationFile)) {
-      return [];
-    }
-
-    try {
-      const content = readFileSync(this._conversationFile, "utf-8");
-      const data = JSON.parse(content);
-      return data.messages || [];
-    } catch (err) {
-      console.error(`Warning: Failed to load conversation from ${this._conversationFile}: ${err}`);
-      return [];
-    }
-  }
-
-  private _saveConversation(messages: Message[]): void {
-    if (!this._conversationFile) {
-      return;
-    }
-
-    try {
-      const data = {
-        timestamp: new Date().toISOString(),
-        messages,
-      };
-      writeFileSync(this._conversationFile, JSON.stringify(data, null, 2), "utf-8");
-    } catch (err) {
-      console.error(`Warning: Failed to save conversation to ${this._conversationFile}: ${err}`);
-    }
   }
 }
 
