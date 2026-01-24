@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { Tool, ToolResult } from "./types.js";
 import type { SkillMetadata } from "../skills/types.js";
 import { parseSkillFrontmatter } from "../skills/parser.js";
+import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
 
 export function createSkillTool(
   skillRegistry: Map<string, SkillMetadata>,
@@ -39,7 +40,21 @@ export function createSkillTool(
       }
 
       try {
-        const content = await fs.readFile(skillMetadata.location, "utf-8");
+        // Handle built-in skills (embedded content)
+        let content: string;
+        let baseDir = ".";
+
+        if (skillMetadata.location.startsWith("builtin://")) {
+          const embeddedContent = getEmbeddedSkillContent(skillName);
+          if (!embeddedContent) {
+            return { success: false, error: `Built-in skill content not found: ${skillName}` };
+          }
+          content = embeddedContent;
+        } else {
+          // File-based skill
+          content = await fs.readFile(skillMetadata.location, "utf-8");
+          baseDir = path.dirname(skillMetadata.location);
+        }
 
         let allowedTools: string[] | undefined;
         try {
@@ -53,8 +68,15 @@ export function createSkillTool(
           onSkillLoaded(allowedTools);
         }
 
-        const baseDir = path.dirname(skillMetadata.location);
-        const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${content}\n</loaded_skill>`;
+        // Escape XML special characters to prevent injection attacks
+        const escapedContent = content
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&apos;");
+
+        const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${escapedContent}\n</loaded_skill>`;
         return { success: true, output: wrappedContent };
       } catch (err) {
         const error = err as NodeJS.ErrnoException;

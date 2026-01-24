@@ -22,6 +22,7 @@ import {
   type SkillMetadata,
 } from "../skills/index.js";
 import { parseSkillFrontmatter } from "../skills/parser.js";
+import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -661,7 +662,21 @@ export class Agent {
     }
 
     try {
-      const content = await fs.readFile(skillMetadata.location, "utf-8");
+      // Handle built-in skills (embedded content)
+      let content: string;
+      let baseDir = ".";
+
+      if (skillMetadata.location.startsWith("builtin://")) {
+        const embeddedContent = getEmbeddedSkillContent(skillName);
+        if (!embeddedContent) {
+          throw new Error(`Built-in skill content not found: ${skillName}`);
+        }
+        content = embeddedContent;
+      } else {
+        // File-based skill
+        content = await fs.readFile(skillMetadata.location, "utf-8");
+        baseDir = path.dirname(skillMetadata.location);
+      }
 
       let allowedTools: string[] | undefined;
       try {
@@ -677,7 +692,6 @@ export class Agent {
         this._clearSkillRestriction();
       }
 
-      const baseDir = path.dirname(skillMetadata.location);
       const escapedContent = escapeXml(content);
       const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${escapedContent}\n</loaded_skill>`;
 
