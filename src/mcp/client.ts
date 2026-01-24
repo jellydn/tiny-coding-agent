@@ -38,10 +38,18 @@ export class McpClient {
     }
 
     try {
+      // Suppress server logs by not inheriting stderr - logs go to terminal but not captured
       this._transport = new StdioClientTransport({
         command: this._config.command,
         args: this._config.args,
-        env: this._config.env,
+        env: {
+          ...this._config.env,
+          // Suppress verbose logging from MCP servers
+          DEBUG: "",
+          RUST_LOG: "error",
+          LOG_LEVEL: "error",
+        },
+        stderr: "pipe", // Capture stderr separately to avoid polluting stdout
       });
 
       await this._client.connect(this._transport);

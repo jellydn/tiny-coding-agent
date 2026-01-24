@@ -450,7 +450,7 @@ async function handleRun(
       memoryStatus,
       agentsMdStatus,
     ].filter(Boolean);
-    
+
     console.log(`[${statusItems.join(", ")}]`);
   }
 

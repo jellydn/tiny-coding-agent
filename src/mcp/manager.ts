@@ -5,6 +5,16 @@ import type { ToolRegistry } from "../tools/registry.js";
 import { McpClient } from "./client.js";
 import type { McpToolDefinition, McpConnection } from "./types.js";
 
+let _verbose = false;
+
+/**
+ * Enable verbose logging for MCP operations.
+ * Call this with true to see connection logs, false to suppress.
+ */
+export function setMcpVerbose(verbose: boolean): void {
+  _verbose = verbose;
+}
+
 /**
  * Check if a command is available in PATH.
  * Returns true if found, false otherwise.
@@ -30,10 +40,12 @@ export class McpManager {
 
     // Check if command exists before attempting to connect
     if (!isCommandAvailable(config.command)) {
-      console.warn(
-        `[MCP] Command "${config.command}" not found. Skipping server "${name}". ` +
-          `Install the required dependency to enable this MCP server.`,
-      );
+      if (_verbose) {
+        console.warn(
+          `[MCP] Command "${config.command}" not found. Skipping server "${name}". ` +
+            `Install the required dependency to enable this MCP server.`,
+        );
+      }
       return false;
     }
 
@@ -41,7 +53,7 @@ export class McpManager {
     this._clients.set(name, client);
     this._restartAttempts.set(name, 0);
 
-    await this._connectClient(name, client);
+    // Lazy connect: defer connection until first tool call
     return true;
   }
 
@@ -53,11 +65,13 @@ export class McpManager {
       const attempts = this._restartAttempts.get(name) ?? 0;
       if (attempts < this._maxRestartAttempts) {
         this._restartAttempts.set(name, attempts + 1);
-        console.error(
-          `MCP server "${name}" connection failed (attempt ${attempts + 1}/${this._maxRestartAttempts}): ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        if (_verbose) {
+          console.error(
+            `MCP server "${name}" connection failed (attempt ${attempts + 1}/${this._maxRestartAttempts}): ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
         await this._delay(1000 * (attempts + 1));
         await this._connectClient(name, client);
       } else {

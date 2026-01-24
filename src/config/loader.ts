@@ -6,8 +6,8 @@ import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
 export const CONFIG_DIR = join(homedir(), ".tiny-agent");
-export const YAML_PATH = join(CONFIG_DIR, "config.yaml");
-export const JSON_PATH = join(CONFIG_DIR, "config.json");
+export const YAML_PATH = process.env.TINY_AGENT_CONFIG_YAML ?? join(CONFIG_DIR, "config.yaml");
+export const JSON_PATH = process.env.TINY_AGENT_CONFIG_JSON ?? join(CONFIG_DIR, "config.json");
 
 export function getConfigPath(): string {
   if (existsSync(YAML_PATH)) {
@@ -117,7 +117,28 @@ export function loadConfig(): Config {
     rawConfig = parseYaml(content);
   }
 
-  const interpolatedConfig = interpolateObject(rawConfig);
+  // Merge with defaults for missing fields (supports new features added after config was created)
+  const defaultConfig = getDefaultConfig();
+  const userConfig = rawConfig as Record<string, unknown>;
+  const mergedConfig = {
+    ...defaultConfig,
+    ...userConfig,
+    // Deep merge nested objects
+    providers: {
+      ...defaultConfig.providers,
+      ...(userConfig.providers as Record<string, unknown>),
+    },
+    mcpServers: {
+      ...defaultConfig.mcpServers,
+      ...(userConfig.mcpServers as Record<string, unknown>),
+    },
+    // Merge arrays (skillDirectories)
+    skillDirectories: userConfig.skillDirectories ?? defaultConfig.skillDirectories,
+    // Merge tools object
+    tools: userConfig.tools ?? defaultConfig.tools,
+  };
+
+  const interpolatedConfig = interpolateObject(mergedConfig);
 
   const errors = validateConfig(interpolatedConfig);
   if (errors.length > 0) {
