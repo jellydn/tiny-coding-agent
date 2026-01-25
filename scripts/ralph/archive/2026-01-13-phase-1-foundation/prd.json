@@ -1,262 +1,262 @@
 {
-  "project": "Tiny Coding Agent",
-  "branchName": "ralph/tiny-coding-agent",
-  "description": "A lightweight, extensible coding agent built in TypeScript with multi-provider LLM support, MCP client integration, and a plugin system for custom tools.",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Project Setup and Structure",
-      "description": "As a developer, I want a well-structured TypeScript project so I can start building the agent.",
-      "acceptanceCriteria": [
-        "Initialize Node.js project with TypeScript configured",
-        "Set up src/ folder structure: core/, tools/, providers/, mcp/, cli/, config/",
-        "Configure tsconfig.json for ES modules with strict mode",
-        "Add build and dev scripts to package.json",
-        "Typecheck passes"
-      ],
-      "priority": 1,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-002",
-      "title": "Configuration System",
-      "description": "As a user, I want to configure the agent via YAML/JSON so I can customize models, tools, and behavior.",
-      "acceptanceCriteria": [
-        "Load config from ~/.tiny-agent/config.yaml (fallback to config.json)",
-        "Support config for: default model, provider settings, enabled tools, MCP servers",
-        "Validate config schema on load with helpful error messages",
-        "Allow environment variable overrides (e.g., TINY_AGENT_MODEL)",
-        "Support ${ENV_VAR} interpolation in config values",
-        "Typecheck passes"
-      ],
-      "priority": 2,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003",
-      "title": "Multi-Provider LLM Client Interface",
-      "description": "As a developer, I want a unified LLM client interface so I can add provider implementations.",
-      "acceptanceCriteria": [
-        "Define unified LLMClient interface with chat() and stream() methods",
-        "Define Message, ToolCall, and ToolResult types",
-        "Create LLM client factory that selects provider based on config/model",
-        "Typecheck passes"
-      ],
-      "priority": 3,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003a",
-      "title": "OpenAI Provider Implementation",
-      "description": "As a user, I want to use OpenAI-compatible APIs so I can use GPT models.",
-      "acceptanceCriteria": [
-        "Implement OpenAI provider with chat() method",
-        "Implement stream() method for streaming responses",
-        "Support tool/function calling in requests and responses",
-        "Works with OpenAI, Groq, Together, OpenRouter via baseUrl config",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003b",
-      "title": "Anthropic Provider Implementation",
-      "description": "As a user, I want to use Anthropic Claude so I can use Claude models.",
-      "acceptanceCriteria": [
-        "Implement Anthropic provider with chat() method",
-        "Implement stream() method for streaming responses",
-        "Support tool calling in requests and responses",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003c",
-      "title": "Ollama Provider Implementation",
-      "description": "As a user, I want to use Ollama so I can run local models.",
-      "acceptanceCriteria": [
-        "Implement Ollama provider with chat() method",
-        "Implement stream() method for streaming responses",
-        "Support tool calling if model supports it",
-        "Typecheck passes"
-      ],
-      "priority": 6,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-004",
-      "title": "Tool System Architecture",
-      "description": "As a developer, I want a clean tool interface so I can easily add new tools.",
-      "acceptanceCriteria": [
-        "Define Tool interface: name, description, parameters (JSON Schema), execute()",
-        "Tools return structured results with success, output, error fields",
-        "Tool registry to register/discover tools",
-        "Convert tools to LLM function-calling format (OpenAI/Anthropic compatible)",
-        "Typecheck passes"
-      ],
-      "priority": 7,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-005",
-      "title": "Core Tools - File Operations",
-      "description": "As a user, I want to read and write files so the agent can modify my code.",
-      "acceptanceCriteria": [
-        "read_file: Read file content with optional line range",
-        "write_file: Write/overwrite file content",
-        "edit_file: Replace specific text in a file (search/replace)",
-        "list_directory: List files and folders in a directory",
-        "Handle errors gracefully (file not found, permission denied)",
-        "Typecheck passes"
-      ],
-      "priority": 8,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Core Tools - Bash Execution",
-      "description": "As a user, I want to run shell commands so the agent can execute builds, tests, and scripts.",
-      "acceptanceCriteria": [
-        "bash: Execute shell command and return stdout/stderr",
-        "Set timeout (default 60s, configurable)",
-        "Set working directory",
-        "Capture exit code",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-007",
-      "title": "Core Tools - Search (Grep & Glob)",
-      "description": "As a user, I want to search files and content so the agent can navigate my codebase.",
-      "acceptanceCriteria": [
-        "grep: Search file contents with regex support",
-        "glob: Find files by pattern (e.g., **/*.ts)",
-        "Return results with file paths and line numbers",
-        "Limit results to prevent token explosion (max 100)",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-008",
-      "title": "Core Tools - Web Search",
-      "description": "As a user, I want the agent to search the web for documentation and answers.",
-      "acceptanceCriteria": [
-        "web_search: Search using DuckDuckGo HTML scraping (no API key needed)",
-        "Return title, URL, snippet for each result",
-        "Support max_results parameter",
-        "Typecheck passes"
-      ],
-      "priority": 11,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-009",
-      "title": "MCP Client Integration",
-      "description": "As a user, I want to connect to MCP servers so I can extend the agent with external tools.",
-      "acceptanceCriteria": [
-        "Implement MCP client using @anthropic-ai/mcp-sdk",
-        "Launch MCP servers via stdio (command + args from config)",
-        "Discover tools from connected MCP servers (tools/list)",
-        "Call MCP tools and return results (tools/call)",
-        "Handle MCP server lifecycle (start, graceful shutdown)",
-        "Merge MCP tools with built-in tools in the tool registry",
-        "Typecheck passes"
-      ],
-      "priority": 12,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-010",
-      "title": "Agent Loop",
-      "description": "As a user, I want the agent to iteratively solve problems using tools until complete.",
-      "acceptanceCriteria": [
-        "Implement ReAct-style agent loop: think → act → observe → repeat",
-        "Send conversation history + available tools to LLM",
-        "Parse tool calls from LLM response",
-        "Execute tools and append results to conversation",
-        "Stop when LLM provides final answer (no tool calls)",
-        "Limit max iterations (configurable, default 20)",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-011a",
-      "title": "CLI Interface - Core Commands",
-      "description": "As a user, I want basic CLI commands to interact with the agent.",
-      "acceptanceCriteria": [
-        "Command: tiny-agent chat - Start interactive chat session",
-        "Command: tiny-agent run 'prompt' - Run single prompt and exit",
-        "Command: tiny-agent config - Show current config",
-        "Flag: --model to override default model",
-        "Flag: --provider to override provider",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-011b",
-      "title": "CLI Interface - Pretty Output",
-      "description": "As a user, I want pretty terminal output with syntax highlighting.",
-      "acceptanceCriteria": [
-        "Pretty-print responses with markdown rendering",
-        "Show tool calls and results in verbose mode (-v)",
-        "Use colors for different message types (user, assistant, tool)",
-        "Typecheck passes"
-      ],
-      "priority": 15,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-012",
-      "title": "Plugin System for Custom Tools",
-      "description": "As a developer, I want to add custom tools via plugins so I can extend the agent.",
-      "acceptanceCriteria": [
-        "Load plugins from ~/.tiny-agent/plugins/ directory",
-        "Each plugin is a JS/TS module exporting a Tool or array of Tools",
-        "Support plugin config in main config file",
-        "Typecheck passes"
-      ],
-      "priority": 16,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Conversation History & Context",
-      "description": "As a user, I want conversation context maintained so the agent remembers what we discussed.",
-      "acceptanceCriteria": [
-        "Maintain message history during a session",
-        "Support system prompt configuration",
-        "Optionally save/load conversation to file",
-        "Typecheck passes"
-      ],
-      "priority": 17,
-      "passes": false,
-      "notes": ""
-    }
-  ]
+	"project": "Tiny Coding Agent",
+	"branchName": "ralph/tiny-coding-agent",
+	"description": "A lightweight, extensible coding agent built in TypeScript with multi-provider LLM support, MCP client integration, and a plugin system for custom tools.",
+	"userStories": [
+		{
+			"id": "US-001",
+			"title": "Project Setup and Structure",
+			"description": "As a developer, I want a well-structured TypeScript project so I can start building the agent.",
+			"acceptanceCriteria": [
+				"Initialize Node.js project with TypeScript configured",
+				"Set up src/ folder structure: core/, tools/, providers/, mcp/, cli/, config/",
+				"Configure tsconfig.json for ES modules with strict mode",
+				"Add build and dev scripts to package.json",
+				"Typecheck passes"
+			],
+			"priority": 1,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-002",
+			"title": "Configuration System",
+			"description": "As a user, I want to configure the agent via YAML/JSON so I can customize models, tools, and behavior.",
+			"acceptanceCriteria": [
+				"Load config from ~/.tiny-agent/config.yaml (fallback to config.json)",
+				"Support config for: default model, provider settings, enabled tools, MCP servers",
+				"Validate config schema on load with helpful error messages",
+				"Allow environment variable overrides (e.g., TINY_AGENT_MODEL)",
+				"Support ${ENV_VAR} interpolation in config values",
+				"Typecheck passes"
+			],
+			"priority": 2,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003",
+			"title": "Multi-Provider LLM Client Interface",
+			"description": "As a developer, I want a unified LLM client interface so I can add provider implementations.",
+			"acceptanceCriteria": [
+				"Define unified LLMClient interface with chat() and stream() methods",
+				"Define Message, ToolCall, and ToolResult types",
+				"Create LLM client factory that selects provider based on config/model",
+				"Typecheck passes"
+			],
+			"priority": 3,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003a",
+			"title": "OpenAI Provider Implementation",
+			"description": "As a user, I want to use OpenAI-compatible APIs so I can use GPT models.",
+			"acceptanceCriteria": [
+				"Implement OpenAI provider with chat() method",
+				"Implement stream() method for streaming responses",
+				"Support tool/function calling in requests and responses",
+				"Works with OpenAI, Groq, Together, OpenRouter via baseUrl config",
+				"Typecheck passes"
+			],
+			"priority": 4,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003b",
+			"title": "Anthropic Provider Implementation",
+			"description": "As a user, I want to use Anthropic Claude so I can use Claude models.",
+			"acceptanceCriteria": [
+				"Implement Anthropic provider with chat() method",
+				"Implement stream() method for streaming responses",
+				"Support tool calling in requests and responses",
+				"Typecheck passes"
+			],
+			"priority": 5,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003c",
+			"title": "Ollama Provider Implementation",
+			"description": "As a user, I want to use Ollama so I can run local models.",
+			"acceptanceCriteria": [
+				"Implement Ollama provider with chat() method",
+				"Implement stream() method for streaming responses",
+				"Support tool calling if model supports it",
+				"Typecheck passes"
+			],
+			"priority": 6,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-004",
+			"title": "Tool System Architecture",
+			"description": "As a developer, I want a clean tool interface so I can easily add new tools.",
+			"acceptanceCriteria": [
+				"Define Tool interface: name, description, parameters (JSON Schema), execute()",
+				"Tools return structured results with success, output, error fields",
+				"Tool registry to register/discover tools",
+				"Convert tools to LLM function-calling format (OpenAI/Anthropic compatible)",
+				"Typecheck passes"
+			],
+			"priority": 7,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-005",
+			"title": "Core Tools - File Operations",
+			"description": "As a user, I want to read and write files so the agent can modify my code.",
+			"acceptanceCriteria": [
+				"read_file: Read file content with optional line range",
+				"write_file: Write/overwrite file content",
+				"edit_file: Replace specific text in a file (search/replace)",
+				"list_directory: List files and folders in a directory",
+				"Handle errors gracefully (file not found, permission denied)",
+				"Typecheck passes"
+			],
+			"priority": 8,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-006",
+			"title": "Core Tools - Bash Execution",
+			"description": "As a user, I want to run shell commands so the agent can execute builds, tests, and scripts.",
+			"acceptanceCriteria": [
+				"bash: Execute shell command and return stdout/stderr",
+				"Set timeout (default 60s, configurable)",
+				"Set working directory",
+				"Capture exit code",
+				"Typecheck passes"
+			],
+			"priority": 9,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-007",
+			"title": "Core Tools - Search (Grep & Glob)",
+			"description": "As a user, I want to search files and content so the agent can navigate my codebase.",
+			"acceptanceCriteria": [
+				"grep: Search file contents with regex support",
+				"glob: Find files by pattern (e.g., **/*.ts)",
+				"Return results with file paths and line numbers",
+				"Limit results to prevent token explosion (max 100)",
+				"Typecheck passes"
+			],
+			"priority": 10,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-008",
+			"title": "Core Tools - Web Search",
+			"description": "As a user, I want the agent to search the web for documentation and answers.",
+			"acceptanceCriteria": [
+				"web_search: Search using DuckDuckGo HTML scraping (no API key needed)",
+				"Return title, URL, snippet for each result",
+				"Support max_results parameter",
+				"Typecheck passes"
+			],
+			"priority": 11,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-009",
+			"title": "MCP Client Integration",
+			"description": "As a user, I want to connect to MCP servers so I can extend the agent with external tools.",
+			"acceptanceCriteria": [
+				"Implement MCP client using @anthropic-ai/mcp-sdk",
+				"Launch MCP servers via stdio (command + args from config)",
+				"Discover tools from connected MCP servers (tools/list)",
+				"Call MCP tools and return results (tools/call)",
+				"Handle MCP server lifecycle (start, graceful shutdown)",
+				"Merge MCP tools with built-in tools in the tool registry",
+				"Typecheck passes"
+			],
+			"priority": 12,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-010",
+			"title": "Agent Loop",
+			"description": "As a user, I want the agent to iteratively solve problems using tools until complete.",
+			"acceptanceCriteria": [
+				"Implement ReAct-style agent loop: think → act → observe → repeat",
+				"Send conversation history + available tools to LLM",
+				"Parse tool calls from LLM response",
+				"Execute tools and append results to conversation",
+				"Stop when LLM provides final answer (no tool calls)",
+				"Limit max iterations (configurable, default 20)",
+				"Typecheck passes"
+			],
+			"priority": 13,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-011a",
+			"title": "CLI Interface - Core Commands",
+			"description": "As a user, I want basic CLI commands to interact with the agent.",
+			"acceptanceCriteria": [
+				"Command: tiny-agent chat - Start interactive chat session",
+				"Command: tiny-agent run 'prompt' - Run single prompt and exit",
+				"Command: tiny-agent config - Show current config",
+				"Flag: --model to override default model",
+				"Flag: --provider to override provider",
+				"Typecheck passes"
+			],
+			"priority": 14,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-011b",
+			"title": "CLI Interface - Pretty Output",
+			"description": "As a user, I want pretty terminal output with syntax highlighting.",
+			"acceptanceCriteria": [
+				"Pretty-print responses with markdown rendering",
+				"Show tool calls and results in verbose mode (-v)",
+				"Use colors for different message types (user, assistant, tool)",
+				"Typecheck passes"
+			],
+			"priority": 15,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-012",
+			"title": "Plugin System for Custom Tools",
+			"description": "As a developer, I want to add custom tools via plugins so I can extend the agent.",
+			"acceptanceCriteria": [
+				"Load plugins from ~/.tiny-agent/plugins/ directory",
+				"Each plugin is a JS/TS module exporting a Tool or array of Tools",
+				"Support plugin config in main config file",
+				"Typecheck passes"
+			],
+			"priority": 16,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-013",
+			"title": "Conversation History & Context",
+			"description": "As a user, I want conversation context maintained so the agent remembers what we discussed.",
+			"acceptanceCriteria": [
+				"Maintain message history during a session",
+				"Support system prompt configuration",
+				"Optionally save/load conversation to file",
+				"Typecheck passes"
+			],
+			"priority": 17,
+			"passes": false,
+			"notes": ""
+		}
+	]
 }

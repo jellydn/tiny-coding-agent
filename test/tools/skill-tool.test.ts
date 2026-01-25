@@ -1,54 +1,48 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { createSkillTool } from "../../src/tools/skill-tool.js";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
+import { createSkillTool } from "../../src/tools/skill-tool.js";
 
 describe("skill tool", () => {
-  const testSkillDir = "/tmp/test-skills";
-  const testSkillPath = path.join(testSkillDir, "test-skill", "SKILL.md");
+	const testSkillDir = "/tmp/test-skills";
+	const testSkillPath = path.join(testSkillDir, "test-skill", "SKILL.md");
 
-  beforeEach(() => {
-    try {
-      rmSync(testSkillDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-    mkdirSync(path.dirname(testSkillPath), { recursive: true });
-  });
+	beforeEach(() => {
+		try {
+			rmSync(testSkillDir, { recursive: true, force: true });
+		} catch {
+			/* ignore */
+		}
+		mkdirSync(path.dirname(testSkillPath), { recursive: true });
+	});
 
-  afterEach(() => {
-    try {
-      rmSync(testSkillDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-  });
+	afterEach(() => {
+		try {
+			rmSync(testSkillDir, { recursive: true, force: true });
+		} catch {
+			/* ignore */
+		}
+	});
 
-  describe("execute", () => {
-    it("should return error when skill name is missing", async () => {
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({});
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Skill name is required");
-    });
+	describe("execute", () => {
+		it("should return error when skill name is missing", async () => {
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({});
+			expect(result.success).toBe(false);
+			expect(result.error).toBe("Skill name is required");
+		});
 
-    it("should return error when skill not found in registry", async () => {
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({ name: "nonexistent" });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Skill not found: nonexistent");
-    });
+		it("should return error when skill not found in registry", async () => {
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({ name: "nonexistent" });
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Skill not found: nonexistent");
+		});
 
-    it("should load skill content and wrap in XML", async () => {
-      const skillContent = `---
+		it("should load skill content and wrap in XML", async () => {
+			const skillContent = `---
 name: test-skill
 description: A test skill
 ---
@@ -56,84 +50,72 @@ description: A test skill
 
 This is the body content.`;
 
-      writeFileSync(testSkillPath, skillContent, "utf-8");
+			writeFileSync(testSkillPath, skillContent, "utf-8");
 
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("test-skill", {
-        name: "test-skill",
-        description: "A test skill",
-        location: testSkillPath,
-      });
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("test-skill", {
+				name: "test-skill",
+				description: "A test skill",
+				location: testSkillPath,
+			});
 
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({ name: "test-skill" });
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({ name: "test-skill" });
 
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('<loaded_skill name="test-skill"');
-      expect(result.output).toContain(testSkillDir);
-      expect(result.output).toContain("# Test Skill");
-      expect(result.output).toContain("</loaded_skill>");
-    });
+			expect(result.success).toBe(true);
+			expect(result.output).toContain('<loaded_skill name="test-skill"');
+			expect(result.output).toContain(testSkillDir);
+			expect(result.output).toContain("# Test Skill");
+			expect(result.output).toContain("</loaded_skill>");
+		});
 
-    it("should return error when skill file is missing", async () => {
-      const missingPath = "/tmp/nonexistent-skill/SKILL.md";
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("nonexistent-skill", {
-        name: "nonexistent-skill",
-        description: "A nonexistent skill",
-        location: missingPath,
-      });
+		it("should return error when skill file is missing", async () => {
+			const missingPath = "/tmp/nonexistent-skill/SKILL.md";
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("nonexistent-skill", {
+				name: "nonexistent-skill",
+				description: "A nonexistent skill",
+				location: missingPath,
+			});
 
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({ name: "nonexistent-skill" });
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({ name: "nonexistent-skill" });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Skill file not found");
-    });
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Skill file not found");
+		});
 
-    it("should list available skills in error message", async () => {
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("skill-one", {
-        name: "skill-one",
-        description: "First skill",
-        location: "/tmp/1/SKILL.md",
-      });
-      skillRegistry.set("skill-two", {
-        name: "skill-two",
-        description: "Second skill",
-        location: "/tmp/2/SKILL.md",
-      });
+		it("should list available skills in error message", async () => {
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("skill-one", {
+				name: "skill-one",
+				description: "First skill",
+				location: "/tmp/1/SKILL.md",
+			});
+			skillRegistry.set("skill-two", {
+				name: "skill-two",
+				description: "Second skill",
+				location: "/tmp/2/SKILL.md",
+			});
 
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({ name: "unknown" });
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({ name: "unknown" });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Available skills: skill-one, skill-two");
-    });
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Available skills: skill-one, skill-two");
+		});
 
-    it("should handle empty registry gracefully", async () => {
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      const tool = createSkillTool(skillRegistry);
-      const result = await tool.execute({ name: "anything" });
+		it("should handle empty registry gracefully", async () => {
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			const tool = createSkillTool(skillRegistry);
+			const result = await tool.execute({ name: "anything" });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Available skills: none");
-    });
+			expect(result.success).toBe(false);
+			expect(result.error).toContain("Available skills: none");
+		});
 
-    it("should parse allowed-tools from frontmatter and call onSkillLoaded callback", async () => {
-      const skillContent = `---
+		it("should parse allowed-tools from frontmatter and call onSkillLoaded callback", async () => {
+			const skillContent = `---
 name: test-skill
 description: A test skill
 allowed-tools: read bash glob
@@ -142,31 +124,28 @@ allowed-tools: read bash glob
 
 This is the body content.`;
 
-      writeFileSync(testSkillPath, skillContent, "utf-8");
+			writeFileSync(testSkillPath, skillContent, "utf-8");
 
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("test-skill", {
-        name: "test-skill",
-        description: "A test skill",
-        location: testSkillPath,
-      });
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("test-skill", {
+				name: "test-skill",
+				description: "A test skill",
+				location: testSkillPath,
+			});
 
-      let capturedAllowedTools: string[] | undefined;
-      const tool = createSkillTool(skillRegistry, (allowedTools) => {
-        capturedAllowedTools = allowedTools;
-      });
+			let capturedAllowedTools: string[] | undefined;
+			const tool = createSkillTool(skillRegistry, (allowedTools) => {
+				capturedAllowedTools = allowedTools;
+			});
 
-      const result = await tool.execute({ name: "test-skill" });
+			const result = await tool.execute({ name: "test-skill" });
 
-      expect(result.success).toBe(true);
-      expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
-    });
+			expect(result.success).toBe(true);
+			expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
+		});
 
-    it("should pass undefined to onSkillLoaded when no allowed-tools in frontmatter", async () => {
-      const skillContent = `---
+		it("should pass undefined to onSkillLoaded when no allowed-tools in frontmatter", async () => {
+			const skillContent = `---
 name: test-skill
 description: A test skill
 ---
@@ -174,31 +153,28 @@ description: A test skill
 
 This is the body content.`;
 
-      writeFileSync(testSkillPath, skillContent, "utf-8");
+			writeFileSync(testSkillPath, skillContent, "utf-8");
 
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("test-skill", {
-        name: "test-skill",
-        description: "A test skill",
-        location: testSkillPath,
-      });
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("test-skill", {
+				name: "test-skill",
+				description: "A test skill",
+				location: testSkillPath,
+			});
 
-      let capturedAllowedTools: string[] | undefined;
-      const tool = createSkillTool(skillRegistry, (allowedTools) => {
-        capturedAllowedTools = allowedTools;
-      });
+			let capturedAllowedTools: string[] | undefined;
+			const tool = createSkillTool(skillRegistry, (allowedTools) => {
+				capturedAllowedTools = allowedTools;
+			});
 
-      const result = await tool.execute({ name: "test-skill" });
+			const result = await tool.execute({ name: "test-skill" });
 
-      expect(result.success).toBe(true);
-      expect(capturedAllowedTools).toBeUndefined();
-    });
+			expect(result.success).toBe(true);
+			expect(capturedAllowedTools).toBeUndefined();
+		});
 
-    it("should handle allowed-tools as array in frontmatter", async () => {
-      const skillContent = `---
+		it("should handle allowed-tools as array in frontmatter", async () => {
+			const skillContent = `---
 name: test-skill
 description: A test skill
 allowed-tools:
@@ -208,59 +184,56 @@ allowed-tools:
 ---
 # Test Skill`;
 
-      writeFileSync(testSkillPath, skillContent, "utf-8");
+			writeFileSync(testSkillPath, skillContent, "utf-8");
 
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string; allowedTools?: string[] }
-      >();
-      skillRegistry.set("test-skill", {
-        name: "test-skill",
-        description: "A test skill",
-        location: testSkillPath,
-        allowedTools: ["read", "bash", "glob"],
-      });
+			const skillRegistry = new Map<
+				string,
+				{ name: string; description: string; location: string; allowedTools?: string[] }
+			>();
+			skillRegistry.set("test-skill", {
+				name: "test-skill",
+				description: "A test skill",
+				location: testSkillPath,
+				allowedTools: ["read", "bash", "glob"],
+			});
 
-      let capturedAllowedTools: string[] | undefined;
-      const tool = createSkillTool(skillRegistry, (allowedTools) => {
-        capturedAllowedTools = allowedTools;
-      });
+			let capturedAllowedTools: string[] | undefined;
+			const tool = createSkillTool(skillRegistry, (allowedTools) => {
+				capturedAllowedTools = allowedTools;
+			});
 
-      const result = await tool.execute({ name: "test-skill" });
+			const result = await tool.execute({ name: "test-skill" });
 
-      expect(result.success).toBe(true);
-      expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
-    });
+			expect(result.success).toBe(true);
+			expect(capturedAllowedTools).toEqual(["read", "bash", "glob"]);
+		});
 
-    it("should handle empty allowed-tools gracefully", async () => {
-      const skillContent = `---
+		it("should handle empty allowed-tools gracefully", async () => {
+			const skillContent = `---
 name: test-skill
 description: A test skill
 allowed-tools: ""
 ---
 # Test Skill`;
 
-      writeFileSync(testSkillPath, skillContent, "utf-8");
+			writeFileSync(testSkillPath, skillContent, "utf-8");
 
-      const skillRegistry = new Map<
-        string,
-        { name: string; description: string; location: string }
-      >();
-      skillRegistry.set("test-skill", {
-        name: "test-skill",
-        description: "A test skill",
-        location: testSkillPath,
-      });
+			const skillRegistry = new Map<string, { name: string; description: string; location: string }>();
+			skillRegistry.set("test-skill", {
+				name: "test-skill",
+				description: "A test skill",
+				location: testSkillPath,
+			});
 
-      let capturedAllowedTools: string[] | undefined;
-      const tool = createSkillTool(skillRegistry, (allowedTools) => {
-        capturedAllowedTools = allowedTools;
-      });
+			let capturedAllowedTools: string[] | undefined;
+			const tool = createSkillTool(skillRegistry, (allowedTools) => {
+				capturedAllowedTools = allowedTools;
+			});
 
-      const result = await tool.execute({ name: "test-skill" });
+			const result = await tool.execute({ name: "test-skill" });
 
-      expect(result.success).toBe(true);
-      expect(capturedAllowedTools).toBeUndefined();
-    });
-  });
+			expect(result.success).toBe(true);
+			expect(capturedAllowedTools).toBeUndefined();
+		});
+	});
 });

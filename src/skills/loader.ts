@@ -1,145 +1,140 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseSkillFrontmatter, type ParsedSkill } from "./parser.js";
-import type { SkillMetadata } from "./types.js";
 import { getEmbeddedBuiltinSkills } from "./builtin-registry.js";
+import { type ParsedSkill, parseSkillFrontmatter } from "./parser.js";
 import { parseSignatureFromFrontmatter, verifyPluginSignature } from "./signature.js";
+import type { SkillMetadata } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function getBuiltinSkillsDir(): string {
-  return path.resolve(__dirname, "builtin");
+	return path.resolve(__dirname, "builtin");
 }
 
 async function isDirectory(dirPath: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(dirPath);
-    return stat.isDirectory();
-  } catch {
-    return false;
-  }
+	try {
+		const stat = await fs.stat(dirPath);
+		return stat.isDirectory();
+	} catch {
+		return false;
+	}
 }
 
 async function findSkillFiles(dir: string): Promise<string[]> {
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    const files: string[] = [];
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true });
+		const files: string[] = [];
 
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...(await findSkillFiles(fullPath)));
-      } else if (entry.isFile() && entry.name === "SKILL.md") {
-        files.push(fullPath);
-      }
-    }
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				files.push(...(await findSkillFiles(fullPath)));
+			} else if (entry.isFile() && entry.name === "SKILL.md") {
+				files.push(fullPath);
+			}
+		}
 
-    return files;
-  } catch {
-    return [];
-  }
+		return files;
+	} catch {
+		return [];
+	}
 }
 
 async function parseFrontmatterOnly(filePath: string): Promise<ParsedSkill | null> {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const parsed = parseSkillFrontmatter(content);
+	try {
+		const content = await fs.readFile(filePath, "utf-8");
+		const parsed = parseSkillFrontmatter(content);
 
-    // Check for signature verification
-    if (parsed?.frontmatter) {
-      const signature = parseSignatureFromFrontmatter(
-        parsed.frontmatter as unknown as Record<string, unknown>,
-      );
-      if (signature) {
-        const verification = await verifyPluginSignature(signature, content);
-        if (!verification.valid) {
-          console.warn(
-            `[Plugin Security] Warning: Plugin "${parsed.frontmatter.name}" signature verification failed: ${verification.reason}`,
-          );
-        } else {
-          if (process.env.TINY_AGENT_VERBOSE === "true") {
-            console.log(
-              `[Plugin Security] Plugin "${verification.info?.plugin}" verified: signed by ${verification.info?.author} at ${verification.info?.timestamp}`,
-            );
-          }
-        }
-      } else if (process.env.TINY_AGENT_WARN_UNSIGNED === "true") {
-        console.warn(
-          `[Plugin Security] Plugin "${parsed.frontmatter.name}" is unsigned. Only run plugins from trusted sources.`,
-        );
-      }
-    }
+		// Check for signature verification
+		if (parsed?.frontmatter) {
+			const signature = parseSignatureFromFrontmatter(parsed.frontmatter as unknown as Record<string, unknown>);
+			if (signature) {
+				const verification = await verifyPluginSignature(signature, content);
+				if (!verification.valid) {
+					console.warn(
+						`[Plugin Security] Warning: Plugin "${parsed.frontmatter.name}" signature verification failed: ${verification.reason}`
+					);
+				} else {
+					if (process.env.TINY_AGENT_VERBOSE === "true") {
+						console.log(
+							`[Plugin Security] Plugin "${verification.info?.plugin}" verified: signed by ${verification.info?.author} at ${verification.info?.timestamp}`
+						);
+					}
+				}
+			} else if (process.env.TINY_AGENT_WARN_UNSIGNED === "true") {
+				console.warn(
+					`[Plugin Security] Plugin "${parsed.frontmatter.name}" is unsigned. Only run plugins from trusted sources.`
+				);
+			}
+		}
 
-    return parsed;
-  } catch (err) {
-    console.warn(`Warning: Invalid SKILL.md at ${filePath}: ${(err as Error).message}`);
-    return null;
-  }
+		return parsed;
+	} catch (err) {
+		console.warn(`Warning: Invalid SKILL.md at ${filePath}: ${(err as Error).message}`);
+		return null;
+	}
 }
 
-export async function discoverSkills(
-  directories: string[],
-  builtinDir?: string,
-): Promise<SkillMetadata[]> {
-  const skills: SkillMetadata[] = [];
-  const seenLocations = new Set<string>();
+export async function discoverSkills(directories: string[], builtinDir?: string): Promise<SkillMetadata[]> {
+	const skills: SkillMetadata[] = [];
+	const seenLocations = new Set<string>();
 
-  // Load built-in skills if directory exists
-  if (builtinDir) {
-    const builtinDirPath = path.resolve(builtinDir);
-    if (await isDirectory(builtinDirPath)) {
-      const builtinSkillFiles = await findSkillFiles(builtinDirPath);
-      for (const filePath of builtinSkillFiles) {
-        const parsed = await parseFrontmatterOnly(filePath);
-        if (parsed) {
-          skills.push({
-            name: parsed.frontmatter.name,
-            description: parsed.frontmatter.description,
-            location: filePath,
-            isBuiltin: true,
-            allowedTools: parsed.frontmatter.allowedTools,
-          });
-          seenLocations.add(filePath);
-        }
-      }
-    }
+	// Load built-in skills if directory exists
+	if (builtinDir) {
+		const builtinDirPath = path.resolve(builtinDir);
+		if (await isDirectory(builtinDirPath)) {
+			const builtinSkillFiles = await findSkillFiles(builtinDirPath);
+			for (const filePath of builtinSkillFiles) {
+				const parsed = await parseFrontmatterOnly(filePath);
+				if (parsed) {
+					skills.push({
+						name: parsed.frontmatter.name,
+						description: parsed.frontmatter.description,
+						location: filePath,
+						isBuiltin: true,
+						allowedTools: parsed.frontmatter.allowedTools,
+					});
+					seenLocations.add(filePath);
+				}
+			}
+		}
 
-    // Fallback to embedded skills if no builtin skills found
-    if (!skills.some((s) => s.isBuiltin)) {
-      skills.push(...getEmbeddedBuiltinSkills());
-    }
-  } else {
-    skills.push(...getEmbeddedBuiltinSkills());
-  }
+		// Fallback to embedded skills if no builtin skills found
+		if (!skills.some((s) => s.isBuiltin)) {
+			skills.push(...getEmbeddedBuiltinSkills());
+		}
+	} else {
+		skills.push(...getEmbeddedBuiltinSkills());
+	}
 
-  // Load skills from configured directories
-  for (const dir of directories) {
-    let dirPath: string;
-    try {
-      dirPath = path.resolve(dir);
-    } catch {
-      console.warn(`Warning: Invalid skill directory path: ${dir}`);
-      continue;
-    }
+	// Load skills from configured directories
+	for (const dir of directories) {
+		let dirPath: string;
+		try {
+			dirPath = path.resolve(dir);
+		} catch {
+			console.warn(`Warning: Invalid skill directory path: ${dir}`);
+			continue;
+		}
 
-    if (!(await isDirectory(dirPath))) continue;
+		if (!(await isDirectory(dirPath))) continue;
 
-    const skillFiles = await findSkillFiles(dirPath);
-    for (const filePath of skillFiles) {
-      if (seenLocations.has(filePath)) continue;
+		const skillFiles = await findSkillFiles(dirPath);
+		for (const filePath of skillFiles) {
+			if (seenLocations.has(filePath)) continue;
 
-      const parsed = await parseFrontmatterOnly(filePath);
-      if (parsed) {
-        skills.push({
-          name: parsed.frontmatter.name,
-          description: parsed.frontmatter.description,
-          location: filePath,
-          allowedTools: parsed.frontmatter.allowedTools,
-        });
-      }
-    }
-  }
+			const parsed = await parseFrontmatterOnly(filePath);
+			if (parsed) {
+				skills.push({
+					name: parsed.frontmatter.name,
+					description: parsed.frontmatter.description,
+					location: filePath,
+					allowedTools: parsed.frontmatter.allowedTools,
+				});
+			}
+		}
+	}
 
-  return skills;
+	return skills;
 }

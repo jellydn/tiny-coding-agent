@@ -1,154 +1,154 @@
 {
-  "project": "Tiny Coding Agent",
-  "branchName": "ralph/status-line",
-  "description": "Add a persistent status line at the bottom of the terminal showing context usage, model, active tool calls, and agent status with colors and elapsed time.",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Create StatusLine Ink component",
-      "description": "As a developer, I need a StatusLine component that renders at the terminal bottom so other components can update it.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/StatusLine.tsx component",
-        "Component uses Ink's Box with fixed position at bottom",
-        "Accepts props: status, model, context, tool, elapsed",
-        "Renders single line with sections separated by ' | '",
-        "Typecheck passes"
-      ],
-      "priority": 1,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-002",
-      "title": "Display agent status with colors",
-      "description": "As a user, I want to see the agent's current state with color coding so I know what's happening.",
-      "acceptanceCriteria": [
-        "StatusLine shows status: '⏳ Thinking' (yellow), '✓ Ready' (green), '✗ Error' (red)",
-        "Status is the first section in the status line",
-        "Use Ink's Text color prop for coloring",
-        "Typecheck passes"
-      ],
-      "priority": 2,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003",
-      "title": "Display current model",
-      "description": "As a user, I want to see which model is active so I know what I'm working with.",
-      "acceptanceCriteria": [
-        "StatusLine shows 'Model: provider:model-name' (e.g., 'Model: anthropic:claude-3-5-sonnet')",
-        "Truncate long model names to fit terminal width",
-        "Use dim color for the 'Model:' label",
-        "Typecheck passes"
-      ],
-      "priority": 3,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-004",
-      "title": "Display context/token usage",
-      "description": "As a user, I want to see how many tokens I've used so I know when I'm approaching limits.",
-      "acceptanceCriteria": [
-        "StatusLine shows 'Ctx: used/max' (e.g., 'Ctx: 12.5k/128k')",
-        "Use compact number formatting (k for thousands)",
-        "Use dim color for the 'Ctx:' label",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-005",
-      "title": "Display active tool with elapsed time",
-      "description": "As a user, I want to see which tool is being called and how long it's taking.",
-      "acceptanceCriteria": [
-        "StatusLine shows '⚙ tool_name elapsed' when tool is active (e.g., '⚙ read_file 3.2s')",
-        "Tool section only visible during active tool execution",
-        "Elapsed time updates every 100ms",
-        "Use cyan color for tool name",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Create StatusLineProvider context",
-      "description": "As a developer, I need a React context to update status line state from anywhere in the component tree.",
-      "acceptanceCriteria": [
-        "Create src/ui/contexts/StatusLineContext.tsx with provider and hook",
-        "Provide setStatus, setModel, setContext, setTool, clearTool functions",
-        "useStatusLine hook for consuming components",
-        "Export from src/ui/index.ts",
-        "Typecheck passes"
-      ],
-      "priority": 6,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-007",
-      "title": "Integrate StatusLine into App",
-      "description": "As a user, I want the status line to appear at the bottom of the terminal during interactive mode.",
-      "acceptanceCriteria": [
-        "Wrap App content with StatusLineProvider",
-        "StatusLine component renders at bottom of App",
-        "Status line hidden when shouldUseInk() returns false",
-        "Status line respects terminal width",
-        "Typecheck passes"
-      ],
-      "priority": 7,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-008",
-      "title": "Update status line during agent loop",
-      "description": "As a developer, I need the agent loop to update the status line with current state.",
-      "acceptanceCriteria": [
-        "Set status to 'thinking' when sending to LLM",
-        "Set status to 'ready' when LLM response complete",
-        "Set status to 'error' on LLM errors (briefly, then back to ready)",
-        "Update context usage after each message exchange",
-        "Typecheck passes"
-      ],
-      "priority": 8,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-009",
-      "title": "Update status line during tool execution",
-      "description": "As a developer, I need tool executions to update the status line with tool name and elapsed time.",
-      "acceptanceCriteria": [
-        "Call setTool(name) when tool starts executing",
-        "Tool elapsed time tracks from start of execution",
-        "Call clearTool() when tool completes",
-        "Works for all built-in tools",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-010",
-      "title": "Add --no-status CLI flag",
-      "description": "As a user, I want to disable the status line if I prefer a cleaner output.",
-      "acceptanceCriteria": [
-        "Add --no-status CLI flag to main.tsx",
-        "Status line hidden when flag is set",
-        "Update help text to document the flag",
-        "Default behavior shows status line (when TTY)",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": false,
-      "notes": ""
-    }
-  ]
+	"project": "Tiny Coding Agent",
+	"branchName": "ralph/status-line",
+	"description": "Add a persistent status line at the bottom of the terminal showing context usage, model, active tool calls, and agent status with colors and elapsed time.",
+	"userStories": [
+		{
+			"id": "US-001",
+			"title": "Create StatusLine Ink component",
+			"description": "As a developer, I need a StatusLine component that renders at the terminal bottom so other components can update it.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/StatusLine.tsx component",
+				"Component uses Ink's Box with fixed position at bottom",
+				"Accepts props: status, model, context, tool, elapsed",
+				"Renders single line with sections separated by ' | '",
+				"Typecheck passes"
+			],
+			"priority": 1,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-002",
+			"title": "Display agent status with colors",
+			"description": "As a user, I want to see the agent's current state with color coding so I know what's happening.",
+			"acceptanceCriteria": [
+				"StatusLine shows status: '⏳ Thinking' (yellow), '✓ Ready' (green), '✗ Error' (red)",
+				"Status is the first section in the status line",
+				"Use Ink's Text color prop for coloring",
+				"Typecheck passes"
+			],
+			"priority": 2,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003",
+			"title": "Display current model",
+			"description": "As a user, I want to see which model is active so I know what I'm working with.",
+			"acceptanceCriteria": [
+				"StatusLine shows 'Model: provider:model-name' (e.g., 'Model: anthropic:claude-3-5-sonnet')",
+				"Truncate long model names to fit terminal width",
+				"Use dim color for the 'Model:' label",
+				"Typecheck passes"
+			],
+			"priority": 3,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-004",
+			"title": "Display context/token usage",
+			"description": "As a user, I want to see how many tokens I've used so I know when I'm approaching limits.",
+			"acceptanceCriteria": [
+				"StatusLine shows 'Ctx: used/max' (e.g., 'Ctx: 12.5k/128k')",
+				"Use compact number formatting (k for thousands)",
+				"Use dim color for the 'Ctx:' label",
+				"Typecheck passes"
+			],
+			"priority": 4,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-005",
+			"title": "Display active tool with elapsed time",
+			"description": "As a user, I want to see which tool is being called and how long it's taking.",
+			"acceptanceCriteria": [
+				"StatusLine shows '⚙ tool_name elapsed' when tool is active (e.g., '⚙ read_file 3.2s')",
+				"Tool section only visible during active tool execution",
+				"Elapsed time updates every 100ms",
+				"Use cyan color for tool name",
+				"Typecheck passes"
+			],
+			"priority": 5,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-006",
+			"title": "Create StatusLineProvider context",
+			"description": "As a developer, I need a React context to update status line state from anywhere in the component tree.",
+			"acceptanceCriteria": [
+				"Create src/ui/contexts/StatusLineContext.tsx with provider and hook",
+				"Provide setStatus, setModel, setContext, setTool, clearTool functions",
+				"useStatusLine hook for consuming components",
+				"Export from src/ui/index.ts",
+				"Typecheck passes"
+			],
+			"priority": 6,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-007",
+			"title": "Integrate StatusLine into App",
+			"description": "As a user, I want the status line to appear at the bottom of the terminal during interactive mode.",
+			"acceptanceCriteria": [
+				"Wrap App content with StatusLineProvider",
+				"StatusLine component renders at bottom of App",
+				"Status line hidden when shouldUseInk() returns false",
+				"Status line respects terminal width",
+				"Typecheck passes"
+			],
+			"priority": 7,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-008",
+			"title": "Update status line during agent loop",
+			"description": "As a developer, I need the agent loop to update the status line with current state.",
+			"acceptanceCriteria": [
+				"Set status to 'thinking' when sending to LLM",
+				"Set status to 'ready' when LLM response complete",
+				"Set status to 'error' on LLM errors (briefly, then back to ready)",
+				"Update context usage after each message exchange",
+				"Typecheck passes"
+			],
+			"priority": 8,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-009",
+			"title": "Update status line during tool execution",
+			"description": "As a developer, I need tool executions to update the status line with tool name and elapsed time.",
+			"acceptanceCriteria": [
+				"Call setTool(name) when tool starts executing",
+				"Tool elapsed time tracks from start of execution",
+				"Call clearTool() when tool completes",
+				"Works for all built-in tools",
+				"Typecheck passes"
+			],
+			"priority": 9,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-010",
+			"title": "Add --no-status CLI flag",
+			"description": "As a user, I want to disable the status line if I prefer a cleaner output.",
+			"acceptanceCriteria": [
+				"Add --no-status CLI flag to main.tsx",
+				"Status line hidden when flag is set",
+				"Update help text to document the flag",
+				"Default behavior shows status line (when TTY)",
+				"Typecheck passes"
+			],
+			"priority": 10,
+			"passes": false,
+			"notes": ""
+		}
+	]
 }

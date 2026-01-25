@@ -1,7 +1,7 @@
 export { main } from "./main.js";
 export {
-  StatusLine,
-  getStatusLine,
-  type StatusDisplay,
-  type StatusLineOptions,
+	getStatusLine,
+	type StatusDisplay,
+	StatusLine,
+	type StatusLineOptions,
 } from "./status-line.js";
