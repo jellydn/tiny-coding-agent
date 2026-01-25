@@ -34,8 +34,32 @@ function checkAborted(signal?: AbortSignal): void {
 
 function isLooping(recentToolCalls: string[]): boolean {
   if (recentToolCalls.length < 3) return false;
+
   const lastThree = recentToolCalls.slice(-3);
-  return lastThree.every((call) => call === lastThree[0]);
+  const allIdentical = lastThree.every((call) => call === lastThree[0]);
+  if (allIdentical) return true;
+
+  const lastFive = recentToolCalls.slice(-5);
+  const firstToolName = lastFive[0]?.match(/^([^:]+):/)?.[1];
+  const allSameTool = lastFive.every((call) => {
+    const match = call.match(/^([^:]+):/);
+    return match && match[1] === firstToolName;
+  });
+  if (allSameTool && lastFive.length >= 5) return true;
+
+  const lastTen = recentToolCalls.slice(-10);
+  const toolCounts: Record<string, number> = {};
+  for (const call of lastTen) {
+    const match = call.match(/^([^:]+):/);
+    const toolName = match?.[1];
+    if (toolName) {
+      toolCounts[toolName] = (toolCounts[toolName] || 0) + 1;
+    }
+  }
+  const maxCount = Math.max(...Object.values(toolCounts), 0);
+  if (maxCount >= 8 && lastTen.length === 10) return true;
+
+  return false;
 }
 
 function redactApiKey(key?: string): string {
@@ -165,7 +189,8 @@ function buildStats({
 export class Agent {
   private _defaultLlmClient: LLMClient;
   private _providerConfigs?: ProviderConfigs;
-  private _providerCache: Map<string, LLMClient> = new Map();
+  private _providerCache: Map<string, { client: LLMClient; timestamp: number }> = new Map();
+  private static readonly PROVIDER_CACHE_MAX_SIZE = 10;
   private _toolRegistry: ToolRegistry;
   private _maxIterations: number;
   private _systemPrompt: string;
@@ -201,9 +226,6 @@ export class Agent {
       const agentsMdContent = loadAgentsMd(options.agentsMdPath);
       if (agentsMdContent) {
         effectiveSystemPrompt = `${agentsMdContent}\n\n---\n\n${effectiveSystemPrompt}`;
-        if (this._verbose) {
-          console.log(`[Loaded AGENTS.md from ${options.agentsMdPath}]`);
-        }
       }
     }
 
@@ -213,7 +235,6 @@ export class Agent {
       options.skillDirectories ?? [],
       getBuiltinSkillsDir(),
       effectiveSystemPrompt,
-      this._verbose,
     );
 
     if (options.memoryFile) {
@@ -225,7 +246,6 @@ export class Agent {
     skillDirectories: string[],
     builtinDir: string,
     systemPrompt: string,
-    verbose?: boolean,
   ): Promise<void> {
     if (this._skillsInitialized) return;
 
@@ -236,11 +256,6 @@ export class Agent {
     const skillsPrompt = generateSkillsPrompt(discoveredSkills);
     if (skillsPrompt) {
       this._systemPrompt = `${systemPrompt}\n\n${skillsPrompt}`;
-      if (verbose) {
-        console.log(
-          `[Loaded ${discoveredSkills.length} skills from ${skillDirectories.length} directories]`,
-        );
-      }
     }
     this._skillsInitialized = true;
   }
@@ -250,7 +265,10 @@ export class Agent {
 
     const providerType = detectProvider(model);
     const cached = this._providerCache.get(providerType);
-    if (cached) return cached;
+    if (cached) {
+      cached.timestamp = Date.now();
+      return cached.client;
+    }
 
     try {
       const client = createProvider({
@@ -258,7 +276,22 @@ export class Agent {
         provider: providerType,
         providers: this._providerConfigs,
       });
-      this._providerCache.set(providerType, client);
+
+      if (this._providerCache.size >= Agent.PROVIDER_CACHE_MAX_SIZE) {
+        let oldestKey: string | null = null;
+        let oldestTimestamp = Infinity;
+        for (const [key, entry] of this._providerCache.entries()) {
+          if (entry.timestamp < oldestTimestamp) {
+            oldestTimestamp = entry.timestamp;
+            oldestKey = key;
+          }
+        }
+        if (oldestKey) {
+          this._providerCache.delete(oldestKey);
+        }
+      }
+
+      this._providerCache.set(providerType, { client, timestamp: Date.now() });
       return client;
     } catch (err) {
       if (this._verbose) console.error(`[Failed to create provider for ${providerType}: ${err}]`);

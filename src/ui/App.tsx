@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Box, render, useInput } from "ink";
+import { Box, render, useInput, Text } from "ink";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
+import { ToastProvider, useToastContext } from "./contexts/ToastContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { EnabledProviders } from "./components/ModelPicker.js";
 import type { SkillMetadata } from "../skills/types.js";
@@ -11,16 +12,28 @@ import { useCommandHandler } from "./hooks/useCommandHandler.js";
 import { MessageRole } from "./types/enums.js";
 import { formatTimestamp } from "./utils.js";
 
+function LoadingScreen(): React.ReactElement {
+  return (
+    <Box flexDirection="column" justifyContent="center" alignItems="center" flexGrow={1}>
+      <Box marginBottom={1}>
+        <Text color="cyan">◌ ◉ ◎ ◉ ◌</Text>
+      </Box>
+      <Text>Loading tiny-agent...</Text>
+      <Text dimColor>Initializing...</Text>
+    </Box>
+  );
+}
+
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [cancelCount, setCancelCount] = useState(0);
+  const [isInitialized, setIsInitialized] = useState(false);
   const cancelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const {
     messages,
     addMessage,
     isThinking,
-    setThinking,
     currentModel,
     setCurrentModel,
     streamingText,
@@ -30,6 +43,23 @@ export function ChatApp(): React.ReactElement {
     enabledProviders,
     agent,
   } = useChatContext();
+  const { addToast } = useToastContext();
+
+  useEffect(() => {
+    if (!agent || isInitialized) return;
+    const initAgent = async () => {
+      try {
+        addToast("Connecting to MCP servers...", "info");
+        await agent.waitForSkills();
+        const skillCount = agent.getSkillRegistry().size;
+        addToast(`Loaded ${skillCount} skills`, "success");
+        setIsInitialized(true);
+      } catch {
+        addToast("Failed to initialize agent", "error");
+      }
+    };
+    initAgent();
+  }, [agent, isInitialized, addToast]);
 
   const { handleCommandSelect, handleSlashCommand } = useCommandHandler({
     onAddMessage: addMessage,
@@ -63,7 +93,7 @@ export function ChatApp(): React.ReactElement {
         clearTimeout(cancelTimeoutRef.current);
       }
     };
-  }, [cancelCount, isThinking, setThinking, addMessage, cancelActiveRequest]);
+  }, [cancelCount, isThinking, addMessage, cancelActiveRequest]);
 
   useInput(
     (_input, key) => {
@@ -173,6 +203,10 @@ export function ChatApp(): React.ReactElement {
       ]
     : messages;
 
+  if (!isInitialized && messages.length === 0) {
+    return <LoadingScreen />;
+  }
+
   return (
     <Box flexDirection="column" height="100%">
       <ChatLayout
@@ -213,9 +247,11 @@ export function App({
 }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
-      <ChatProvider initialModel={initialModel} agent={agent} enabledProviders={enabledProviders}>
-        {children ?? <ChatApp />}
-      </ChatProvider>
+      <ToastProvider>
+        <ChatProvider initialModel={initialModel} agent={agent} enabledProviders={enabledProviders}>
+          {children ?? <ChatApp />}
+        </ChatProvider>
+      </ToastProvider>
     </StatusLineProvider>
   );
 }

@@ -72,11 +72,21 @@ function parseToolCalls(
       (tc): tc is OpenAI.Chat.ChatCompletionMessageToolCall & { type: "function" } =>
         tc.type === "function",
     )
-    .map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: JSON.parse(tc.function.arguments || "{}"),
-    }));
+    .map((tc) => {
+      try {
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          arguments: JSON.parse(tc.function.arguments || "{}"),
+        };
+      } catch {
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          arguments: {},
+        };
+      }
+    });
 }
 
 function mapFinishReason(reason: string | null): ChatResponse["finishReason"] {
@@ -168,11 +178,21 @@ export class OpenAIProvider implements LLMClient {
       if (finishReason) {
         const toolCalls: ToolCall[] | undefined =
           toolCallsBuffer.size > 0
-            ? Array.from(toolCallsBuffer.values()).map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                arguments: JSON.parse(tc.args || "{}"),
-              }))
+            ? Array.from(toolCallsBuffer.values()).map((tc) => {
+                try {
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: JSON.parse(tc.args || "{}"),
+                  };
+                } catch {
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: {},
+                  };
+                }
+              })
             : undefined;
 
         yield {

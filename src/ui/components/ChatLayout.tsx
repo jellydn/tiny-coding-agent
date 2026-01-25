@@ -5,6 +5,7 @@ import { MessageList, type ChatMessage } from "./MessageList.js";
 import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
 import { CommandMenu, type Command } from "./CommandMenu.js";
+import { ToastList } from "./ToastList.js";
 import type { SkillMetadata } from "../../skills/types.js";
 import {
   ModelPicker,
@@ -107,6 +108,8 @@ export function ChatLayout({
   return (
     <Box flexDirection="column" height="100%">
       <Header model={currentModel} skillCount={skillItems.length} />
+
+      <ToastList />
 
       <Box flexDirection="column" flexGrow={1}>
         {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}

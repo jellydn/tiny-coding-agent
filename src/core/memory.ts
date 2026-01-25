@@ -56,7 +56,7 @@ export class MemoryStore {
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
-    this._maxMemories = options.maxMemories ?? 100;
+    this._maxMemories = Math.max(1, options.maxMemories ?? 100);
     this._maxMemoryTokens = options.maxMemoryTokens;
 
     if (options.autoLoad !== false && this._filePath && existsSync(this._filePath)) {

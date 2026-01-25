@@ -32,6 +32,42 @@ export class McpClient {
     return this._tools;
   }
 
+  private _filterSafeEnvVars(env?: Record<string, string>): Record<string, string> {
+    const safeKeys = new Set([
+      "PATH",
+      "HOME",
+      "USER",
+      "LOGNAME",
+      "SHELL",
+      "LANG",
+      "LANGUAGE",
+      "LC_ALL",
+      "LC_CTYPE",
+      "TERM",
+      "NODE_ENV",
+      "TZ",
+      "PWD",
+      "EDITOR",
+      "VISUAL",
+      "PAGER",
+      "BROWSER",
+      "TMPDIR",
+      "TEMP",
+      "TMP",
+    ]);
+
+    const filtered: Record<string, string> = {};
+    if (!env) return filtered;
+
+    for (const [key, value] of Object.entries(env)) {
+      if (safeKeys.has(key) && value) {
+        filtered[key] = value;
+      }
+    }
+
+    return filtered;
+  }
+
   async connect(): Promise<void> {
     if (this._connected) return;
 
@@ -40,7 +76,7 @@ export class McpClient {
         command: this._config.command,
         args: this._config.args,
         env: {
-          ...this._config.env,
+          ...this._filterSafeEnvVars(this._config.env),
           DEBUG: "",
           RUST_LOG: "error",
           LOG_LEVEL: "error",

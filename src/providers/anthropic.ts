@@ -21,12 +21,12 @@ type ContentBlock = Anthropic.Messages.ContentBlock;
 type ContentBlockDelta = Anthropic.Messages.ContentBlockDeltaEvent;
 
 function convertMessages(messages: Message[]): { system?: string; messages: AnthropicMessage[] } {
-  let system: string | undefined;
+  const systemMessages: string[] = [];
   const converted: AnthropicMessage[] = [];
 
   for (const msg of messages) {
     if (msg.role === "system") {
-      system = msg.content;
+      systemMessages.push(msg.content);
       continue;
     }
 
@@ -79,7 +79,8 @@ function convertMessages(messages: Message[]): { system?: string; messages: Anth
     }
   }
 
-  return { system, messages: converted };
+  const combinedSystem = systemMessages.length > 0 ? systemMessages.join("\n\n---\n\n") : undefined;
+  return { system: combinedSystem, messages: converted };
 }
 
 function convertTools(tools: ToolDefinition[]): AnthropicTool[] {

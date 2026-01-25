@@ -460,7 +460,7 @@ async function handleRun(
   const jsonMode = isJsonMode();
   const useInk = shouldUseInk();
 
-  if (!jsonMode) {
+  if (!jsonMode && options.verbose) {
     const statusItems = [
       `${toolCount} tools`,
       skillCount > 0 && `${skillCount} skill${skillCount === 1 ? "" : "s"}`,
