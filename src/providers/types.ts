@@ -1,66 +1,66 @@
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
 export interface Message {
-  role: MessageRole;
-  content: string;
-  toolCallId?: string;
-  toolCalls?: ToolCall[];
+	role: MessageRole;
+	content: string;
+	toolCallId?: string;
+	toolCalls?: ToolCall[];
 }
 
 export interface ToolCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
 }
 
 export interface ToolResult {
-  toolCallId: string;
-  content: string;
-  isError?: boolean;
+	toolCallId: string;
+	content: string;
+	isError?: boolean;
 }
 
 export interface ToolDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
+	name: string;
+	description: string;
+	parameters: Record<string, unknown>;
 }
 
 export interface ChatOptions {
-  model: string;
-  messages: Message[];
-  tools?: ToolDefinition[];
-  temperature?: number;
-  maxTokens?: number;
-  thinking?: {
-    enabled?: boolean;
-    effort?: "none" | "low" | "medium" | "high";
-    budgetTokens?: number;
-  };
-  signal?: AbortSignal;
-  /**
-   * Maximum number of chunks to yield before pausing (backpressure safety)
-   * Prevents memory exhaustion on very large responses.
-   * Default: 10000 chunks (approximately 10MB of text)
-   */
-  maxChunks?: number;
+	model: string;
+	messages: Message[];
+	tools?: ToolDefinition[];
+	temperature?: number;
+	maxTokens?: number;
+	thinking?: {
+		enabled?: boolean;
+		effort?: "none" | "low" | "medium" | "high";
+		budgetTokens?: number;
+	};
+	signal?: AbortSignal;
+	/**
+	 * Maximum number of chunks to yield before pausing (backpressure safety)
+	 * Prevents memory exhaustion on very large responses.
+	 * Default: 10000 chunks (approximately 10MB of text)
+	 */
+	maxChunks?: number;
 }
 
 export interface ChatResponse {
-  content: string;
-  toolCalls?: ToolCall[];
-  finishReason: "stop" | "tool_calls" | "length" | "error";
+	content: string;
+	toolCalls?: ToolCall[];
+	finishReason: "stop" | "tool_calls" | "length" | "error";
 }
 
 export interface StreamChunk {
-  content?: string;
-  toolCalls?: ToolCall[];
-  done: boolean;
+	content?: string;
+	toolCalls?: ToolCall[];
+	done: boolean;
 }
 
 import type { ModelCapabilities } from "./capabilities.js";
 
 export interface LLMClient {
-  chat(options: ChatOptions): Promise<ChatResponse>;
-  stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>;
-  getCapabilities(model: string): Promise<ModelCapabilities>;
+	chat(options: ChatOptions): Promise<ChatResponse>;
+	stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>;
+	getCapabilities(model: string): Promise<ModelCapabilities>;
 }

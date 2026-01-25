@@ -4,22 +4,22 @@
  */
 
 export enum StatusType {
-  THINKING = "thinking",
-  READY = "ready",
-  ERROR = "error",
+	THINKING = "thinking",
+	READY = "ready",
+	ERROR = "error",
 }
 
 export enum MessageRole {
-  USER = "user",
-  ASSISTANT = "assistant",
-  TOOL = "tool",
-  SEPARATOR = "separator",
+	USER = "user",
+	ASSISTANT = "assistant",
+	TOOL = "tool",
+	SEPARATOR = "separator",
 }
 
 export enum ToolStatus {
-  RUNNING = "running",
-  COMPLETE = "complete",
-  ERROR = "error",
+	RUNNING = "running",
+	COMPLETE = "complete",
+	ERROR = "error",
 }
 
 // Re-export for compatibility with existing code

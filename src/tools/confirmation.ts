@@ -7,13 +7,13 @@
  */
 
 export type ConfirmationAction = {
-  tool: string;
-  description: string;
-  args: Record<string, unknown>;
+	tool: string;
+	description: string;
+	args: Record<string, unknown>;
 };
 
 export type ConfirmationRequest = {
-  actions: ConfirmationAction[];
+	actions: ConfirmationAction[];
 };
 
 export type ConfirmationResult = true | false | { type: "partial"; selectedIndex: number };
@@ -25,29 +25,29 @@ let _sessionApprovedAll: boolean = false;
 let _sessionDeniedAll: boolean = false;
 
 export function setConfirmationHandler(handler: ConfirmationHandler | undefined): void {
-  _confirmationHandler = handler;
-  _sessionApprovedAll = false;
-  _sessionDeniedAll = false;
+	_confirmationHandler = handler;
+	_sessionApprovedAll = false;
+	_sessionDeniedAll = false;
 }
 
 export function getConfirmationHandler(): ConfirmationHandler | undefined {
-  return _confirmationHandler;
+	return _confirmationHandler;
 }
 
 export function isSessionApprovedAll(): boolean {
-  return _sessionApprovedAll;
+	return _sessionApprovedAll;
 }
 
 export function isSessionDeniedAll(): boolean {
-  return _sessionDeniedAll;
+	return _sessionDeniedAll;
 }
 
 export function setSessionApproval(approved: boolean): void {
-  _sessionApprovedAll = approved;
-  _sessionDeniedAll = !approved;
+	_sessionApprovedAll = approved;
+	_sessionDeniedAll = !approved;
 }
 
 export function clearSessionApproval(): void {
-  _sessionApprovedAll = false;
-  _sessionDeniedAll = false;
+	_sessionApprovedAll = false;
+	_sessionDeniedAll = false;
 }

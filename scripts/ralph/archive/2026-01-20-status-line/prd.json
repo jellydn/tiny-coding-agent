@@ -1,230 +1,230 @@
 {
-  "project": "Tiny Coding Agent",
-  "branchName": "ralph/cli-chat-interface",
-  "description": "Redesign the CLI interface with structured layout: header at top, streaming messages in middle, context status, and enhanced input with command/model selection.",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Create Header component",
-      "description": "As a user, I want to see a header at the top of the CLI so I know which agent/session I'm in.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/Header.tsx component",
-        "Header displays agent name 'tiny-agent' with emoji",
-        "Shows current model name on the right side",
-        "Uses Ink Box with borderStyle for visual separation",
-        "Export from src/ui/components/index.ts",
-        "Typecheck passes"
-      ],
-      "priority": 1,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-002",
-      "title": "Create MessageList component",
-      "description": "As a user, I want to see messages in a scrollable area so I can follow the conversation.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/MessageList.tsx component",
-        "Accepts messages array prop with role and content",
-        "User messages show 'You:' prefix in green",
-        "Assistant messages show 'Assistant:' prefix in cyan",
-        "Uses flexGrow=1 to fill available space",
-        "Typecheck passes"
-      ],
-      "priority": 2,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-003",
-      "title": "Create StreamingText component",
-      "description": "As a user, I want to see AI responses stream in real-time so I can follow the agent's output.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/StreamingText.tsx component",
-        "Accepts text prop that updates incrementally",
-        "Shows blinking cursor at end while streaming",
-        "Cursor disappears when streaming completes",
-        "Typecheck passes"
-      ],
-      "priority": 3,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-004",
-      "title": "Create ThinkingIndicator component",
-      "description": "As a user, I want to see a thinking indicator before streaming starts.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/ThinkingIndicator.tsx component",
-        "Shows animated spinner with 'Thinking...' text",
-        "Uses existing Spinner component internally",
-        "Accepts visible prop to show/hide",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-005",
-      "title": "Create ContextStatus component",
-      "description": "As a user, I want to see current context/token usage so I know when approaching limits.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/ContextStatus.tsx component",
-        "Shows 'Ctx: used/max (percentage%)' format",
-        "Uses compact number formatting (k for thousands)",
-        "Shows warning color (yellow) when >80% used",
-        "Shows error color (red) when >95% used",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Create TextInput component",
-      "description": "As a user, I want a text input at the bottom to type my prompts.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/TextInput.tsx component",
-        "Uses Ink's useInput hook for keyboard handling",
-        "Shows '>' prompt prefix",
-        "Calls onSubmit prop when Enter pressed",
-        "Clears input after submit",
-        "Accepts disabled prop to prevent input during AI response",
-        "Typecheck passes"
-      ],
-      "priority": 6,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-007",
-      "title": "Create CommandMenu component",
-      "description": "As a user, I want to quickly access commands when typing '/'.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/CommandMenu.tsx component",
-        "Shows list of commands: /help, /clear, /model, /memory, /exit",
-        "Accepts filter prop to filter commands by prefix",
-        "Highlights selected command with arrow keys",
-        "Calls onSelect prop when Enter pressed",
-        "Calls onClose prop when Escape pressed",
-        "Typecheck passes"
-      ],
-      "priority": 7,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-008",
-      "title": "Create ModelPicker component",
-      "description": "As a user, I want to switch models during a session.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/ModelPicker.tsx component",
-        "Shows list of available models from config",
-        "Indicates current active model with checkmark",
-        "Arrow keys navigate, Enter selects",
-        "Calls onSelect prop with selected model",
-        "Typecheck passes"
-      ],
-      "priority": 8,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-009",
-      "title": "Create ChatLayout container component",
-      "description": "As a developer, I need a main layout component that orchestrates all sections.",
-      "acceptanceCriteria": [
-        "Create src/ui/components/ChatLayout.tsx component",
-        "Uses Box with flexDirection='column' and height='100%'",
-        "Header at top with fixed height",
-        "MessageList in middle with flexGrow=1",
-        "ContextStatus above input",
-        "TextInput at bottom with fixed height",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-010",
-      "title": "Create ChatContext for state management",
-      "description": "As a developer, I need a React context to manage chat state across components.",
-      "acceptanceCriteria": [
-        "Create src/ui/contexts/ChatContext.tsx",
-        "Provides: messages, addMessage, clearMessages",
-        "Provides: isThinking, setThinking",
-        "Provides: streamingText, setStreamingText",
-        "Provides: currentModel, setCurrentModel",
-        "useChatContext hook for consuming components",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-011",
-      "title": "Integrate ChatLayout into App",
-      "description": "As a user, I want the new chat layout to appear in interactive mode.",
-      "acceptanceCriteria": [
-        "Update src/ui/App.tsx to use ChatLayout",
-        "Wrap with ChatContext provider",
-        "Pass messages and callbacks to ChatLayout",
-        "Layout visible in interactive chat mode",
-        "Typecheck passes"
-      ],
-      "priority": 11,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-012",
-      "title": "Wire command menu to TextInput",
-      "description": "As a user, I want the command menu to appear when I type '/'.",
-      "acceptanceCriteria": [
-        "TextInput detects '/' prefix and shows CommandMenu",
-        "Typing filters command list",
-        "Selecting command executes it",
-        "Escape closes menu and clears '/'",
-        "Typecheck passes"
-      ],
-      "priority": 12,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Implement /model command with ModelPicker",
-      "description": "As a user, I want /model command to open model picker.",
-      "acceptanceCriteria": [
-        "/model command shows ModelPicker overlay",
-        "Selecting model updates session model immediately",
-        "Shows confirmation message in chat",
-        "Model change reflected in Header",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-014",
-      "title": "Display tool usage inline in messages",
-      "description": "As a user, I want to see tool usage in the message stream.",
-      "acceptanceCriteria": [
-        "Tool calls display inline with streaming content",
-        "Shows tool name with gear icon",
-        "Shows key parameters in dim text",
-        "Tool results appear when complete",
-        "Uses existing ToolOutput component styling",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": false,
-      "notes": ""
-    }
-  ]
+	"project": "Tiny Coding Agent",
+	"branchName": "ralph/cli-chat-interface",
+	"description": "Redesign the CLI interface with structured layout: header at top, streaming messages in middle, context status, and enhanced input with command/model selection.",
+	"userStories": [
+		{
+			"id": "US-001",
+			"title": "Create Header component",
+			"description": "As a user, I want to see a header at the top of the CLI so I know which agent/session I'm in.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/Header.tsx component",
+				"Header displays agent name 'tiny-agent' with emoji",
+				"Shows current model name on the right side",
+				"Uses Ink Box with borderStyle for visual separation",
+				"Export from src/ui/components/index.ts",
+				"Typecheck passes"
+			],
+			"priority": 1,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-002",
+			"title": "Create MessageList component",
+			"description": "As a user, I want to see messages in a scrollable area so I can follow the conversation.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/MessageList.tsx component",
+				"Accepts messages array prop with role and content",
+				"User messages show 'You:' prefix in green",
+				"Assistant messages show 'Assistant:' prefix in cyan",
+				"Uses flexGrow=1 to fill available space",
+				"Typecheck passes"
+			],
+			"priority": 2,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-003",
+			"title": "Create StreamingText component",
+			"description": "As a user, I want to see AI responses stream in real-time so I can follow the agent's output.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/StreamingText.tsx component",
+				"Accepts text prop that updates incrementally",
+				"Shows blinking cursor at end while streaming",
+				"Cursor disappears when streaming completes",
+				"Typecheck passes"
+			],
+			"priority": 3,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-004",
+			"title": "Create ThinkingIndicator component",
+			"description": "As a user, I want to see a thinking indicator before streaming starts.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/ThinkingIndicator.tsx component",
+				"Shows animated spinner with 'Thinking...' text",
+				"Uses existing Spinner component internally",
+				"Accepts visible prop to show/hide",
+				"Typecheck passes"
+			],
+			"priority": 4,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-005",
+			"title": "Create ContextStatus component",
+			"description": "As a user, I want to see current context/token usage so I know when approaching limits.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/ContextStatus.tsx component",
+				"Shows 'Ctx: used/max (percentage%)' format",
+				"Uses compact number formatting (k for thousands)",
+				"Shows warning color (yellow) when >80% used",
+				"Shows error color (red) when >95% used",
+				"Typecheck passes"
+			],
+			"priority": 5,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-006",
+			"title": "Create TextInput component",
+			"description": "As a user, I want a text input at the bottom to type my prompts.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/TextInput.tsx component",
+				"Uses Ink's useInput hook for keyboard handling",
+				"Shows '>' prompt prefix",
+				"Calls onSubmit prop when Enter pressed",
+				"Clears input after submit",
+				"Accepts disabled prop to prevent input during AI response",
+				"Typecheck passes"
+			],
+			"priority": 6,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-007",
+			"title": "Create CommandMenu component",
+			"description": "As a user, I want to quickly access commands when typing '/'.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/CommandMenu.tsx component",
+				"Shows list of commands: /help, /clear, /model, /memory, /exit",
+				"Accepts filter prop to filter commands by prefix",
+				"Highlights selected command with arrow keys",
+				"Calls onSelect prop when Enter pressed",
+				"Calls onClose prop when Escape pressed",
+				"Typecheck passes"
+			],
+			"priority": 7,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-008",
+			"title": "Create ModelPicker component",
+			"description": "As a user, I want to switch models during a session.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/ModelPicker.tsx component",
+				"Shows list of available models from config",
+				"Indicates current active model with checkmark",
+				"Arrow keys navigate, Enter selects",
+				"Calls onSelect prop with selected model",
+				"Typecheck passes"
+			],
+			"priority": 8,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-009",
+			"title": "Create ChatLayout container component",
+			"description": "As a developer, I need a main layout component that orchestrates all sections.",
+			"acceptanceCriteria": [
+				"Create src/ui/components/ChatLayout.tsx component",
+				"Uses Box with flexDirection='column' and height='100%'",
+				"Header at top with fixed height",
+				"MessageList in middle with flexGrow=1",
+				"ContextStatus above input",
+				"TextInput at bottom with fixed height",
+				"Typecheck passes"
+			],
+			"priority": 9,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-010",
+			"title": "Create ChatContext for state management",
+			"description": "As a developer, I need a React context to manage chat state across components.",
+			"acceptanceCriteria": [
+				"Create src/ui/contexts/ChatContext.tsx",
+				"Provides: messages, addMessage, clearMessages",
+				"Provides: isThinking, setThinking",
+				"Provides: streamingText, setStreamingText",
+				"Provides: currentModel, setCurrentModel",
+				"useChatContext hook for consuming components",
+				"Typecheck passes"
+			],
+			"priority": 10,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-011",
+			"title": "Integrate ChatLayout into App",
+			"description": "As a user, I want the new chat layout to appear in interactive mode.",
+			"acceptanceCriteria": [
+				"Update src/ui/App.tsx to use ChatLayout",
+				"Wrap with ChatContext provider",
+				"Pass messages and callbacks to ChatLayout",
+				"Layout visible in interactive chat mode",
+				"Typecheck passes"
+			],
+			"priority": 11,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-012",
+			"title": "Wire command menu to TextInput",
+			"description": "As a user, I want the command menu to appear when I type '/'.",
+			"acceptanceCriteria": [
+				"TextInput detects '/' prefix and shows CommandMenu",
+				"Typing filters command list",
+				"Selecting command executes it",
+				"Escape closes menu and clears '/'",
+				"Typecheck passes"
+			],
+			"priority": 12,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-013",
+			"title": "Implement /model command with ModelPicker",
+			"description": "As a user, I want /model command to open model picker.",
+			"acceptanceCriteria": [
+				"/model command shows ModelPicker overlay",
+				"Selecting model updates session model immediately",
+				"Shows confirmation message in chat",
+				"Model change reflected in Header",
+				"Typecheck passes"
+			],
+			"priority": 13,
+			"passes": false,
+			"notes": ""
+		},
+		{
+			"id": "US-014",
+			"title": "Display tool usage inline in messages",
+			"description": "As a user, I want to see tool usage in the message stream.",
+			"acceptanceCriteria": [
+				"Tool calls display inline with streaming content",
+				"Shows tool name with gear icon",
+				"Shows key parameters in dim text",
+				"Tool results appear when complete",
+				"Uses existing ToolOutput component styling",
+				"Typecheck passes"
+			],
+			"priority": 14,
+			"passes": false,
+			"notes": ""
+		}
+	]
 }

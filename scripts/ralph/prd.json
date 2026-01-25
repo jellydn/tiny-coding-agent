@@ -1,262 +1,262 @@
 {
-  "project": "tiny-coding-agent",
-  "branchName": "ralph/agentskills-support",
-  "description": "Agent Skills Support - Add agentskills.io specification for dynamic skill loading",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Create skills types and directory structure",
-      "description": "As a developer, I need TypeScript types and constants for the skills system.",
-      "acceptanceCriteria": [
-        "Create src/skills/types.ts with SkillMetadata, SkillFrontmatter, Skill interfaces",
-        "SkillMetadata: name (string), description (string), location (string)",
-        "SkillFrontmatter: name, description, optional license/compatibility/metadata/allowed-tools",
-        "Skill: extends SkillMetadata with body (string) and frontmatter fields",
-        "Create src/skills/index.ts exporting all types",
-        "Typecheck passes"
-      ],
-      "priority": 1,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-002",
-      "title": "Implement SKILL.md frontmatter parser",
-      "description": "As the system, I need to parse YAML frontmatter from SKILL.md files.",
-      "acceptanceCriteria": [
-        "Create src/skills/parser.ts with parseSkillFrontmatter(content: string) function",
-        "Extract YAML between opening --- and closing --- delimiters",
-        "Validate name: 1-64 chars, lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens",
-        "Validate description: 1-1024 chars, non-empty",
-        "Return { frontmatter: SkillFrontmatter, body: string }",
-        "Throw descriptive error for invalid frontmatter",
-        "Unit tests in src/skills/parser.test.ts",
-        "Typecheck passes"
-      ],
-      "priority": 2,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-003",
-      "title": "Implement skill discovery from directories",
-      "description": "As the system, I need to discover skills from configured directories at startup.",
-      "acceptanceCriteria": [
-        "Create src/skills/loader.ts with discoverSkills(directories: string[]) function",
-        "Scan each directory for subdirectories containing SKILL.md",
-        "Parse only frontmatter (not body) for each discovered skill",
-        "Return array of SkillMetadata with name, description, absolute path to SKILL.md",
-        "Skip missing directories gracefully (no error)",
-        "Skip invalid SKILL.md files with console warning",
-        "Unit tests in src/skills/loader.test.ts",
-        "Typecheck passes"
-      ],
-      "priority": 3,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-004",
-      "title": "Generate available_skills XML for system prompt",
-      "description": "As the system, I need to inject available skills metadata into agent's system prompt.",
-      "acceptanceCriteria": [
-        "Create src/skills/prompt.ts with generateSkillsPrompt(skills: SkillMetadata[]) function",
-        "Output XML: <available_skills><skill><name>X</name><description>Y</description><location>Z</location></skill>...</available_skills>",
-        "Return empty string if skills array is empty",
-        "Unit test in src/skills/prompt.test.ts",
-        "Typecheck passes"
-      ],
-      "priority": 4,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-005",
-      "title": "Implement skill activation tool",
-      "description": "As the agent, I need a skill tool to load full SKILL.md content on demand.",
-      "acceptanceCriteria": [
-        "Create src/tools/skill-tool.ts with tool named 'skill'",
-        "Parameters: name (required string)",
-        "Tool accepts skillRegistry: Map<string, SkillMetadata> via closure or factory",
-        "Read full SKILL.md from skill's location path",
-        "Return output wrapped in <loaded_skill name=\"...\">content</loaded_skill>",
-        "Include base directory path for relative file references",
-        "Return error if skill name not found in registry",
-        "Unit test in src/tools/skill-tool.test.ts",
-        "Typecheck passes"
-      ],
-      "priority": 5,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-006",
-      "title": "Add skills configuration to config schema",
-      "description": "As a user, I want to configure skill directories in my config file.",
-      "acceptanceCriteria": [
-        "Add skillDirectories: string[] to Config type in src/config/schema.ts",
-        "Add to validateConfig for optional array of strings",
-        "Default directories in getDefaultConfig: ['~/.tiny-agent/skills/', './.skills/']",
-        "Expand ~ to homedir() in loadConfig",
-        "Typecheck passes"
-      ],
-      "priority": 6,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-007",
-      "title": "Integrate skills into Agent class",
-      "description": "As a user, I want skills discovered and available when the agent starts.",
-      "acceptanceCriteria": [
-        "Add skillDirectories option to AgentOptions in src/core/agent.ts",
-        "Call discoverSkills() in Agent constructor",
-        "Store skills in private _skills: Map<string, SkillMetadata>",
-        "Append generateSkillsPrompt() output to system prompt",
-        "Export getSkillRegistry() method for skill tool access",
-        "Typecheck passes"
-      ],
-      "priority": 7,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-008",
-      "title": "Register skill tool and wire CLI",
-      "description": "As a user, I want the skill tool available and skill directories passed from config.",
-      "acceptanceCriteria": [
-        "Create createSkillTool(registry) factory in src/tools/skill-tool.ts",
-        "Register skill tool in src/tools/index.ts exports",
-        "Update main.tsx to pass config.skillDirectories to Agent",
-        "Update main.tsx to register skill tool with agent's skill registry",
-        "Add --skills-dir <path> CLI option to add custom directories",
-        "Typecheck passes"
-      ],
-      "priority": 8,
-      "passes": true,
-      "notes": "CLI option added in this iteration"
-    },
-    {
-      "id": "US-009",
-      "title": "Add skill list CLI command",
-      "description": "As a user, I want tiny-agent skill list to show discovered skills.",
-      "acceptanceCriteria": [
-        "Add 'skill' command handling in main.tsx parseArgs and main()",
-        "tiny-agent skill list: shows table of name, description (truncated to 60 chars)",
-        "Support --json flag for JSON array output",
-        "Show 'No skills found' if none discovered",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-010",
-      "title": "Add skill show CLI command",
-      "description": "As a user, I want tiny-agent skill show <name> to display full skill content.",
-      "acceptanceCriteria": [
-        "tiny-agent skill show <name>: prints full SKILL.md content",
-        "Show error if skill not found",
-        "Support --json flag for JSON output with name, description, body fields",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-011",
-      "title": "Add skill init CLI command",
-      "description": "As a user, I want tiny-agent skill init <name> to create a skill template.",
-      "acceptanceCriteria": [
-        "tiny-agent skill init <name>: creates ~/.tiny-agent/skills/<name>/SKILL.md",
-        "Template includes frontmatter with name and placeholder description",
-        "Template body has example instructions structure",
-        "Error if skill directory already exists",
-        "Show success message with path to created file",
-        "Typecheck passes"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-012",
-      "title": "Enforce allowed-tools restriction",
-      "description": "As a skill author, I want to restrict which tools a skill can use via allowed-tools frontmatter.",
-      "acceptanceCriteria": [
-        "Parse allowed-tools from skill frontmatter (space-delimited string)",
-        "Store activeSkillAllowedTools in Agent when skill is loaded",
-        "Filter tool definitions to only allowed tools when skill is active",
-        "Clear restriction when skill execution completes or new message starts",
-        "Unit test for tool filtering with allowed-tools",
-        "Typecheck passes"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Add built-in code-simplifier skill",
-      "description": "As a user, I want a built-in code-simplifier skill for refining code clarity and maintainability.",
-      "acceptanceCriteria": [
-        "Create src/skills/builtin/code-simplifier/SKILL.md",
-        "Frontmatter: name=code-simplifier, description for code simplification",
-        "Body includes instructions for preserving functionality, applying project standards, enhancing clarity",
-        "Skill focuses on recently modified code unless instructed otherwise",
-        "Include guidance on avoiding over-simplification and nested ternaries",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-014",
-      "title": "Load built-in skills from package",
-      "description": "As the system, I need to discover built-in skills bundled with the package.",
-      "acceptanceCriteria": [
-        "Add src/skills/builtin/ directory to skill discovery",
-        "Use __dirname or import.meta.url to resolve built-in skill path",
-        "Built-in skills appear in skill list alongside user skills",
-        "Mark built-in skills with [builtin] indicator in skill list output",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "Fixed: Always initialize skills (including built-ins) regardless of user skillDirectories config"
-    },
-    {
-      "id": "US-015",
-      "title": "Add /skill chat command for skill invocation",
-      "description": "As a user, I want to invoke skills via /skill <name> in chat.",
-      "acceptanceCriteria": [
-        "Add /skill command to CommandMenu in chat-commands.ts",
-        "/skill <name> loads the skill and shows confirmation message",
-        "/skill without name shows available skills list",
-        "Tab completion for skill names after /skill prefix",
-        "Typecheck passes"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-016",
-      "title": "Add skill install CLI command",
-      "description": "As a user, I want tiny-agent skill install <path> to install a skill from a directory.",
-      "acceptanceCriteria": [
-        "tiny-agent skill install <path>: copies skill directory to ~/.tiny-agent/skills/",
-        "Validate SKILL.md exists and has valid frontmatter before copying",
-        "Error if skill with same name already exists (use --force to overwrite)",
-        "Show success message with installed skill name",
-        "Typecheck passes"
-      ],
-      "priority": 16,
-      "passes": false,
-      "notes": ""
-    }
-  ]
+	"project": "tiny-coding-agent",
+	"branchName": "ralph/agentskills-support",
+	"description": "Agent Skills Support - Add agentskills.io specification for dynamic skill loading",
+	"userStories": [
+		{
+			"id": "US-001",
+			"title": "Create skills types and directory structure",
+			"description": "As a developer, I need TypeScript types and constants for the skills system.",
+			"acceptanceCriteria": [
+				"Create src/skills/types.ts with SkillMetadata, SkillFrontmatter, Skill interfaces",
+				"SkillMetadata: name (string), description (string), location (string)",
+				"SkillFrontmatter: name, description, optional license/compatibility/metadata/allowed-tools",
+				"Skill: extends SkillMetadata with body (string) and frontmatter fields",
+				"Create src/skills/index.ts exporting all types",
+				"Typecheck passes"
+			],
+			"priority": 1,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-002",
+			"title": "Implement SKILL.md frontmatter parser",
+			"description": "As the system, I need to parse YAML frontmatter from SKILL.md files.",
+			"acceptanceCriteria": [
+				"Create src/skills/parser.ts with parseSkillFrontmatter(content: string) function",
+				"Extract YAML between opening --- and closing --- delimiters",
+				"Validate name: 1-64 chars, lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens",
+				"Validate description: 1-1024 chars, non-empty",
+				"Return { frontmatter: SkillFrontmatter, body: string }",
+				"Throw descriptive error for invalid frontmatter",
+				"Unit tests in src/skills/parser.test.ts",
+				"Typecheck passes"
+			],
+			"priority": 2,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-003",
+			"title": "Implement skill discovery from directories",
+			"description": "As the system, I need to discover skills from configured directories at startup.",
+			"acceptanceCriteria": [
+				"Create src/skills/loader.ts with discoverSkills(directories: string[]) function",
+				"Scan each directory for subdirectories containing SKILL.md",
+				"Parse only frontmatter (not body) for each discovered skill",
+				"Return array of SkillMetadata with name, description, absolute path to SKILL.md",
+				"Skip missing directories gracefully (no error)",
+				"Skip invalid SKILL.md files with console warning",
+				"Unit tests in src/skills/loader.test.ts",
+				"Typecheck passes"
+			],
+			"priority": 3,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-004",
+			"title": "Generate available_skills XML for system prompt",
+			"description": "As the system, I need to inject available skills metadata into agent's system prompt.",
+			"acceptanceCriteria": [
+				"Create src/skills/prompt.ts with generateSkillsPrompt(skills: SkillMetadata[]) function",
+				"Output XML: <available_skills><skill><name>X</name><description>Y</description><location>Z</location></skill>...</available_skills>",
+				"Return empty string if skills array is empty",
+				"Unit test in src/skills/prompt.test.ts",
+				"Typecheck passes"
+			],
+			"priority": 4,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-005",
+			"title": "Implement skill activation tool",
+			"description": "As the agent, I need a skill tool to load full SKILL.md content on demand.",
+			"acceptanceCriteria": [
+				"Create src/tools/skill-tool.ts with tool named 'skill'",
+				"Parameters: name (required string)",
+				"Tool accepts skillRegistry: Map<string, SkillMetadata> via closure or factory",
+				"Read full SKILL.md from skill's location path",
+				"Return output wrapped in <loaded_skill name=\"...\">content</loaded_skill>",
+				"Include base directory path for relative file references",
+				"Return error if skill name not found in registry",
+				"Unit test in src/tools/skill-tool.test.ts",
+				"Typecheck passes"
+			],
+			"priority": 5,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-006",
+			"title": "Add skills configuration to config schema",
+			"description": "As a user, I want to configure skill directories in my config file.",
+			"acceptanceCriteria": [
+				"Add skillDirectories: string[] to Config type in src/config/schema.ts",
+				"Add to validateConfig for optional array of strings",
+				"Default directories in getDefaultConfig: ['~/.tiny-agent/skills/', './.skills/']",
+				"Expand ~ to homedir() in loadConfig",
+				"Typecheck passes"
+			],
+			"priority": 6,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-007",
+			"title": "Integrate skills into Agent class",
+			"description": "As a user, I want skills discovered and available when the agent starts.",
+			"acceptanceCriteria": [
+				"Add skillDirectories option to AgentOptions in src/core/agent.ts",
+				"Call discoverSkills() in Agent constructor",
+				"Store skills in private _skills: Map<string, SkillMetadata>",
+				"Append generateSkillsPrompt() output to system prompt",
+				"Export getSkillRegistry() method for skill tool access",
+				"Typecheck passes"
+			],
+			"priority": 7,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-008",
+			"title": "Register skill tool and wire CLI",
+			"description": "As a user, I want the skill tool available and skill directories passed from config.",
+			"acceptanceCriteria": [
+				"Create createSkillTool(registry) factory in src/tools/skill-tool.ts",
+				"Register skill tool in src/tools/index.ts exports",
+				"Update main.tsx to pass config.skillDirectories to Agent",
+				"Update main.tsx to register skill tool with agent's skill registry",
+				"Add --skills-dir <path> CLI option to add custom directories",
+				"Typecheck passes"
+			],
+			"priority": 8,
+			"passes": true,
+			"notes": "CLI option added in this iteration"
+		},
+		{
+			"id": "US-009",
+			"title": "Add skill list CLI command",
+			"description": "As a user, I want tiny-agent skill list to show discovered skills.",
+			"acceptanceCriteria": [
+				"Add 'skill' command handling in main.tsx parseArgs and main()",
+				"tiny-agent skill list: shows table of name, description (truncated to 60 chars)",
+				"Support --json flag for JSON array output",
+				"Show 'No skills found' if none discovered",
+				"Typecheck passes"
+			],
+			"priority": 9,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-010",
+			"title": "Add skill show CLI command",
+			"description": "As a user, I want tiny-agent skill show <name> to display full skill content.",
+			"acceptanceCriteria": [
+				"tiny-agent skill show <name>: prints full SKILL.md content",
+				"Show error if skill not found",
+				"Support --json flag for JSON output with name, description, body fields",
+				"Typecheck passes"
+			],
+			"priority": 10,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-011",
+			"title": "Add skill init CLI command",
+			"description": "As a user, I want tiny-agent skill init <name> to create a skill template.",
+			"acceptanceCriteria": [
+				"tiny-agent skill init <name>: creates ~/.tiny-agent/skills/<name>/SKILL.md",
+				"Template includes frontmatter with name and placeholder description",
+				"Template body has example instructions structure",
+				"Error if skill directory already exists",
+				"Show success message with path to created file",
+				"Typecheck passes"
+			],
+			"priority": 11,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-012",
+			"title": "Enforce allowed-tools restriction",
+			"description": "As a skill author, I want to restrict which tools a skill can use via allowed-tools frontmatter.",
+			"acceptanceCriteria": [
+				"Parse allowed-tools from skill frontmatter (space-delimited string)",
+				"Store activeSkillAllowedTools in Agent when skill is loaded",
+				"Filter tool definitions to only allowed tools when skill is active",
+				"Clear restriction when skill execution completes or new message starts",
+				"Unit test for tool filtering with allowed-tools",
+				"Typecheck passes"
+			],
+			"priority": 12,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-013",
+			"title": "Add built-in code-simplifier skill",
+			"description": "As a user, I want a built-in code-simplifier skill for refining code clarity and maintainability.",
+			"acceptanceCriteria": [
+				"Create src/skills/builtin/code-simplifier/SKILL.md",
+				"Frontmatter: name=code-simplifier, description for code simplification",
+				"Body includes instructions for preserving functionality, applying project standards, enhancing clarity",
+				"Skill focuses on recently modified code unless instructed otherwise",
+				"Include guidance on avoiding over-simplification and nested ternaries",
+				"Typecheck passes"
+			],
+			"priority": 13,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-014",
+			"title": "Load built-in skills from package",
+			"description": "As the system, I need to discover built-in skills bundled with the package.",
+			"acceptanceCriteria": [
+				"Add src/skills/builtin/ directory to skill discovery",
+				"Use __dirname or import.meta.url to resolve built-in skill path",
+				"Built-in skills appear in skill list alongside user skills",
+				"Mark built-in skills with [builtin] indicator in skill list output",
+				"Typecheck passes"
+			],
+			"priority": 14,
+			"passes": true,
+			"notes": "Fixed: Always initialize skills (including built-ins) regardless of user skillDirectories config"
+		},
+		{
+			"id": "US-015",
+			"title": "Add /skill chat command for skill invocation",
+			"description": "As a user, I want to invoke skills via /skill <name> in chat.",
+			"acceptanceCriteria": [
+				"Add /skill command to CommandMenu in chat-commands.ts",
+				"/skill <name> loads the skill and shows confirmation message",
+				"/skill without name shows available skills list",
+				"Tab completion for skill names after /skill prefix",
+				"Typecheck passes"
+			],
+			"priority": 15,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-016",
+			"title": "Add skill install CLI command",
+			"description": "As a user, I want tiny-agent skill install <path> to install a skill from a directory.",
+			"acceptanceCriteria": [
+				"tiny-agent skill install <path>: copies skill directory to ~/.tiny-agent/skills/",
+				"Validate SKILL.md exists and has valid frontmatter before copying",
+				"Error if skill with same name already exists (use --force to overwrite)",
+				"Show success message with installed skill name",
+				"Typecheck passes"
+			],
+			"priority": 16,
+			"passes": false,
+			"notes": ""
+		}
+	]
 }
