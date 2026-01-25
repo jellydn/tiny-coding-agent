@@ -20,8 +20,6 @@ export interface MemoryStoreOptions {
   maxMemories?: number;
   maxMemoryTokens?: number;
   autoLoad?: boolean;
-  encryptionKey?: string;
-  syncWrite?: boolean;
 }
 
 export interface ContextBudgetOptions {
@@ -59,24 +57,12 @@ export class MemoryStore {
   private _maxMemoryTokens?: number;
   private _saveTimeout?: NodeJS.Timeout;
   private _initPromise?: Promise<void>;
-  private _encryptionKey?: string;
-  private _syncWrite: boolean;
   private _signalHandlersRegistered: boolean = false;
-  private _boundFlush?: () => Promise<void>;
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
     this._maxMemories = Math.max(1, options.maxMemories ?? 100);
     this._maxMemoryTokens = options.maxMemoryTokens;
-    this._encryptionKey = options.encryptionKey;
-    this._syncWrite = options.syncWrite ?? false;
-
-    if (this._encryptionKey && this._filePath) {
-      console.warn(
-        `[Security] Memory encryption is enabled. The encryption key is provided in memory. ` +
-          `Ensure the process memory is protected and consider rotating keys periodically.`,
-      );
-    }
 
     if (options.autoLoad !== false && this._filePath && existsSync(this._filePath)) {
       this._initPromise = this._load().catch((err) => {
@@ -235,7 +221,6 @@ export class MemoryStore {
     if (this._signalHandlersRegistered || typeof process === "undefined") return;
 
     this._signalHandlersRegistered = true;
-    this._boundFlush = this.flush.bind(this);
 
     process.on("SIGTERM", async () => {
       await this.flush();
@@ -249,10 +234,6 @@ export class MemoryStore {
   }
 
   private _scheduleSave(): void {
-    if (this._syncWrite) {
-      void this._save();
-      return;
-    }
     if (this._saveTimeout) return;
     this._saveTimeout = setTimeout(() => {
       this._saveTimeout = undefined;
@@ -270,21 +251,7 @@ export class MemoryStore {
     }
 
     try {
-      let content = await fs.readFile(this._filePath, "utf-8");
-
-      if (this._encryptionKey) {
-        try {
-          const encryptedData = JSON.parse(content);
-          if (encryptedData.encrypted && encryptedData.iv && encryptedData.tag) {
-            content = this._decrypt(encryptedData);
-          }
-        } catch {
-          console.error(
-            `[MemoryStore] Warning: Failed to decrypt memories. File may be unencrypted.`,
-          );
-        }
-      }
-
+      const content = await fs.readFile(this._filePath, "utf-8");
       const data = JSON.parse(content);
       const memories:
         | Array<{
@@ -330,86 +297,15 @@ export class MemoryStore {
         accessCount: m.accessCount,
       }));
 
-      let dataToWrite: string;
-      if (this._encryptionKey) {
-        const encrypted = this._encrypt(
-          JSON.stringify({
-            version: 1,
-            updatedAt: new Date().toISOString(),
-            memories: memoriesData,
-          }),
-        );
-        dataToWrite = JSON.stringify(encrypted, null, 2);
-      } else {
-        const data = {
-          version: 1,
-          updatedAt: new Date().toISOString(),
-          memories: memoriesData,
-        };
-        dataToWrite = JSON.stringify(data, null, 2);
-      }
-      await fs.writeFile(this._filePath, dataToWrite, "utf-8");
+      const data = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        memories: memoriesData,
+      };
+      await fs.writeFile(this._filePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (err) {
       console.error(`[MemoryStore] Failed to save memories to ${this._filePath}: ${err}`);
     }
-  }
-
-  private _encrypt(data: string): { encrypted: string; iv: string; tag: string } {
-    const key = this._encryptionKey!;
-    if (key.length < 32) {
-      throw new Error("Encryption key must be at least 32 characters");
-    }
-    const keyBytes = key
-      .slice(0, 32)
-      .split("")
-      .map((c) => c.charCodeAt(0));
-    const iv = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) {
-      iv[i] = Math.floor(Math.random() * 256);
-    }
-    const dataBytes = new TextEncoder().encode(data);
-    const encrypted = new Uint8Array(dataBytes.length);
-    for (let i = 0; i < dataBytes.length; i++) {
-      const keyIndex = i % keyBytes.length;
-      const keyByte = keyBytes[keyIndex] ?? 0;
-      const dataByte = dataBytes[i] ?? 0;
-      encrypted[i] = dataByte ^ keyByte;
-    }
-    const ivHex = Array.from(iv)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    const tagHex = Array.from(encrypted.slice(-16))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    return {
-      encrypted: Buffer.from(encrypted.slice(0, -16)).toString("base64"),
-      iv: ivHex,
-      tag: tagHex,
-    };
-  }
-
-  private _decrypt(encryptedData: { encrypted: string; iv: string; tag: string }): string {
-    const key = this._encryptionKey!;
-    if (key.length < 32) {
-      throw new Error("Encryption key must be at least 32 characters");
-    }
-    const keyBytes = key
-      .slice(0, 32)
-      .split("")
-      .map((c) => c.charCodeAt(0));
-    const ivParts = encryptedData.iv.match(/.{1,2}/g);
-    if (!ivParts) {
-      throw new Error("Invalid IV in encrypted data");
-    }
-    const encryptedBytes = Buffer.from(encryptedData.encrypted, "base64");
-    const decrypted = new Uint8Array(encryptedBytes.length);
-    for (let i = 0; i < encryptedBytes.length; i++) {
-      const keyIndex = i % keyBytes.length;
-      const keyByte = keyBytes[keyIndex] ?? 0;
-      const encryptedByte = encryptedBytes[i] ?? 0;
-      decrypted[i] = encryptedByte ^ keyByte;
-    }
-    return new TextDecoder().decode(decrypted);
   }
 
   private _evictIfNeeded(): void {

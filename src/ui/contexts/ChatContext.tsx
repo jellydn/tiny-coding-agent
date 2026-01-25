@@ -143,17 +143,11 @@ export function ChatProvider({
     }
   }, [agent]);
 
-  const setThinking = useCallback((thinking: boolean) => {
-    setThinkingState(thinking);
-  }, []);
+  const setThinking = setThinkingState;
 
-  const setStreamingText = useCallback((text: string | ((prev: string) => string)) => {
-    setStreamingTextState(text);
-  }, []);
+  const setStreamingText = setStreamingTextState;
 
-  const setCurrentModel = useCallback((model: string) => {
-    setCurrentModelState(model);
-  }, []);
+  const setCurrentModel = setCurrentModelState;
 
   const handleChatError = useCallback(
     (err: unknown): void => {
@@ -282,15 +276,7 @@ export function ChatProvider({
         setCurrentToolExecutions([]);
       }
     },
-    [
-      agent,
-      currentModel,
-      addMessage,
-      setThinking,
-      setStreamingText,
-      handleChatError,
-      cancelActiveRequest,
-    ],
+    [agent, currentModel, addMessage, setThinking, setStreamingText, handleChatError],
   );
 
   return (

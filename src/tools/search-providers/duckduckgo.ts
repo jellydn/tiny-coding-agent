@@ -31,90 +31,48 @@ export class DuckDuckGoProvider extends BaseSearchProvider {
   }
 
   /**
+   * Check if a result is valid (has required fields and is not a DuckDuckGo URL)
+   */
+  private isValidResult(url: string, title: string): boolean {
+    return !!url && !!title && this.isValidUrl(url) && !url.includes("duckduckgo.com");
+  }
+
+  /**
    * Parse HTML and extract search results
    * Uses multiple fallback patterns for robustness
    */
   private parseSearchResults(html: string, maxResults: number): SearchResult[] {
     const results: SearchResult[] = [];
+    const seenUrls = new Set<string>();
 
-    // Primary pattern: DuckDuckGo's standard result format
-    const resultPattern =
-      /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>/gi;
+    // Match DuckDuckGo result links with optional snippets
+    const linkPattern = /<a[^>]+href="([^"]*)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>/gi;
 
-    let match: RegExpExecArray | null = resultPattern.exec(html);
+    let match: RegExpExecArray | null = linkPattern.exec(html);
     while (match !== null && results.length < maxResults) {
       try {
         const rawUrl = match[1] ?? "";
         const title = this.stripHtmlTags(match[2] ?? "").trim();
-        const snippet = this.stripHtmlTags(match[3] ?? "").trim();
 
+        // Extract actual URL from DuckDuckGo redirect
         const urlMatch = rawUrl.match(/uddg=([^&]+)/);
         const url = urlMatch?.[1] ? decodeURIComponent(urlMatch[1]) : rawUrl;
 
-        if (url && title && this.isValidUrl(url) && !url.includes("duckduckgo.com")) {
-          results.push({ title, url, snippet: snippet || "No description available." });
+        // Skip DuckDuckGo internal URLs and duplicates
+        if (url.includes("duckduckgo.com") || seenUrls.has(url)) {
+          match = linkPattern.exec(html);
+          continue;
+        }
+
+        if (this.isValidResult(url, title)) {
+          seenUrls.add(url);
+          results.push({ title, url, snippet: "No description available." });
         }
       } catch {
         // Skip malformed results
       }
 
-      match = resultPattern.exec(html);
-    }
-
-    // Fallback pattern: More generic result format
-    if (results.length === 0) {
-      const altPattern =
-        /<div[^>]+class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]*)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>[\s\S]*?(?:<div[^>]+class="[^"]*snippet[^"]*"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/div>)?/gi;
-
-      match = altPattern.exec(html);
-      while (match !== null && results.length < maxResults) {
-        try {
-          const rawUrl = match[1] ?? "";
-          const title = this.stripHtmlTags(match[2] ?? "").trim();
-          const snippet = match[3]
-            ? this.stripHtmlTags(match[3]).trim()
-            : "No description available.";
-
-          const urlMatch = rawUrl.match(/uddg=([^&]+)/);
-          const url = urlMatch?.[1] ? decodeURIComponent(urlMatch[1]) : rawUrl;
-
-          if (url && title && this.isValidUrl(url) && !url.includes("duckduckgo.com")) {
-            results.push({ title, url, snippet });
-          }
-        } catch {
-          // Skip malformed results
-        }
-
-        match = altPattern.exec(html);
-      }
-    }
-
-    // Last resort: Extract all links with basic filtering
-    if (results.length === 0) {
-      const linkPattern = /<a[^>]+href="([^"]*)"[^>]*>([^<]+)<\/a>/gi;
-      const seenUrls = new Set<string>();
-
       match = linkPattern.exec(html);
-      while (match !== null && results.length < maxResults) {
-        try {
-          const rawUrl = match[1] ?? "";
-          const title = this.stripHtmlTags(match[2] ?? "").trim();
-
-          if (!rawUrl.includes("duckduckgo.com") && !seenUrls.has(rawUrl)) {
-            const urlMatch = rawUrl.match(/uddg=([^&]+)/);
-            const url = urlMatch?.[1] ? decodeURIComponent(urlMatch[1]) : rawUrl;
-
-            if (url && title && this.isValidUrl(url)) {
-              seenUrls.add(rawUrl);
-              results.push({ title, url, snippet: "No description available." });
-            }
-          }
-        } catch {
-          // Skip malformed results
-        }
-
-        match = linkPattern.exec(html);
-      }
     }
 
     return results;
@@ -161,17 +119,22 @@ export class DuckDuckGoProvider extends BaseSearchProvider {
   }
 
   /**
-   * Strip HTML tags and decode entities
+   * Strip HTML tags and decode common entities
    */
   private stripHtmlTags(text: string): string {
     return text
-      .replace(/<[^>]+>/g, "")
-      .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#39;/g, "'")
+      .replace(/<[^>]*>/g, "")
+      .replace(/&[^;]+;/g, (m) => {
+        const entities: Record<string, string> = {
+          "&quot;": '"',
+          "&amp;": "&",
+          "&lt;": "<",
+          "&gt;": ">",
+          "&nbsp;": " ",
+          "&#39;": "'",
+        };
+        return entities[m] || m;
+      })
       .replace(/\s+/g, " ");
   }
 }

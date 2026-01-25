@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 
 interface TextInputProps {
@@ -17,18 +17,25 @@ export function TextInput({
   disabled = false,
 }: TextInputProps): React.ReactElement {
   const [cursorPosition, setCursorPosition] = useState(value.length);
+  const valueRef = useRef(value);
+  const cursorRef = useRef(cursorPosition);
 
+  // Keep refs synced with state
   useEffect(() => {
-    setCursorPosition(value.length);
-  }, [value.length]);
+    valueRef.current = value;
+    cursorRef.current = cursorPosition;
+  }, [value, cursorPosition]);
 
   useInput(
     (input, key) => {
       if (disabled) return;
 
+      const currentValue = valueRef.current;
+      const currentCursor = cursorRef.current;
+
       if (key.return) {
-        if (value.trim()) {
-          onSubmit(value);
+        if (currentValue.trim()) {
+          onSubmit(currentValue);
         }
         return;
       }
@@ -36,24 +43,31 @@ export function TextInput({
       if (key.escape) {
         onChange("");
         setCursorPosition(0);
+        cursorRef.current = 0;
         return;
       }
 
       if (key.leftArrow) {
-        setCursorPosition((prev) => Math.max(0, prev - 1));
+        const newPos = Math.max(0, currentCursor - 1);
+        setCursorPosition(newPos);
+        cursorRef.current = newPos;
         return;
       }
 
       if (key.rightArrow) {
-        setCursorPosition((prev) => Math.min(value.length, prev + 1));
+        const newPos = Math.min(currentValue.length, currentCursor + 1);
+        setCursorPosition(newPos);
+        cursorRef.current = newPos;
         return;
       }
 
       if (key.backspace || key.delete) {
-        if (cursorPosition > 0) {
-          const newValue = value.slice(0, cursorPosition - 1) + value.slice(cursorPosition);
+        if (currentCursor > 0) {
+          const newValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
           onChange(newValue);
-          setCursorPosition((prev) => Math.max(0, prev - 1));
+          const newPos = Math.max(0, currentCursor - 1);
+          setCursorPosition(newPos);
+          cursorRef.current = newPos;
         }
         return;
       }
@@ -63,9 +77,11 @@ export function TextInput({
       }
 
       if (input && !key.ctrl && !key.meta) {
-        const newValue = value.slice(0, cursorPosition) + input + value.slice(cursorPosition);
+        const newValue = currentValue.slice(0, currentCursor) + input + currentValue.slice(currentCursor);
         onChange(newValue);
-        setCursorPosition((prev) => prev + input.length);
+        const newPos = currentCursor + input.length;
+        setCursorPosition(newPos);
+        cursorRef.current = newPos;
       }
     },
     { isActive: !disabled },

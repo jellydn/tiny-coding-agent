@@ -728,6 +728,23 @@ export class Agent {
     return this._memoryStore;
   }
 
+  getToolCount(): number {
+    return this._toolRegistry.list().length;
+  }
+
+  async getMcpServerStatus(): Promise<Array<{ name: string; connected: boolean; toolCount: number }>> {
+    try {
+      const { getGlobalMcpManager } = await import("../mcp/manager.js");
+      const mcpManager = getGlobalMcpManager();
+      if (mcpManager) {
+        return mcpManager.getServerStatus();
+      }
+    } catch {
+      /* MCP not available */
+    }
+    return [];
+  }
+
   async waitForSkills(): Promise<void> {
     if (!this._skillsInitPromise) return;
     await this._skillsInitPromise;

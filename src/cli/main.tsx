@@ -350,11 +350,12 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
     const mcpManager = new McpManager({ disabledPatterns: config.disabledMcpPatterns ?? [] });
     setGlobalMcpManager(mcpManager);
 
-    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-      process.stdout.write(`  → Connecting to MCP: ${serverName}...\n`);
+    const serverEntries = Object.entries(config.mcpServers);
+    for (const [serverName, serverConfig] of serverEntries) {
       await mcpManager.addServer(serverName, serverConfig);
-      process.stdout.write(`  ✓ Connected to ${serverName}\n`);
     }
+    const connectedCount = serverEntries.length;
+    statusLineManager.setMcpServerCount(connectedCount);
     const allMcpTools = mcpManager.getAllTools();
     for (const [serverName, toolDefs] of allMcpTools) {
       for (const toolDef of toolDefs) {
@@ -693,14 +694,6 @@ async function handleInteractiveChat(
   config: ReturnType<typeof loadConfig>,
   options: CliOptions,
 ): Promise<void> {
-  process.stdout.write("Initializing tiny-agent...\n");
-
-  const llmClient = await createLLMClient(config, options);
-  process.stdout.write("  ✓ Connected to provider\n");
-
-  const toolRegistry = await setupTools(config);
-  process.stdout.write("  ✓ Tools loaded\n");
-
   const initialModel = options.model || config.defaultModel;
 
   const enableMemory = !options.noMemory || config.memoryFile !== undefined;
@@ -714,28 +707,7 @@ async function handleInteractiveChat(
     ? [...(config.skillDirectories || []), ...options.skillsDir]
     : config.skillDirectories;
 
-  const agent = new Agent(llmClient, toolRegistry, {
-    verbose: options.verbose,
-    systemPrompt: config.systemPrompt,
-    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-    maxContextTokens,
-    memoryFile: enableMemory
-      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
-      : undefined,
-    maxMemoryTokens: config.maxMemoryTokens,
-    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
-    agentsMdPath,
-    thinking: config.thinking,
-    providerConfigs: config.providers,
-    skillDirectories,
-  });
-
-  const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
-    agent._setSkillRestriction(allowedTools);
-  });
-  toolRegistry.register(skillTool);
-
-  // Initialize status line with model, context, and MCP info
+  // Initialize status line with model immediately
   statusLineManager.setModel(initialModel.replace(/^opencode\//, ""));
   const contextMax = maxContextTokens ?? 32000;
   statusLineManager.setContext(0, contextMax);
@@ -751,9 +723,52 @@ async function handleInteractiveChat(
     opencode: !!config.providers.opencode,
   };
 
-  const { waitUntilExit } = renderApp(
-    <InkApp initialModel={initialModel} agent={agent} enabledProviders={enabledProviders} />,
+  // Render UI immediately with agent=undefined (will show LoadingScreen)
+  const { rerender, waitUntilExit } = renderApp(
+    <InkApp initialModel={initialModel} agent={undefined} enabledProviders={enabledProviders} />,
   );
+
+  // Do full initialization in background
+  const initBackground = async () => {
+    try {
+      const llmClient = await createLLMClient(config, options);
+      const toolRegistry = await setupTools(config);
+
+      const agent = new Agent(llmClient, toolRegistry, {
+        verbose: options.verbose,
+        systemPrompt: config.systemPrompt,
+        conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+        maxContextTokens,
+        memoryFile: enableMemory
+          ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
+          : undefined,
+        maxMemoryTokens: config.maxMemoryTokens,
+        trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+        agentsMdPath,
+        thinking: config.thinking,
+        providerConfigs: config.providers,
+        skillDirectories,
+      });
+
+      const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+        agent._setSkillRestriction(allowedTools);
+      });
+      toolRegistry.register(skillTool);
+
+      // Wait for skills to be initialized
+      await agent.waitForSkills();
+
+      // Re-render with the fully initialized agent
+      rerender(
+        <InkApp initialModel={initialModel} agent={agent} enabledProviders={enabledProviders} />,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Background initialization error: ${message}`);
+    }
+  };
+
+  initBackground();
 
   await waitUntilExit();
 }

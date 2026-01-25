@@ -115,18 +115,7 @@ export function ChatLayout({
         {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}
       </Box>
 
-      <Box flexShrink={0} borderStyle="single" borderColor="gray" paddingX={1}>
-        <StatusLine
-          status={statusContext.status}
-          model={statusContext.model}
-          tokensUsed={statusContext.tokensUsed}
-          tokensMax={statusContext.tokensMax}
-          tool={statusContext.tool}
-          mcpServerCount={statusContext.mcpServerCount}
-        />
-      </Box>
-
-      <Box flexShrink={0}>
+      <Box flexShrink={0} marginY={1}>
         {showCommandMenu && (
           <CommandMenu
             filter={commandFilter}
@@ -160,6 +149,17 @@ export function ChatLayout({
             disabled={inputDisabled}
           />
         )}
+      </Box>
+
+      <Box flexShrink={0} borderStyle="single" borderColor="gray" paddingX={1}>
+        <StatusLine
+          status={statusContext.status}
+          model={statusContext.model}
+          tokensUsed={statusContext.tokensUsed}
+          tokensMax={statusContext.tokensMax}
+          tool={statusContext.tool}
+          mcpServerCount={statusContext.mcpServerCount}
+        />
       </Box>
     </Box>
   );

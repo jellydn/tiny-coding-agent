@@ -49,6 +49,7 @@ export function parseGitignore(content: string): GitignorePattern[] {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
 
+    // Guard clause: skip empty lines and comments
     if (!trimmed || trimmed.startsWith("#")) {
       continue;
     }
@@ -86,83 +87,27 @@ export function parseGitignore(content: string): GitignorePattern[] {
 
 /**
  * Convert a gitignore glob pattern to a RegExp string.
- * Handles character classes, wildcards, globstars, and special characters.
+ * Handles wildcards, globstars, and special characters.
  */
 function globToRegex(glob: string, hasLeadingSlash: boolean): string {
-  let result = "";
-  let i = 0;
-  let hasLeadingGlobstarSlash = glob.startsWith("**/");
+  const hasLeadingGlobstarSlash = glob.startsWith("**/");
 
-  while (i < glob.length) {
-    const c = glob[i];
+  // Escape regex special chars except *, ?, [, ]
+  const escaped = glob.replace(/[.+^${}()|\\]/g, "\\$&");
 
-    if (c === "[") {
-      // Character class - find the closing bracket
-      let j = i + 1;
-      while (j < glob.length && glob[j] !== "]") {
-        j++;
-      }
-      if (j < glob.length) {
-        // Include the closing bracket
-        result += glob.slice(i, j + 1);
-        i = j + 1;
-        continue;
-      }
-      // No closing bracket found, treat as literal
-    }
-
-    if (c === "*" && i + 1 < glob.length && glob[i + 1] === "*") {
-      // Globstar **
-      const nextChar = i + 2 < glob.length ? glob[i + 2] : "";
-      if (nextChar === "/") {
-        // **/ means "zero or more directories"
-        result += "(?:.*/)?";
-        i += 3;
-      } else if (i + 2 === glob.length) {
-        // ** at end means "anything including subdirectories"
-        result += ".*";
-        i += 2;
-      } else {
-        // ** in middle is weird but treat as **
-        result += ".*";
-        i += 2;
-      }
-      continue;
-    }
-
-    if (c === "*") {
-      // Single * matches any non-slash sequence
-      result += "[^/]*";
-      i++;
-      continue;
-    }
-
-    if (c === "?") {
-      // ? matches any single character
-      result += ".";
-      i++;
-      continue;
-    }
-
-    // Escape regex special characters
-    if (c && ".+^${}()|\\/".includes(c)) {
-      result += "\\" + c;
-    } else {
-      result += c;
-    }
-    i++;
-  }
+  // Convert glob patterns to regex
+  let result = escaped
+    .replace(/\*\*/g, "___GLOBSTAR___")
+    .replace(/\*/g, "[^/]*")
+    .replace(/___GLOBSTAR___/g, ".*")
+    .replace(/\?/g, ".");
 
   // Anchor the pattern
   if (hasLeadingSlash) {
-    // Leading slash means anchored to root: /build matches only "build" at root
     result = `^${result}(?:/|$)`;
   } else if (hasLeadingGlobstarSlash) {
-    // Pattern starts with **/ - require at least one directory level
-    // Don't match files at root (e.g., **/*.log doesn't match error.log, only src/error.log)
     result = `^(?=.+/)${result}(?:/|$)`;
   } else {
-    // No leading slash means can match at any level
     result = `(^|/)${result}(?:/|$)`;
   }
 

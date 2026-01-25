@@ -1,35 +1,19 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Box, render, useInput, Text } from "ink";
+import { Box, render, useInput } from "ink";
 import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ToastProvider, useToastContext } from "./contexts/ToastContext.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { EnabledProviders } from "./components/ModelPicker.js";
 import type { SkillMetadata } from "../skills/types.js";
-
 import type { Agent } from "@/core/agent.js";
 import { useCommandHandler } from "./hooks/useCommandHandler.js";
 import { MessageRole } from "./types/enums.js";
 import { formatTimestamp } from "./utils.js";
 
-function LoadingScreen(): React.ReactElement {
-  return (
-    <Box flexDirection="column" justifyContent="center" alignItems="center" flexGrow={1}>
-      <Box marginBottom={1}>
-        <Text color="cyan">◌ ◉ ◎ ◉ ◌</Text>
-      </Box>
-      <Text>Loading tiny-agent...</Text>
-      <Text dimColor>Initializing...</Text>
-    </Box>
-  );
-}
-
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
-  const [cancelCount, setCancelCount] = useState(0);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const cancelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const {
     messages,
     addMessage,
@@ -45,22 +29,6 @@ export function ChatApp(): React.ReactElement {
   } = useChatContext();
   const { addToast } = useToastContext();
 
-  useEffect(() => {
-    if (!agent || isInitialized) return;
-    const initAgent = async () => {
-      try {
-        addToast("Connecting to MCP servers...", "info");
-        await agent.waitForSkills();
-        const skillCount = agent.getSkillRegistry().size;
-        addToast(`Loaded ${skillCount} skills`, "success");
-        setIsInitialized(true);
-      } catch {
-        addToast("Failed to initialize agent", "error");
-      }
-    };
-    initAgent();
-  }, [agent, isInitialized, addToast]);
-
   const { handleCommandSelect, handleSlashCommand } = useCommandHandler({
     onAddMessage: addMessage,
     onClearMessages: clearMessages,
@@ -69,36 +37,53 @@ export function ChatApp(): React.ReactElement {
     agent: agent ?? undefined,
   });
 
+  // Initialize agent when it becomes available (background, non-blocking)
+  const [skillItems, setSkillItems] = useState<SkillMetadata[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const skillInvokedThisMessageRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    if (cancelCount === 2) {
-      if (cancelTimeoutRef.current) {
-        clearTimeout(cancelTimeoutRef.current);
-        cancelTimeoutRef.current = null;
+    if (!agent || isInitialized) return;
+    const initAgent = async () => {
+      try {
+        // Show "connecting" toasts first
+        addToast("Connecting to MCP servers...", "info");
+
+        await agent.waitForSkills();
+        const skills = Array.from(agent.getSkillRegistry().values());
+        setSkillItems(skills);
+        setIsInitialized(true);
+
+        // Show completion toasts for each category
+        const toolCount = agent.getToolCount();
+        if (toolCount > 0) {
+          addToast(`${toolCount} tools loaded`, "success");
+        }
+
+        const mcpServers = await agent.getMcpServerStatus();
+        const mcpConnected = mcpServers.filter((s) => s.connected);
+        if (mcpConnected.length > 0) {
+          addToast(`${mcpConnected.length} MCP server${mcpConnected.length > 1 ? "s" : ""} connected`, "success");
+        } else {
+          addToast("No MCP servers configured", "info");
+        }
+
+        if (skills.length > 0) {
+          addToast(`${skills.length} skills loaded`, "success");
+        }
+      } catch {
+        // Silently fail - skills will be empty, user can retry or continue without skills
       }
-      setCancelCount(0);
+    };
+    initAgent();
+  }, [agent, isInitialized, addToast]);
+
+  // Handle escape key for cancellation
+  useInput(
+    () => {
       if (isThinking) {
         cancelActiveRequest();
         addMessage(MessageRole.ASSISTANT, "\nCancelled. Type a new message or /exit to quit.");
-      } else {
-        setInputValue("");
-        addMessage(MessageRole.ASSISTANT, "Cancelled.");
-      }
-    } else if (cancelCount === 1) {
-      cancelTimeoutRef.current = setTimeout(() => {
-        setCancelCount(0);
-      }, 300);
-    }
-    return () => {
-      if (cancelTimeoutRef.current) {
-        clearTimeout(cancelTimeoutRef.current);
-      }
-    };
-  }, [cancelCount, isThinking, addMessage, cancelActiveRequest]);
-
-  useInput(
-    (_input, key) => {
-      if (key.escape) {
-        setCancelCount((prev) => prev + 1);
       }
     },
     { isActive: isThinking },
@@ -139,19 +124,6 @@ export function ChatApp(): React.ReactElement {
     },
     [addMessage, currentModel, setCurrentModel],
   );
-
-  const [skillItems, setSkillItems] = useState<SkillMetadata[]>([]);
-  const skillInvokedThisMessageRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!agent) return;
-    const loadSkills = async () => {
-      await agent.waitForSkills();
-      const registry = agent.getSkillRegistry();
-      setSkillItems(Array.from(registry.values()));
-    };
-    loadSkills();
-  }, [agent]);
 
   const handleSkillSelect = useCallback(
     async (skill: SkillMetadata) => {
@@ -202,10 +174,6 @@ export function ChatApp(): React.ReactElement {
         },
       ]
     : messages;
-
-  if (!isInitialized && messages.length === 0) {
-    return <LoadingScreen />;
-  }
 
   return (
     <Box flexDirection="column" height="100%">
