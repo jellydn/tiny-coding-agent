@@ -7,9 +7,7 @@ import { handleStatus } from "./handlers/status.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config/loader.js";
-import {
-  createSkillTool,
-} from "../tools/index.js";
+import { createSkillTool } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
 import { statusLineManager } from "../ui/index.js";
@@ -114,9 +112,7 @@ type EnabledProviders = {
   zai: boolean;
 };
 
-function getEnabledProviders(
-  providers: Record<string, unknown>,
-): EnabledProviders {
+function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
   return {
     openai: !!providers.openai,
     anthropic: !!providers.anthropic,

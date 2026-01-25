@@ -3,13 +3,7 @@ import type { McpServerConfig } from "../config/schema.js";
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
-import {
-  fileTools,
-  bashTool,
-  searchTools,
-  webSearchTool,
-  loadPlugins,
-} from "../tools/index.js";
+import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
 import { McpManager, globToRegex } from "../mcp/manager.js";
 import { MemoryStore } from "../core/memory.js";
 import { statusLineManager } from "../ui/index.js";
@@ -107,10 +101,7 @@ export function parseArgs(args: string[] = process.argv.slice(2)): ParsedArgs {
   };
 }
 
-export async function createLLMClient(
-  config: Config,
-  options: CliOptions,
-): Promise<LLMClient> {
+export async function createLLMClient(config: Config, options: CliOptions): Promise<LLMClient> {
   const model = options.model || config.defaultModel;
   const provider = options.provider;
 
@@ -121,10 +112,7 @@ export async function createLLMClient(
   });
 }
 
-export function createMemoryStore(
-  config: Config,
-  options: CliOptions,
-): MemoryStore | undefined {
+export function createMemoryStore(config: Config, options: CliOptions): MemoryStore | undefined {
   const memoryFile = options.memoryFile || config.memoryFile;
   if (!memoryFile && !options.noMemory) {
     return undefined;

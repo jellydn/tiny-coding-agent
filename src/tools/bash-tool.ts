@@ -255,7 +255,12 @@ export const bashTool: Tool = {
 
         const output = formatOutput(stdoutStr, stderrStr);
         const hasOutput = stdoutStr.trim().length > 0 || stderrStr.trim().length > 0;
-        const error = exitCode !== 0 ? (hasOutput ? undefined : `Command exited with code ${exitCode}`) : undefined;
+        const error =
+          exitCode !== 0
+            ? hasOutput
+              ? undefined
+              : `Command exited with code ${exitCode}`
+            : undefined;
 
         resolve({
           success: exitCode === 0,

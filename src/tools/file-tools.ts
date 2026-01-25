@@ -64,7 +64,16 @@ interface PathValidationResult {
 }
 
 function isSensitiveSystemPath(resolved: string): string | undefined {
-  const sensitivePaths = ["/etc/", "/usr/", "/bin/", "/sbin/", "/sys/", "/proc/", "/dev/", "/root/"];
+  const sensitivePaths = [
+    "/etc/",
+    "/usr/",
+    "/bin/",
+    "/sbin/",
+    "/sys/",
+    "/proc/",
+    "/dev/",
+    "/root/",
+  ];
   for (const sensitive of sensitivePaths) {
     if (resolved.startsWith(sensitive)) {
       return sensitive;

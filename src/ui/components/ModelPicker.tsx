@@ -172,7 +172,8 @@ export function ModelPicker({
                 {providerName}
               </Text>
               <Text color="gray" dimColor>
-                {" "}({modelsInProvider} models)
+                {" "}
+                ({modelsInProvider} models)
               </Text>
             </Box>
           );
@@ -188,7 +189,8 @@ export function ModelPicker({
               {item.model.name}
             </Text>
             <Text color="gray" dimColor>
-              {" - "}{item.model.description}
+              {" - "}
+              {item.model.description}
             </Text>
             {isActive && <Text color="green"> [active]</Text>}
           </Box>

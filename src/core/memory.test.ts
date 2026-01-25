@@ -357,9 +357,7 @@ describe("buildContextWithMemory", () => {
         accessCount: 1,
       },
     ];
-    const conversationMessages = [
-      { role: "user", content: "Hello, I need help with a project." },
-    ];
+    const conversationMessages = [{ role: "user", content: "Hello, I need help with a project." }];
 
     const result = buildContextWithMemory(
       systemPrompt,
@@ -408,13 +406,7 @@ describe("buildContextWithMemory", () => {
     ];
     const conversationMessages: Array<{ role: string; content: string }> = [];
 
-    const result = buildContextWithMemory(
-      systemPrompt,
-      memories,
-      conversationMessages,
-      1000,
-      1000,
-    );
+    const result = buildContextWithMemory(systemPrompt, memories, conversationMessages, 1000, 1000);
 
     const systemMessages = result.context.filter((m) => m.role === "system");
     expect(systemMessages.some((m) => m.content.includes("## Relevant Memories"))).toBe(true);

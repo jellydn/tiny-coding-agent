@@ -90,14 +90,20 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
     });
   }
 
-  if (c.maxContextTokens !== undefined && (typeof c.maxContextTokens !== "number" || c.maxContextTokens <= 0)) {
+  if (
+    c.maxContextTokens !== undefined &&
+    (typeof c.maxContextTokens !== "number" || c.maxContextTokens <= 0)
+  ) {
     errors.push({
       field: "maxContextTokens",
       message: "maxContextTokens must be a positive number",
     });
   }
 
-  if (c.maxMemoryTokens !== undefined && (typeof c.maxMemoryTokens !== "number" || c.maxMemoryTokens <= 0)) {
+  if (
+    c.maxMemoryTokens !== undefined &&
+    (typeof c.maxMemoryTokens !== "number" || c.maxMemoryTokens <= 0)
+  ) {
     errors.push({
       field: "maxMemoryTokens",
       message: "maxMemoryTokens must be a positive number",

@@ -49,11 +49,7 @@ export function isLooping(recentToolCalls: string[]): boolean {
   const lastCall = recentToolCalls[recentToolCalls.length - 1] ?? "";
   const lastTool = extractTool(lastCall);
 
-  if (
-    recentToolCalls
-      .slice(-LOOP_DETECTION.IDENTICAL_REPEAT)
-      .every((c) => c === lastCall)
-  )
+  if (recentToolCalls.slice(-LOOP_DETECTION.IDENTICAL_REPEAT).every((c) => c === lastCall))
     return true;
 
   if (recentToolCalls.length >= LOOP_DETECTION.SAME_TOOL_THRESHOLD) {

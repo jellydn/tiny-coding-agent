@@ -11,10 +11,7 @@ interface StatusHandlerOptions {
   model?: string;
 }
 
-export async function handleStatus(
-  config: Config,
-  options: StatusHandlerOptions,
-): Promise<void> {
+export async function handleStatus(config: Config, options: StatusHandlerOptions): Promise<void> {
   const llmClient = await createLLMClient(config, options);
   const { registry: toolRegistry } = await setupTools(config);
   const model = options.model || config.defaultModel;

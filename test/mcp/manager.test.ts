@@ -1,13 +1,10 @@
 import { describe, it, expect, vi } from "bun:test";
-import {
-  McpManager,
-} from "../../src/mcp/manager.js";
+import { McpManager } from "../../src/mcp/manager.js";
 import { McpClient } from "../../src/mcp/client.js";
 import type { McpServerConfig } from "../../src/config/schema.js";
 import type { McpToolDefinition } from "../../src/mcp/types.js";
 
 describe("McpManager", () => {
-
   describe("addServer()", () => {
     it("should register a new server successfully", async () => {
       const manager = new McpManager();
