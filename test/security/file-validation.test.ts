@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { writeFileTool } from "@/tools/file-tools.js";
+import { writeFileTool } from "../../src/tools/file-tools.js";
 
 describe("write_file security", () => {
   it("should reject paths with .. for directory traversal", async () => {

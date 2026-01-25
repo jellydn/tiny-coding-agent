@@ -38,7 +38,7 @@ async function loadPluginFile(filePath: string): Promise<Tool[]> {
   }
 }
 
-function isTool(obj: unknown): obj is Tool {
+export function isTool(obj: unknown): obj is Tool {
   if (obj === null || typeof obj !== "object") {
     return false;
   }

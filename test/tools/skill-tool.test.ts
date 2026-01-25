@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { createSkillTool } from "../src/skill-tool.js";
+import { createSkillTool } from "../../src/tools/skill-tool.js";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import * as path from "node:path";
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import type { SkillMetadata } from "../src/types.js";
-import { generateSkillsPrompt } from "../src/prompt.js";
+import type { SkillMetadata } from "../../src/skills/types.js";
+import { generateSkillsPrompt } from "../../src/skills/prompt.js";
 
 describe("generateSkillsPrompt", () => {
   it("should return empty string for empty skills array", () => {

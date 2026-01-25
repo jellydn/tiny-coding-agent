@@ -27,7 +27,7 @@ export function SkillPicker({
     );
   }, [skills, filter]);
 
-  useInput((input, key) => {
+  useInput((_input, key) => {
     if (key.escape) {
       onClose();
       return;

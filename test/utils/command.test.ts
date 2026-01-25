@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isCommandAvailable } from "../src/command.js";
+import { isCommandAvailable } from "../../src/utils/command.js";
 
 describe("isCommandAvailable", () => {
   describe("commands that should be available", () => {

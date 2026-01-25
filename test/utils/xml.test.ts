@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { escapeXml } from "../src/xml.js";
+import { escapeXml } from "../../src/utils/xml.js";
 
 describe("escapeXml", () => {
   describe("basic escaping", () => {

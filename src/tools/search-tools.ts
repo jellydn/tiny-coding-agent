@@ -86,49 +86,92 @@ async function searchFiles(
   regex: RegExp,
   includePattern: string | undefined,
   results: string[],
-  currentDepth = 0,
   maxDepth = 20,
 ): Promise<void> {
-  // Early exit if depth exceeded
-  if (currentDepth > maxDepth) {
-    console.warn(`Search depth limit (${maxDepth}) reached at ${searchPath}`);
-    return;
-  }
+  // Use explicit stack to avoid recursion depth issues
+  type SearchTask = {
+    path: string;
+    depth: number;
+    gitignorePatterns: import("./gitignore.js").GitignorePattern[];
+  };
 
-  const stat = await fs.stat(searchPath);
+  const stack: SearchTask[] = [];
+  const visited = new Set<string>();
 
-  if (stat.isFile()) {
-    if (!includePattern || matchesGlob(path.basename(searchPath), includePattern)) {
-      await searchInFile(searchPath, regex, results);
+  // Initial task
+  stack.push({
+    path: searchPath,
+    depth: 0,
+    gitignorePatterns: [],
+  });
+
+  while (stack.length > 0) {
+    const task = stack.pop()!;
+    const { path: currentPath, depth } = task;
+
+    // Early exit if depth exceeded
+    if (depth > maxDepth) {
+      console.warn(`Search depth limit (${maxDepth}) reached at ${currentPath}`);
+      continue;
     }
-    return;
-  }
 
-  if (stat.isDirectory()) {
-    const gitignorePatterns = await findGitignorePatterns(searchPath);
-    const entries = await fs.readdir(searchPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      if (entry.name === "node_modules") continue;
+    // Skip if already visited (prevents infinite loops with symlinks)
+    const resolvedPath = path.resolve(currentPath);
+    if (visited.has(resolvedPath)) {
+      continue;
+    }
+    visited.add(resolvedPath);
 
-      const entryPath = path.join(searchPath, entry.name);
-
-      if (gitignorePatterns.length > 0) {
-        const isDir = entry.isDirectory();
-        if (isIgnored(entryPath, gitignorePatterns, isDir)) {
-          continue;
-        }
+    const stat = await fs.stat(currentPath).catch(() => null);
+    if (!stat) {
+      // For the initial path, throw an error so the user knows it doesn't exist
+      if (depth === 0) {
+        const error = new Error(`Path not found: ${searchPath}`);
+        (error as NodeJS.ErrnoException).code = "ENOENT";
+        throw error;
       }
+      continue;
+    }
 
-      if (entry.isDirectory()) {
-        await searchFiles(entryPath, regex, includePattern, results, currentDepth + 1, maxDepth);
-      } else if (entry.isFile()) {
-        if (!includePattern || matchesGlob(entry.name, includePattern)) {
-          await searchInFile(entryPath, regex, results);
-        }
+    if (stat.isFile()) {
+      if (!includePattern || matchesGlob(path.basename(currentPath), includePattern)) {
+        await searchInFile(currentPath, regex, results);
       }
+      continue;
+    }
 
-      if (results.length >= MAX_RESULTS * 2) break;
+    if (stat.isDirectory()) {
+      // Get gitignore patterns for this directory
+      const gitignorePatterns = await findGitignorePatterns(currentPath);
+
+      const entries = await fs.readdir(currentPath, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules") continue;
+
+        const entryPath = path.join(currentPath, entry.name);
+
+        if (gitignorePatterns.length > 0) {
+          const isDir = entry.isDirectory();
+          if (isIgnored(entryPath, gitignorePatterns, isDir)) {
+            continue;
+          }
+        }
+
+        if (entry.isDirectory()) {
+          stack.push({
+            path: entryPath,
+            depth: depth + 1,
+            gitignorePatterns,
+          });
+        } else if (entry.isFile()) {
+          if (!includePattern || matchesGlob(entry.name, includePattern)) {
+            await searchInFile(entryPath, regex, results);
+          }
+        }
+
+        if (results.length >= MAX_RESULTS * 2) break;
+      }
     }
   }
 }
@@ -234,44 +277,80 @@ async function globFiles(
   relativePath: string,
   results: string[],
 ): Promise<void> {
-  const currentPath = relativePath ? path.join(basePath, relativePath) : basePath;
+  // Use explicit stack to avoid recursion depth issues
+  type GlobTask = {
+    basePath: string;
+    relativePath: string;
+  };
 
-  const stat = await fs.stat(currentPath);
-  if (!stat.isDirectory()) {
-    if (matchesGlob(relativePath || path.basename(basePath), pattern)) {
-      results.push(currentPath);
+  const stack: GlobTask[] = [{ basePath, relativePath }];
+  const visited = new Set<string>();
+
+  while (stack.length > 0) {
+    const task = stack.pop()!;
+    const { basePath: taskBasePath, relativePath: taskRelativePath } = task;
+
+    const currentPath = taskRelativePath ? path.join(taskBasePath, taskRelativePath) : taskBasePath;
+
+    // Skip if already visited (prevents infinite loops with symlinks)
+    const resolvedPath = path.resolve(currentPath);
+    if (visited.has(resolvedPath)) {
+      continue;
     }
-    return;
-  }
+    visited.add(resolvedPath);
 
-  const gitignorePatterns = await findGitignorePatterns(basePath);
-  const entries = await fs.readdir(currentPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    if (entry.name === "node_modules") continue;
-
-    const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
-    const entryFullPath = path.join(basePath, entryRelativePath);
-
-    if (gitignorePatterns.length > 0) {
-      const isDir = entry.isDirectory();
-      if (isIgnored(entryRelativePath, gitignorePatterns, isDir)) {
-        continue;
+    const stat = await fs.stat(currentPath).catch(() => null);
+    if (!stat) {
+      // For the initial path, throw an error so the user knows it doesn't exist
+      if (taskRelativePath === "" && results.length === 0) {
+        const error = new Error(`Path not found: ${basePath}`);
+        (error as NodeJS.ErrnoException).code = "ENOENT";
+        throw error;
       }
-    }
-
-    if (entry.isDirectory()) {
-      if (pattern.includes("**") || shouldDescendIntoDir(pattern, entryRelativePath)) {
-        await globFiles(basePath, pattern, entryRelativePath, results);
-      }
-    } else if (entry.isFile()) {
-      if (matchesGlob(entryRelativePath, pattern)) {
-        results.push(entryFullPath);
-      }
+      continue;
     }
 
-    if (results.length >= MAX_RESULTS * 2) break;
+    if (!stat.isDirectory()) {
+      if (matchesGlob(taskRelativePath || path.basename(taskBasePath), pattern)) {
+        results.push(currentPath);
+      }
+      continue;
+    }
+
+    const gitignorePatterns = await findGitignorePatterns(taskBasePath);
+    const entries = await fs.readdir(currentPath, { withFileTypes: true }).catch(() => []);
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      if (entry.name === "node_modules") continue;
+
+      const entryRelativePath = taskRelativePath
+        ? path.join(taskRelativePath, entry.name)
+        : entry.name;
+      const entryFullPath = path.join(taskBasePath, entryRelativePath);
+
+      if (gitignorePatterns.length > 0) {
+        const isDir = entry.isDirectory();
+        if (isIgnored(entryRelativePath, gitignorePatterns, isDir)) {
+          continue;
+        }
+      }
+
+      if (entry.isDirectory()) {
+        if (pattern.includes("**") || shouldDescendIntoDir(pattern, entryRelativePath)) {
+          stack.push({
+            basePath: taskBasePath,
+            relativePath: entryRelativePath,
+          });
+        }
+      } else if (entry.isFile()) {
+        if (matchesGlob(entryRelativePath, pattern)) {
+          results.push(entryFullPath);
+        }
+      }
+
+      if (results.length >= MAX_RESULTS * 2) break;
+    }
   }
 }
 

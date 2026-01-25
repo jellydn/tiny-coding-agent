@@ -138,7 +138,7 @@ function displayToolExecutionPlain(te: ToolExecutionDisplay): void {
       const lines = te.output.split("\n");
       const preview =
         lines.length > TOOL_PREVIEW_LINES
-          ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
+          ? `${lines.slice(0, TOOL_PREVIEW_LINES).join("\n")}\n  ...`
           : te.output;
       process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
     }
@@ -239,7 +239,10 @@ function parseArgs(): {
       case "--skills-dir": {
         const dirValue = args[++i];
         if (dirValue) {
-          (options.skillsDir ??= []).push(dirValue);
+          if (!options.skillsDir) {
+            options.skillsDir = [];
+          }
+          options.skillsDir.push(dirValue);
         }
         break;
       }
@@ -1058,6 +1061,11 @@ async function handleMemory(
     memoryStore = new MemoryStore({ filePath: memoryFile });
     console.log(`Using memory file: ${memoryFile}\n`);
   }
+
+  // Wait for async loading to complete before listing
+  await memoryStore.init();
+  memoryStore.touchAll();
+  await memoryStore.flush();
 
   if (subCommand === "list") {
     const memories = memoryStore.list();

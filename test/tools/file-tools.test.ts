@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { handleFileError, handleDirError, isSensitiveFile } from "../src/file-tools.js";
+import { handleFileError, handleDirError, isSensitiveFile } from "../../src/tools/file-tools.js";
 
 describe("isSensitiveFile()", () => {
   describe("sensitive files", () => {
@@ -51,7 +51,7 @@ describe("isSensitiveFile()", () => {
   describe("safe files", () => {
     it("should allow regular source files", () => {
       expect(isSensitiveFile("/path/to/main.ts")).toBe(false);
-      expect(isSensitiveFile("/path/to/index.js")).toBe(false);
+      expect(isSensitiveFile("/path/to/index.ts")).toBe(false);
       expect(isSensitiveFile("/path/to/package.json")).toBe(false);
     });
 

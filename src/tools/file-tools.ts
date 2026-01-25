@@ -267,6 +267,12 @@ export const editFileTool: Tool = {
 
     const { path: filePath, old_str, new_str, replace_all } = parsed.data;
 
+    // Validate old_str and new_str for path traversal attempts
+    const pathTraversalPattern = /\.\.[\\/]/;
+    if (pathTraversalPattern.test(old_str) || pathTraversalPattern.test(new_str)) {
+      return { success: false, error: "Edit strings must not contain path traversal sequences" };
+    }
+
     try {
       const content = await fs.readFile(filePath, "utf-8");
 

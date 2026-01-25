@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { fuzzyMatch, parseChatCommand, COMMANDS } from "../src/chat-commands.js";
+import { fuzzyMatch, parseChatCommand, COMMANDS } from "../../src/cli/chat-commands.js";
 
 describe("fuzzyMatch()", () => {
   it("should return true for exact matches", () => {

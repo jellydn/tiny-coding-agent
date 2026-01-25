@@ -1,6 +1,6 @@
 import { describe, it, expect, mock } from "bun:test";
-import { toErrorMessage, OllamaProvider } from "../src/ollama.js";
-import type { ChatOptions } from "../src/types.js";
+import { toErrorMessage, OllamaProvider } from "../../src/providers/ollama.js";
+import type { ChatOptions } from "../../src/providers/types.js";
 
 describe("toErrorMessage()", () => {
   it("should return error message for Error instances", () => {

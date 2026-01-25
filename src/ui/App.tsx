@@ -66,7 +66,7 @@ export function ChatApp(): React.ReactElement {
   }, [cancelCount, isThinking, setThinking, addMessage, cancelActiveRequest]);
 
   useInput(
-    (input, key) => {
+    (_input, key) => {
       if (key.escape) {
         setCancelCount((prev) => prev + 1);
       }

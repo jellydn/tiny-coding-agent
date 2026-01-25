@@ -1,5 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { getEmbeddedBuiltinSkills, getEmbeddedSkillContent } from "../src/builtin-registry.js";
+import {
+  getEmbeddedBuiltinSkills,
+  getEmbeddedSkillContent,
+} from "../../src/skills/builtin-registry.js";
 
 describe("builtin-registry", () => {
   describe("getEmbeddedBuiltinSkills", () => {

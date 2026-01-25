@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { bashTool } from "@/tools/bash-tool.js";
+import { bashTool } from "../../src/tools/bash-tool.js";
 
 describe("bash tool environment filtering", () => {
   const originalEnv = { ...process.env };
@@ -92,13 +92,17 @@ describe("bash tool environment filtering", () => {
     expect(result.output).toContain("USER is:");
   });
 
-  it("should preserve TEST_SAFE_VAR environment variable", async () => {
+  it("should not pass through unknown custom environment variables", async () => {
+    // TEST_SAFE_VAR is not in the SAFE_ENV_KEYS allowlist, so it should be filtered out
+    process.env.TEST_SAFE_VAR = "safe_value";
     const result = await bashTool.execute({
-      command: 'echo "$TEST_SAFE_VAR"',
+      command: 'echo "VAR_IS_$TEST_SAFE_VAR"',
       cwd: "/tmp",
     });
     expect(result.success).toBe(true);
-    expect(result.output).toContain("safe_value");
+    // The variable should be empty/undefined, so output should be "VAR_IS_"
+    expect(result.output).toContain("VAR_IS_");
+    expect(result.output).not.toContain("safe_value");
   });
 
   it("should handle env command without exposing sensitive vars", async () => {

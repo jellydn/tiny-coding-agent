@@ -125,20 +125,15 @@ function interpolateEnvVars(value: string): string {
 }
 
 function interpolateObject(obj: unknown): unknown {
-  if (typeof obj === "string") {
-    return interpolateEnvVars(obj);
+  if (obj === null || typeof obj !== "object") return obj;
+  if (typeof obj === "string") return interpolateEnvVars(obj);
+  if (Array.isArray(obj)) return obj.map(interpolateObject);
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    result[key] = interpolateObject(value);
   }
-  if (Array.isArray(obj)) {
-    return obj.map(interpolateObject);
-  }
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = interpolateObject(value);
-    }
-    return result;
-  }
-  return obj;
+  return result;
 }
 
 export function loadConfig(): Config {

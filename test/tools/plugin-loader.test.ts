@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { isTool, loadPlugins } from "@/tools/plugin-loader.js";
-import { mkdirSync, rmdirSync, writeFileSync, unlinkSync, readFileSync, existsSync } from "node:fs";
+import { isTool, loadPlugins } from "../../src/tools/plugin-loader.js";
+import { mkdirSync, rmdirSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
@@ -34,7 +34,7 @@ describe("isTool", () => {
         properties: { arg: { type: "string" } },
         required: ["arg"],
       },
-      execute: async (args: Record<string, unknown>) => ({ success: true, output: "ok" }),
+      execute: async (_args: Record<string, unknown>) => ({ success: true, output: "ok" }),
     };
 
     expect(isTool(validTool)).toBe(true);
@@ -80,7 +80,7 @@ describe("isTool", () => {
         type: "object",
         properties: {},
       },
-      execute: async (args: Record<string, unknown>) => ({ success: true, output: "ok" }),
+      execute: async (_args: Record<string, unknown>) => ({ success: true, output: "ok" }),
     };
 
     expect(isTool(tool)).toBe(true);
@@ -89,14 +89,31 @@ describe("isTool", () => {
 
 describe("loadPlugins", () => {
   it("should return empty array when plugins directory does not exist", async () => {
-    // Use a non-existent path
-    const tools = await loadPlugins();
-    expect(tools).toEqual([]);
+    // Temporarily rename the plugins directory to simulate non-existence
+    const originalPluginsDir = join(homedir(), ".tiny-agent", "plugins");
+    const tempPluginsDir = join(homedir(), ".tiny-agent", "plugins.temp");
+
+    let pluginsMoved = false;
+    try {
+      if (existsSync(originalPluginsDir)) {
+        renameSync(originalPluginsDir, tempPluginsDir);
+        pluginsMoved = true;
+      }
+
+      const tools = await loadPlugins();
+      // When directory doesn't exist, should return empty array
+      expect(tools).toEqual([]);
+    } finally {
+      // Restore the plugins directory
+      if (pluginsMoved && existsSync(tempPluginsDir)) {
+        renameSync(tempPluginsDir, originalPluginsDir);
+      }
+    }
   });
 
   it("should load tools from plugin files", async () => {
     // Create a test plugin file
-    const pluginPath = join(testDir, "test-plugin.js");
+    const pluginPath = join(testDir, "test-plugin.ts");
     writeFileSync(
       pluginPath,
       `
@@ -193,7 +210,7 @@ export default {
       name: "invalid_tool",
       description: "Has execute as arrow function but returns non-promise",
       parameters: { type: "object", properties: {} },
-      execute: (args: Record<string, unknown>) => ({ success: true, output: "ok" }),
+      execute: (_args: Record<string, unknown>) => ({ success: true, output: "ok" }),
     };
 
     expect(isTool(invalidTool)).toBe(true);

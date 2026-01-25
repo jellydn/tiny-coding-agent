@@ -5,7 +5,7 @@ import {
   supportsThinking,
   supportsTools,
   getProviderPatterns,
-} from "../src/model-registry.js";
+} from "../../src/providers/model-registry.js";
 
 describe("detectProvider()", () => {
   describe("Anthropic models", () => {

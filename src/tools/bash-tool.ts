@@ -71,29 +71,60 @@ export function isDestructiveCommand(command: string): boolean {
   return false;
 }
 
-const SENSITIVE_ENV_PATTERNS = [
-  /API_KEY/i,
-  /SECRET/i,
-  /PASSWORD/i,
-  /TOKEN/i,
-  /CREDENTIALS/i,
-  /PRIVATE_KEY/i,
-  /AWS_/i,
-  /AZURE_/i,
-  /GOOGLE_/i,
-  /OPENAI_/i,
-  /ANTHROPIC_/i,
+/**
+ * Allowlist of safe environment variables to pass to shell commands.
+ * This is more secure than a blocklist approach, as new secret-naming conventions
+ * won't accidentally leak sensitive data.
+ *
+ * Common development environment variables that are safe to include:
+ * - PATH: Command search paths
+ * - HOME: User home directory
+ * - USER: Current username
+ * - SHELL: Current shell
+ * - LANG: Locale settings
+ * - TERM: Terminal type
+ * - NODE_ENV: Node.js environment (development/production)
+ * - TZ: Timezone setting
+ * - PWD: Current working directory
+ * - LOGNAME: Alternative to USER
+ * - EDITOR/VISUAL: Default text editors
+ * - PAGER: Default pager program
+ * - BROWSER: Default web browser
+ */
+const SAFE_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LANGUAGE",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TERM",
+  "NODE_ENV",
+  "TZ",
+  "PWD",
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "BROWSER",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
 ];
 
-const SAFE_ENV_KEYS = ["PATH", "HOME", "USER", "SHELL", "LANG", "TERM", "NODE_ENV", "TZ"];
-
+/**
+ * Filter environment variables to only include safe allowlisted keys.
+ * This prevents accidental leakage of sensitive credentials via environment.
+ */
 function filterSafeEnvironment(): NodeJS.ProcessEnv {
   const safeEnv: NodeJS.ProcessEnv = {};
-  const isSafeKey = (key: string) => SAFE_ENV_KEYS.includes(key);
-  const isSensitive = (key: string) => SENSITIVE_ENV_PATTERNS.some((p) => p.test(key));
+  const allowlist = new Set(SAFE_ENV_KEYS);
 
   for (const [key, value] of Object.entries(process.env)) {
-    if (value && (isSafeKey(key) || !isSensitive(key))) {
+    // Only include variables that are in the allowlist and have a value
+    if (value && allowlist.has(key)) {
       safeEnv[key] = value;
     }
   }

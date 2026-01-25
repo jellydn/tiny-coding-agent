@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { unlinkSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import type { Message } from "@/providers/types.js";
-import { ConversationManager } from "@/core/conversation.js";
+import type { Message } from "../../src/providers/types.js";
+import { ConversationManager } from "../../src/core/conversation.js";
 
 const tempConversationFile = "/tmp/test-conversation.json";
 
@@ -48,7 +48,7 @@ describe("ConversationManager", () => {
   });
 
   describe("loadHistory()", () => {
-    it("should load history from file when file exists", () => {
+    it("should load history from file when file exists", async () => {
       const messages: Message[] = [
         { role: "user", content: "Previous message" },
         { role: "assistant", content: "Previous response" },
@@ -56,21 +56,21 @@ describe("ConversationManager", () => {
       writeFileSync(tempConversationFile, JSON.stringify({ messages }, null, 2));
 
       const manager = new ConversationManager(tempConversationFile);
-      const loaded = manager.loadHistory();
+      const loaded = await manager.loadHistory();
       expect(loaded).toEqual(messages);
     });
 
-    it("should return empty array when file does not exist", () => {
+    it("should return empty array when file does not exist", async () => {
       const manager = new ConversationManager("/nonexistent/path/conversation.json");
-      const loaded = manager.loadHistory();
+      const loaded = await manager.loadHistory();
       expect(loaded).toEqual([]);
     });
 
-    it("should return empty array when file contains invalid JSON", () => {
+    it("should return empty array when file contains invalid JSON", async () => {
       writeFileSync(tempConversationFile, "invalid json");
 
       const manager = new ConversationManager(tempConversationFile);
-      const loaded = manager.loadHistory();
+      const loaded = await manager.loadHistory();
       expect(loaded).toEqual([]);
     });
   });

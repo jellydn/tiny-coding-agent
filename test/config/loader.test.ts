@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
+
+const require = createRequire(import.meta.url);
+const CONFIG_INDEX_PATH = require.resolve("../../src/config/index.ts");
 
 const tempConfigDir = "/tmp/test-tiny-agent-config";
 const tempConfigFile = `${tempConfigDir}/config.yaml`;
@@ -58,7 +62,7 @@ afterEach(() => {
 
 describe("Config Loader - Config Merging", () => {
   it("should merge defaults with existing config for skillDirectories", async () => {
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // Should have default skillDirectories even if not in config file
     expect(config.skillDirectories).toBeDefined();
@@ -67,7 +71,7 @@ describe("Config Loader - Config Merging", () => {
   });
 
   it("should merge defaults with existing config for mcpServers", async () => {
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // Should have default MCP servers even if not in config file
     expect(config.mcpServers).toBeDefined();
@@ -88,7 +92,7 @@ mcpServers:
       "utf-8",
     );
 
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // Only user's configured servers should be present
     expect(Object.keys(config.mcpServers!)).toEqual(["context7"]);
@@ -106,7 +110,7 @@ skillDirectories:
       "utf-8",
     );
 
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // User config should take precedence
     expect(config.defaultModel).toBe("custom-model");
@@ -125,7 +129,7 @@ providers:
       "utf-8",
     );
 
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // OpenAI provider should be preserved
     expect(config.providers.openai?.apiKey).toBe("my-key");
@@ -137,35 +141,35 @@ providers:
 describe("Config Loader - Env Var Override Loop", () => {
   it("should override model from TINY_AGENT_MODEL env var", async () => {
     process.env.TINY_AGENT_MODEL = "claude-3-5-sonnet";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     expect(config.defaultModel).toBe("claude-3-5-sonnet");
   });
 
   it("should override system prompt from TINY_AGENT_SYSTEM_PROMPT env var", async () => {
     process.env.TINY_AGENT_SYSTEM_PROMPT = "Custom system prompt";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     expect(config.systemPrompt).toBe("Custom system prompt");
   });
 
   it("should reject empty string env var values", async () => {
     process.env.TINY_AGENT_SYSTEM_PROMPT = "";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     expect(config.systemPrompt).not.toBe("");
   });
 
   it("should parse numeric env vars correctly", async () => {
     process.env.TINY_AGENT_MAX_CONTEXT_TOKENS = "64000";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     expect(config.maxContextTokens).toBe(64000);
   });
 
   it("should ignore invalid numeric env vars and use config file value", async () => {
     process.env.TINY_AGENT_MAX_CONTEXT_TOKENS = "invalid";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // Invalid env var is ignored, uses config file value
     expect(config.maxContextTokens).toBe(128000);
@@ -173,7 +177,7 @@ describe("Config Loader - Env Var Override Loop", () => {
 
   it("should ignore negative numeric env vars and use config file value", async () => {
     process.env.TINY_AGENT_MAX_MEMORY_TOKENS = "-100";
-    const { loadConfig } = await import("./loader.js");
+    const { loadConfig } = await import(CONFIG_INDEX_PATH);
     const config = loadConfig();
     // Negative env var is ignored, uses config file value
     expect(config.maxMemoryTokens).toBe(10000);

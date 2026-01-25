@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { countTokensSync } from "./tokens.js";
 
 const SAVE_DEBOUNCE_MS = 100;
+const PERIODIC_FLUSH_INTERVAL_MS = 5000; // Safety net: flush every 5 seconds
 
 export type MemoryCategory = "user" | "project" | "codebase";
 
@@ -17,6 +19,8 @@ export interface Memory {
 export interface MemoryStoreOptions {
   filePath?: string;
   maxMemories?: number;
+  maxMemoryTokens?: number;
+  autoLoad?: boolean;
 }
 
 export interface ContextStats {
@@ -37,15 +41,34 @@ export class MemoryStore {
   private _memories: Map<string, Memory> = new Map();
   private _filePath?: string;
   private _maxMemories: number;
+  private _maxMemoryTokens?: number;
   private _saveTimeout?: NodeJS.Timeout;
+  private _periodicFlushInterval?: NodeJS.Timeout;
   private _dirty = false;
+  private _initPromise?: Promise<void>;
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
     this._maxMemories = options.maxMemories ?? 100;
+    this._maxMemoryTokens = options.maxMemoryTokens;
 
-    if (this._filePath && existsSync(this._filePath)) {
-      this._load();
+    // Start periodic flush for safety net against sudden termination
+    this._periodicFlushInterval = setInterval(() => {
+      void this.flush();
+    }, PERIODIC_FLUSH_INTERVAL_MS);
+
+    if (options.autoLoad !== false && this._filePath && existsSync(this._filePath)) {
+      // Start async loading in background
+      this._initPromise = this._load().catch((err) => {
+        console.error(`Warning: Failed to load memories: ${err}`);
+      });
+    }
+  }
+
+  async init(): Promise<void> {
+    if (this._initPromise) {
+      await this._initPromise;
+      this._initPromise = undefined;
     }
   }
 
@@ -83,6 +106,18 @@ export class MemoryStore {
     });
   }
 
+  /**
+   * Mark all memories as accessed (updates lastAccessedAt and increments accessCount)
+   */
+  touchAll(): void {
+    const now = new Date().toISOString();
+    for (const memory of this._memories.values()) {
+      memory.lastAccessedAt = now;
+      memory.accessCount++;
+    }
+    this._scheduleSave();
+  }
+
   listByCategory(category: MemoryCategory): Memory[] {
     return this.list().filter((m) => m.category === category);
   }
@@ -112,20 +147,19 @@ export class MemoryStore {
       const content = memory.content.toLowerCase();
       const category = memory.category;
 
+      // Calculate base score from word matches
       let score = 0;
-
       for (const word of queryWords) {
         if (content.includes(word)) {
           score += 10;
         }
       }
 
-      if (category === "project") {
-        score *= 1.5;
-      } else if (category === "codebase") {
-        score *= 1.2;
-      }
+      // Apply category multiplier
+      const categoryMultiplier = category === "project" ? 1.5 : category === "codebase" ? 1.2 : 1;
+      score *= categoryMultiplier;
 
+      // Add frequency bonus
       score += Math.log(memory.accessCount + 1) * 2;
 
       if (score > 0) {
@@ -168,6 +202,25 @@ export class MemoryStore {
     );
   }
 
+  async flush(): Promise<void> {
+    if (this._saveTimeout) {
+      clearTimeout(this._saveTimeout);
+      this._saveTimeout = undefined;
+    }
+    if (this._dirty) {
+      this._dirty = false;
+      await this._save();
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this._periodicFlushInterval) {
+      clearInterval(this._periodicFlushInterval);
+      this._periodicFlushInterval = undefined;
+    }
+    await this.flush();
+  }
+
   private _scheduleSave(): void {
     this._dirty = true;
     if (this._saveTimeout) return;
@@ -176,28 +229,43 @@ export class MemoryStore {
       this._saveTimeout = undefined;
       if (this._dirty) {
         this._dirty = false;
-        this._save();
+        void this._save();
       }
     }, SAVE_DEBOUNCE_MS);
   }
 
-  private _load(): void {
-    if (!this._filePath || !existsSync(this._filePath)) {
+  private async _load(): Promise<void> {
+    if (!this._filePath) return;
+
+    try {
+      await fs.access(this._filePath);
+    } catch {
       return;
     }
 
     try {
-      const content = readFileSync(this._filePath, "utf-8");
+      const content = await fs.readFile(this._filePath, "utf-8");
       const data = JSON.parse(content);
-      const memories: Array<Omit<Memory, "lastAccessedAt" | "accessCount">> | undefined =
-        data.memories;
+      const memories:
+        | Array<{
+            id: string;
+            content: string;
+            category: string;
+            createdAt: string;
+            lastAccessedAt?: string;
+            accessCount?: number;
+          }>
+        | undefined = data.memories;
 
       if (memories && Array.isArray(memories)) {
         for (const m of memories) {
           this._memories.set(m.id, {
-            ...m,
-            lastAccessedAt: m.createdAt,
-            accessCount: 0,
+            id: m.id,
+            content: m.content,
+            category: m.category as MemoryCategory,
+            createdAt: m.createdAt,
+            lastAccessedAt: m.lastAccessedAt ?? m.createdAt,
+            accessCount: m.accessCount ?? 0,
           });
         }
       }
@@ -206,7 +274,7 @@ export class MemoryStore {
     }
   }
 
-  private _save(): void {
+  private async _save(): Promise<void> {
     if (!this._filePath) {
       return;
     }
@@ -220,28 +288,56 @@ export class MemoryStore {
           content: m.content,
           category: m.category,
           createdAt: m.createdAt,
+          lastAccessedAt: m.lastAccessedAt,
+          accessCount: m.accessCount,
         })),
       };
-      writeFileSync(this._filePath, JSON.stringify(data, null, 2), "utf-8");
+      await fs.writeFile(this._filePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (err) {
       console.error(`Warning: Failed to save memories to ${this._filePath}: ${err}`);
     }
   }
 
   private _evictIfNeeded(): void {
-    while (this._memories.size > this._maxMemories) {
-      let oldestId: string | undefined;
-      let oldestTime = Infinity;
-
-      for (const [id, memory] of this._memories) {
-        const accessTime = new Date(memory.lastAccessedAt).getTime();
-        if (accessTime < oldestTime) {
-          oldestTime = accessTime;
-          oldestId = id;
-        }
+    // Token-based eviction first (if configured)
+    if (this._maxMemoryTokens !== undefined) {
+      while (this._countMemoryTokens() > this._maxMemoryTokens && this._memories.size > 1) {
+        this._evictOldest();
       }
-      if (oldestId) this._memories.delete(oldestId);
     }
+
+    // Count-based eviction as fallback
+    while (this._memories.size > this._maxMemories) {
+      this._evictOldest();
+    }
+  }
+
+  /**
+   * Calculate total tokens used by all memories
+   */
+  private _countMemoryTokens(): number {
+    return Array.from(this._memories.values()).reduce(
+      (total, m) => total + countTokensSync(m.content) + countTokensSync(m.category),
+      0,
+    );
+  }
+
+  /**
+   * Evict the least recently accessed memory
+   */
+  private _evictOldest(): void {
+    let oldestId: string | undefined;
+    let oldestTime = Infinity;
+
+    for (const [id, memory] of this._memories.entries()) {
+      const accessTime = new Date(memory.lastAccessedAt).getTime();
+      if (accessTime < oldestTime) {
+        oldestTime = accessTime;
+        oldestId = id;
+      }
+    }
+
+    if (oldestId) this._memories.delete(oldestId);
   }
 }
 

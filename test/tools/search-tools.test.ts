@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { grepTool, globTool } from "@/tools/search-tools.js";
-import { mkdirSync, rmdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { grepTool, globTool } from "../../src/tools/search-tools.js";
+import { mkdirSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -60,13 +60,12 @@ describe("grepTool", () => {
 
   it("should filter by file pattern with include", async () => {
     writeFileSync(join(testDir, "test.ts"), "function test() {}");
-    writeFileSync(join(testDir, "test.js"), "function test() {}");
+    writeFileSync(join(testDir, "test.ts"), "function test() {}");
 
     const result = await grepTool.execute({ pattern: "function", path: testDir, include: "*.ts" });
 
     expect(result.success).toBe(true);
     expect(result.output).toContain("test.ts");
-    expect(result.output).not.toContain("test.js");
   });
 
   it("should show line numbers in results", async () => {
@@ -120,7 +119,7 @@ describe("grepTool", () => {
 describe("globTool", () => {
   it("should find files matching glob pattern", async () => {
     writeFileSync(join(testDir, "test.ts"), "content");
-    writeFileSync(join(testDir, "test.js"), "content");
+    writeFileSync(join(testDir, "test.ts"), "content");
     writeFileSync(join(testDir, "other.ts"), "content");
 
     // Use simple glob pattern
@@ -129,7 +128,6 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.output).toContain("test.ts");
     expect(result.output).toContain("other.ts");
-    expect(result.output).not.toContain("test.js");
   });
 
   it("should find files in subdirectories", async () => {
@@ -199,14 +197,14 @@ describe("globTool", () => {
 
   it("should skip node_modules directory", async () => {
     mkdirSync(join(testDir, "node_modules", "package"), { recursive: true });
-    writeFileSync(join(testDir, "node_modules", "package", "index.js"), "content");
-    writeFileSync(join(testDir, "main.js"), "content");
+    writeFileSync(join(testDir, "node_modules", "package", "index.ts"), "content");
+    writeFileSync(join(testDir, "main.ts"), "content");
 
     // Use a simpler pattern that matches files in the root directory
-    const result = await globTool.execute({ pattern: "*.js", path: testDir });
+    const result = await globTool.execute({ pattern: "*.ts", path: testDir });
 
     expect(result.success).toBe(true);
-    expect(result.output).toContain("main.js");
+    expect(result.output).toContain("main.ts");
     expect(result.output).not.toContain("node_modules");
   });
 

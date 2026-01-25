@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { ConversationManager } from "@/core/conversation.js";
+import { ConversationManager } from "../../src/core/conversation.js";
 import { writeFileSync, unlinkSync } from "node:fs";
 
 describe("ConversationManager error handling", () => {
@@ -13,61 +13,61 @@ describe("ConversationManager error handling", () => {
     }
   });
 
-  it("should handle malformed JSON gracefully", () => {
+  it("should handle malformed JSON gracefully", async () => {
     writeFileSync(tempFile, "{invalid json}", "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle truncated JSON", () => {
+  it("should handle truncated JSON", async () => {
     writeFileSync(tempFile, '{"messages": [{"role": "user", "content": "hello"', "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle missing messages array", () => {
+  it("should handle missing messages array", async () => {
     writeFileSync(tempFile, '{"timestamp": "2024-01-01"}', "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle non-object JSON", () => {
+  it("should handle non-object JSON", async () => {
     writeFileSync(tempFile, "null", "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle array instead of object", () => {
+  it("should handle array instead of object", async () => {
     writeFileSync(tempFile, "[1, 2, 3]", "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle empty JSON object", () => {
+  it("should handle empty JSON object", async () => {
     writeFileSync(tempFile, "{}", "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should return empty array for non-existent file", () => {
+  it("should return empty array for non-existent file", async () => {
     const manager = new ConversationManager("/non/existent/file.json");
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should return empty array when no file is specified", () => {
+  it("should return empty array when no file is specified", async () => {
     const manager = new ConversationManager();
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should load valid conversation file correctly", () => {
+  it("should load valid conversation file correctly", async () => {
     const validContent = JSON.stringify({
       timestamp: "2024-01-01T00:00:00.000Z",
       messages: [
@@ -77,24 +77,24 @@ describe("ConversationManager error handling", () => {
     });
     writeFileSync(tempFile, validContent, "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toHaveLength(2);
     expect(history[0]).toEqual({ role: "user", content: "hello" });
     expect(history[1]).toEqual({ role: "assistant", content: "hi there" });
   });
 
-  it("should handle empty messages array", () => {
+  it("should handle empty messages array", async () => {
     writeFileSync(tempFile, '{"messages": []}', "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     expect(history).toEqual([]);
   });
 
-  it("should handle messages array with invalid objects", () => {
+  it("should handle messages array with invalid objects", async () => {
     // This tests that we return the array even if content is malformed
     writeFileSync(tempFile, '{"messages": [{"role": "user"}]}', "utf-8");
     const manager = new ConversationManager(tempFile);
-    const history = manager.loadHistory();
+    const history = await manager.loadHistory();
     // Should return the array as-is, validation is minimal
     expect(history).toHaveLength(1);
   });

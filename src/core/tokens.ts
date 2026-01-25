@@ -3,16 +3,24 @@ import type { MessageRole, ToolCall } from "../providers/types.js";
 type Tiktoken = Awaited<ReturnType<typeof import("tiktoken").get_encoding>>;
 
 let _encoder: Tiktoken | null = null;
+let _warnedAboutFallback = false;
 
 async function getEncoder(): Promise<Tiktoken | null> {
   if (_encoder) return _encoder;
 
   try {
     const tiktoken = await import("tiktoken");
-    _encoder = await tiktoken.get_encoding("cl100k_base");
+    _encoder = tiktoken.get_encoding("cl100k_base");
     return _encoder;
   } catch {
     // tiktoken not available, use fallback
+    if (!_warnedAboutFallback) {
+      console.warn(
+        "[WARN] tiktoken not available - using inaccurate character-based token counting. " +
+          "Install tiktoken for accurate context budget calculations.",
+      );
+      _warnedAboutFallback = true;
+    }
     return null;
   }
 }
@@ -84,6 +92,9 @@ export async function truncateMessages(
   }>
 > {
   const encoder = await getEncoder();
+  const countTokensFn = encoder
+    ? (text: string): number => encoder.encode(text).length
+    : countTokensSync;
 
   const result: Array<{
     role: MessageRole;
@@ -92,27 +103,17 @@ export async function truncateMessages(
     toolCallId?: string;
   }> = [];
 
-  const countTokensFn = encoder
-    ? (text: string): number => encoder.encode(text).length
-    : countTokensSync;
-
-  for (let i = messages.length - 1; i >= 0; i--) {
+  for (let i = messages.length - 1; i >= 0 && maxTokens > 0; i--) {
     const msg = messages[i];
     if (!msg) continue;
 
     const msgTokens = countTokensFn(msg.content);
-
     if (msgTokens > maxTokens) {
-      const charsToKeep = maxTokens * 4;
-      msg.content = msg.content.slice(-charsToKeep);
+      msg.content = msg.content.slice(-(maxTokens * 4));
     }
 
     result.unshift(msg);
-
     maxTokens -= countTokensFn(msg.content);
-    if (maxTokens <= 0) {
-      break;
-    }
   }
 
   return result;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills } from "../src/loader.ts";
+import { discoverSkills } from "../../src/skills/loader.js";
 
 const tempDir = path.join("/tmp", "test-skills", Date.now().toString());
 

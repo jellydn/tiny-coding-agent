@@ -37,8 +37,10 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 ### TypeScript
 
 - ES modules with TypeScript 5+, strict mode
-- Compiler: `verbatimModuleSyntax`, `noUncheckedIndexedAccess`, `noImplicitOverride`
-- `noUnusedLocals: false`, `noUnusedParameters: false` (unused code allowed)
+- Compiler options in `tsconfig.json`:
+  - `verbatimModuleSyntax`: Requires explicit type imports
+  - `noUncheckedIndexedAccess`: Accessing indexed types requires validation
+  - `noImplicitOverride`: Override methods must use `override` keyword
 - Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
 - Use `satisfies` for type narrowing with validation
 
@@ -131,9 +133,19 @@ src/
   cli/        # CLI interface
   config/     # Configuration loading
   skills/     # Skill loading (agentskills.io support)
+  ui/         # React components for CLI output
+  utils/      # Shared utilities
 ```
 
-Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
+## Key Dependencies
+
+| Category      | Packages                                |
+| ------------- | --------------------------------------- |
+| LLM Providers | `@anthropic-ai/sdk`, `openai`, `ollama` |
+| Protocols     | `@modelcontextprotocol/sdk`             |
+| Validation    | `zod`                                   |
+| CLI UI        | `ink`, `react`                          |
+| Encoding      | `tiktoken`                              |
 
 ## Agent Workflow
 

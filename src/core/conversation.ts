@@ -1,14 +1,23 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs/promises";
 import type { Message } from "../providers/types.js";
 
 export interface ConversationManagerOptions {
-  conversationFile?: string;
+  /** Maximum number of messages to keep in history (0 = unlimited) */
+  maxMessages?: number;
+  /** Maximum token count for history (0 = unlimited) */
+  maxTokens?: number;
 }
 
 export class ConversationManager {
   private _conversationHistory: Message[] = [];
+  private readonly _maxMessages: number;
 
-  constructor(readonly conversationFile?: string) {}
+  constructor(
+    readonly conversationFile?: string,
+    options: ConversationManagerOptions = {},
+  ) {
+    this._maxMessages = options.maxMessages ?? 0;
+  }
 
   startSession(): void {
     this._conversationHistory = [];
@@ -19,29 +28,28 @@ export class ConversationManager {
   }
 
   async setHistory(messages: Message[]): Promise<void> {
-    this._conversationHistory = messages;
+    this._conversationHistory = this._truncateHistory(messages);
     await this._save();
   }
 
-  loadHistory(): Message[] {
-    if (!this.conversationFile || !existsSync(this.conversationFile)) {
-      return [];
+  private _truncateHistory(messages: Message[]): Message[] {
+    // Apply max messages limit (keep most recent messages)
+    if (this._maxMessages > 0 && messages.length > this._maxMessages) {
+      messages = messages.slice(-this._maxMessages);
     }
+    return messages;
+  }
+
+  async loadHistory(): Promise<Message[]> {
+    if (!this.conversationFile) return [];
 
     try {
-      const content = readFileSync(this.conversationFile, "utf-8");
+      const content = await fs.readFile(this.conversationFile, "utf-8");
       const parsed = JSON.parse(content);
 
-      // Validate structure
-      if (!parsed || typeof parsed !== "object") {
+      // Guard: validate structure
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.messages)) {
         console.warn(`Warning: Invalid conversation file format in ${this.conversationFile}`);
-        return [];
-      }
-
-      if (!Array.isArray(parsed.messages)) {
-        console.warn(
-          `Warning: Conversation file missing messages array in ${this.conversationFile}`,
-        );
         return [];
       }
 
@@ -49,7 +57,7 @@ export class ConversationManager {
     } catch (err) {
       if (err instanceof SyntaxError) {
         console.error(`Warning: Malformed JSON in ${this.conversationFile}: ${err.message}`);
-      } else {
+      } else if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
         console.error(`Warning: Failed to load conversation from ${this.conversationFile}: ${err}`);
       }
       return [];
@@ -65,13 +73,18 @@ export class ConversationManager {
         null,
         2,
       );
-      writeFileSync(this.conversationFile, data, "utf-8");
+      await fs.writeFile(this.conversationFile, data, "utf-8");
     } catch (err) {
       console.error(`Warning: Failed to save conversation to ${this.conversationFile}: ${err}`);
     }
   }
 
   async close(): Promise<void> {
-    // No-op: simplified implementation without locks
+    await this._save();
+  }
+
+  /** Get current history count for monitoring */
+  getHistoryCount(): number {
+    return this._conversationHistory.length;
   }
 }

@@ -24,10 +24,40 @@ import { parseSkillFrontmatter } from "../skills/parser.js";
 import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
 import { ConversationManager } from "./conversation.js";
 
+const MAX_OUTPUT_LENGTH = 500;
+
+function checkAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+function isLooping(recentToolCalls: string[]): boolean {
+  if (recentToolCalls.length < 3) return false;
+  const lastThree = recentToolCalls.slice(-3);
+  return lastThree.every((call) => call === lastThree[0]);
+}
+
 function redactApiKey(key?: string): string {
   if (!key) return "(not set)";
   if (key.length <= 8) return "****";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+function truncateOutput(output: string | undefined): string | undefined {
+  if (!output) return output;
+  const lines = output.split("\n");
+  if (lines.length > 10) {
+    return `${lines.slice(0, 10).join("\n")}\n... (${lines.length - 10} more lines)`;
+  }
+  if (output.length > MAX_OUTPUT_LENGTH) {
+    return `${output.slice(0, MAX_OUTPUT_LENGTH)}\n... (${output.length - MAX_OUTPUT_LENGTH} more chars)`;
+  }
+  return output;
+}
+
+function calculateMessageTokens(messages: Message[]): number {
+  return messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0);
 }
 
 export interface ProviderConfigs {
@@ -84,6 +114,19 @@ export interface AgentResponse {
   messages: Message[];
 }
 
+export interface HealthStatus {
+  ready: boolean;
+  issues: string[];
+  providerCount: number;
+  skillCount: number;
+  memoryEnabled: boolean;
+  mcpServers?: Array<{ name: string; connected: boolean; toolCount: number }>;
+}
+
+export interface ShutdownOptions {
+  signal?: boolean;
+}
+
 function isValidToolCall(text: string): boolean {
   try {
     const parsed = JSON.parse(text);
@@ -91,6 +134,32 @@ function isValidToolCall(text: string): boolean {
   } catch {
     return false;
   }
+}
+
+interface BuildStatsParams {
+  systemTokens: number;
+  memoryTokens: number;
+  convTokens: number;
+  truncationApplied: boolean;
+  maxContextTokens: number;
+}
+
+function buildStats({
+  systemTokens,
+  memoryTokens,
+  convTokens,
+  truncationApplied,
+  maxContextTokens,
+}: BuildStatsParams): ContextStats {
+  return {
+    systemPromptTokens: systemTokens,
+    memoryTokens,
+    conversationTokens: convTokens,
+    totalTokens: systemTokens + memoryTokens + convTokens,
+    maxContextTokens,
+    truncationApplied,
+    memoryCount: 0,
+  };
 }
 
 export class Agent {
@@ -211,6 +280,7 @@ export class Agent {
     runtimeConfig?: RuntimeConfig,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
+    // Guard: ensure skills are initialized before processing
     if (this._skillsInitPromise) {
       await this._skillsInitPromise;
     }
@@ -223,7 +293,7 @@ export class Agent {
 
     const conversationFile = this._conversationManager.conversationFile;
     let messages: Message[] = conversationFile
-      ? this._conversationManager.loadHistory()
+      ? await this._conversationManager.loadHistory()
       : this._conversationManager.getHistory();
 
     const isContinuation = userPrompt === "continue";
@@ -233,38 +303,25 @@ export class Agent {
       messages = [{ role: "user", content: userPrompt }];
     }
 
-    let contextStats: ContextStats | undefined;
+    let contextStats: ContextStats;
     let memoryTokensUsed = 0;
     let truncationApplied = false;
 
     const systemTokens = countTokensSync(this._systemPrompt);
+    const maxContextTokens = this._maxContextTokens ?? 0;
 
-    const makeContextStats = (memTokens: number, trunc: boolean): ContextStats => ({
-      systemPromptTokens: systemTokens,
-      memoryTokens: memTokens,
-      conversationTokens: messages.reduce((s, m) => s + countTokensSync(m.content), 0),
-      totalTokens: systemTokens + memTokens + messages.reduce((s, m) => s + countTokensSync(m.content), 0),
-      maxContextTokens: this._maxContextTokens ?? 0,
-      truncationApplied: trunc,
-      memoryCount: 0,
-    });
-
+    // Guard: no context limit - track stats for display only
     if (!this._maxContextTokens) {
-      // No context limit - track stats for display only
-      const conversationTokens = messages.reduce(
-        (sum, msg) => sum + countTokensSync(msg.content),
-        0,
-      );
-      contextStats = {
-        systemPromptTokens: systemTokens,
+      contextStats = buildStats({
+        systemTokens,
         memoryTokens: 0,
-        conversationTokens,
-        totalTokens: systemTokens + conversationTokens,
-        maxContextTokens: 0,
+        convTokens: calculateMessageTokens(messages),
         truncationApplied: false,
-        memoryCount: 0,
-      };
-    } else if (this._memoryStore) {
+        maxContextTokens,
+      });
+    }
+    // Guard: memory store available - use memory-enhanced context
+    else if (this._memoryStore) {
       const { memoryBudget, conversationBudget } = calculateContextBudget(
         this._maxContextTokens,
         systemTokens,
@@ -284,26 +341,22 @@ export class Agent {
       contextStats = result.stats;
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
-    } else {
-      // No memory store but has max context - truncate messages
+    }
+    // Default: truncate messages to fit context
+    else {
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
-      if (availableTokens <= 0) {
-        truncationApplied = false;
-      } else {
+      if (availableTokens > 0) {
         const truncated = await truncateMessages(messages, availableTokens);
         truncationApplied = truncated.length < messages.length;
         if (truncationApplied) messages = truncated as Message[];
       }
-      contextStats = {
-        systemPromptTokens: systemTokens,
+      contextStats = buildStats({
+        systemTokens,
         memoryTokens: 0,
-        conversationTokens: messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0),
-        totalTokens:
-          systemTokens + messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0),
-        maxContextTokens: this._maxContextTokens,
+        convTokens: calculateMessageTokens(messages),
         truncationApplied,
-        memoryCount: 0,
-      };
+        maxContextTokens,
+      });
     }
 
     const tools = this._getToolDefinitions();
@@ -339,11 +392,7 @@ export class Agent {
     let loopDetected = false;
 
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
-      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-
-      if (!contextStats) {
-        contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
-      }
+      checkAborted(options?.signal);
 
       if (this._verbose) {
         console.log(`\n[Iteration ${iteration + 1}]`);
@@ -428,7 +477,7 @@ export class Agent {
         return;
       }
 
-      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      checkAborted(options?.signal);
 
       yield {
         content: "",
@@ -449,9 +498,10 @@ export class Agent {
       const batchResults = await this._toolRegistry.executeBatch(calls);
 
       const resultMap = new Map(batchResults.map((br) => [br.name, br]));
+      const getToolResult = (name: string) => resultMap.get(name)?.result;
       const toolExecutionResults = assistantToolCalls.map((tc) => ({
         toolCall: tc,
-        result: resultMap.get(tc.name)?.result ?? {
+        result: getToolResult(tc.name) ?? {
           success: false,
           error: `Tool "${tc.name}" result not found`,
         },
@@ -471,7 +521,7 @@ export class Agent {
         contextStats,
       };
 
-      if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      checkAborted(options?.signal);
 
       for (const { toolCall, result } of toolExecutionResults) {
         const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
@@ -524,27 +574,37 @@ export class Agent {
             `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
           );
         }
-        contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
+        contextStats = buildStats({
+          systemTokens,
+          memoryTokens: memoryTokensUsed,
+          convTokens: calculateMessageTokens(messages),
+          truncationApplied,
+          maxContextTokens,
+        });
         continue;
       }
 
-      if (recentToolCalls.length >= 3) {
-        const lastThree = recentToolCalls.slice(-3);
-        if (lastThree.every((call) => call === lastThree[0])) {
-          const toolName = assistantToolCalls[0]?.name ?? "unknown";
-          messages.push({
-            role: "system",
-            content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
-          });
-          if (this._verbose) {
-            console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
-          }
-          loopDetected = true;
-          break;
+      // Guard: check for tool call loop
+      if (recentToolCalls.length >= 3 && isLooping(recentToolCalls)) {
+        const toolName = assistantToolCalls[0]?.name ?? "unknown";
+        messages.push({
+          role: "system",
+          content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
+        });
+        if (this._verbose) {
+          console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
         }
+        loopDetected = true;
+        break;
       }
 
-      contextStats = makeContextStats(memoryTokensUsed, truncationApplied);
+      contextStats = buildStats({
+        systemTokens,
+        memoryTokens: memoryTokensUsed,
+        convTokens: calculateMessageTokens(messages),
+        truncationApplied,
+        maxContextTokens,
+      });
     }
 
     if (loopDetected) {
@@ -572,7 +632,13 @@ export class Agent {
             content: chunk.content,
             iterations: iteration + 1,
             done: false,
-            contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
+            contextStats: buildStats({
+              systemTokens,
+              memoryTokens: memoryTokensUsed,
+              convTokens: calculateMessageTokens(messages),
+              truncationApplied,
+              maxContextTokens,
+            }),
           };
         }
       }
@@ -582,7 +648,13 @@ export class Agent {
         content: "",
         iterations: iteration + 1,
         done: true,
-        contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
+        contextStats: buildStats({
+          systemTokens,
+          memoryTokens: memoryTokensUsed,
+          convTokens: calculateMessageTokens(messages),
+          truncationApplied,
+          maxContextTokens,
+        }),
       };
       return;
     }
@@ -598,7 +670,13 @@ export class Agent {
       iterations: iteration,
       done: true,
       maxIterationsReached: true,
-      contextStats: makeContextStats(memoryTokensUsed, truncationApplied),
+      contextStats: buildStats({
+        systemTokens,
+        memoryTokens: memoryTokensUsed,
+        convTokens: calculateMessageTokens(messages),
+        truncationApplied,
+        maxContextTokens,
+      }),
     };
   }
 
@@ -689,6 +767,57 @@ export class Agent {
     this._activeSkillAllowedTools = undefined;
   }
 
+  async healthCheck(): Promise<HealthStatus> {
+    const issues: string[] = [];
+
+    if (!this._defaultLlmClient) {
+      issues.push("No default LLM client configured");
+    }
+
+    if (this._providerConfigs && Object.keys(this._providerConfigs).length === 0) {
+      issues.push("Provider configs empty");
+    }
+
+    // Get MCP server status if available
+    let mcpServers: Array<{ name: string; connected: boolean; toolCount: number }> = [];
+    try {
+      // Note: This uses deprecated global pattern - in future, inject MCP manager
+      const mcpManager = (await import("../mcp/manager.js")).getGlobalMcpManager();
+      if (mcpManager) {
+        mcpServers = mcpManager.getServerStatus();
+        const disconnected = mcpServers.filter((s) => !s.connected);
+        for (const server of disconnected) {
+          issues.push(`MCP server "${server.name}" disconnected`);
+        }
+      }
+    } catch {
+      /* MCP not available */
+    }
+
+    return {
+      ready: issues.length === 0,
+      issues,
+      providerCount: this._providerCache.size,
+      skillCount: this._skills.size,
+      memoryEnabled: !!this._memoryStore,
+      mcpServers,
+    };
+  }
+
+  async shutdown(options?: ShutdownOptions): Promise<void> {
+    if (this._memoryStore) {
+      this._memoryStore.flush();
+    }
+
+    await this._conversationManager.close();
+
+    if (options?.signal !== false) {
+      // Remove signal handlers if any were registered
+      process.removeAllListeners("SIGTERM");
+      process.removeAllListeners("SIGINT");
+    }
+  }
+
   private _getToolDefinitions(): ToolDefinition[] {
     const allTools = this._toolRegistry.list().map((tool) => ({
       name: tool.name,
@@ -703,18 +832,4 @@ export class Agent {
     const allowedSet = new Set(this._activeSkillAllowedTools);
     return allTools.filter((tool) => allowedSet.has(tool.name));
   }
-}
-
-const MAX_OUTPUT_LENGTH = 500;
-
-function truncateOutput(output: string | undefined): string | undefined {
-  if (!output) return output;
-  const lines = output.split("\n");
-  if (lines.length > 10) {
-    return `${lines.slice(0, 10).join("\n")}\n... (${lines.length - 10} more lines)`;
-  }
-  if (output.length > MAX_OUTPUT_LENGTH) {
-    return `${output.slice(0, MAX_OUTPUT_LENGTH)}\n... (${output.length - MAX_OUTPUT_LENGTH} more chars)`;
-  }
-  return output;
 }

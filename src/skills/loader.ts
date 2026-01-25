@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseSkillFrontmatter, type ParsedSkill } from "./parser.js";
 import type { SkillMetadata } from "./types.js";
 import { getEmbeddedBuiltinSkills } from "./builtin-registry.js";
+import { parseSignatureFromFrontmatter, verifyPluginSignature } from "./signature.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,7 +44,34 @@ async function findSkillFiles(dir: string): Promise<string[]> {
 async function parseFrontmatterOnly(filePath: string): Promise<ParsedSkill | null> {
   try {
     const content = await fs.readFile(filePath, "utf-8");
-    return parseSkillFrontmatter(content);
+    const parsed = parseSkillFrontmatter(content);
+
+    // Check for signature verification
+    if (parsed?.frontmatter) {
+      const signature = parseSignatureFromFrontmatter(
+        parsed.frontmatter as unknown as Record<string, unknown>,
+      );
+      if (signature) {
+        const verification = await verifyPluginSignature(signature, content);
+        if (!verification.valid) {
+          console.warn(
+            `[Plugin Security] Warning: Plugin "${parsed.frontmatter.name}" signature verification failed: ${verification.reason}`,
+          );
+        } else {
+          if (process.env.TINY_AGENT_VERBOSE === "true") {
+            console.log(
+              `[Plugin Security] Plugin "${verification.info?.plugin}" verified: signed by ${verification.info?.author} at ${verification.info?.timestamp}`,
+            );
+          }
+        }
+      } else if (process.env.TINY_AGENT_WARN_UNSIGNED === "true") {
+        console.warn(
+          `[Plugin Security] Plugin "${parsed.frontmatter.name}" is unsigned. Only run plugins from trusted sources.`,
+        );
+      }
+    }
+
+    return parsed;
   } catch (err) {
     console.warn(`Warning: Invalid SKILL.md at ${filePath}: ${(err as Error).message}`);
     return null;

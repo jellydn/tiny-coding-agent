@@ -37,6 +37,12 @@ export interface ChatOptions {
     budgetTokens?: number;
   };
   signal?: AbortSignal;
+  /**
+   * Maximum number of chunks to yield before pausing (backpressure safety)
+   * Prevents memory exhaustion on very large responses.
+   * Default: 10000 chunks (approximately 10MB of text)
+   */
+  maxChunks?: number;
 }
 
 export interface ChatResponse {

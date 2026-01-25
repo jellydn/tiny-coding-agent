@@ -136,6 +136,7 @@ export function buildThinkingConfig(enabled: boolean, budgetTokens?: number) {
 
 export class AnthropicProvider implements LLMClient {
   private _client: Anthropic;
+  private _capabilitiesCache = new Map<string, ModelCapabilities>();
 
   constructor(config: AnthropicProviderConfig) {
     this._client = new Anthropic({
@@ -196,11 +197,24 @@ export class AnthropicProvider implements LLMClient {
     };
     options.signal?.addEventListener("abort", abortHandler);
 
+    // Backpressure safety: limit chunks to prevent memory exhaustion
+    const maxChunks = options.maxChunks ?? 10000;
+    let chunkCount = 0;
+
     try {
       const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
       let currentBlockIndex = -1;
 
       for await (const event of stream) {
+        // Backpressure check: pause if we've yielded too many chunks
+        if (chunkCount >= maxChunks) {
+          yield {
+            content: "",
+            done: false,
+          };
+          return;
+        }
+
         if (event.type === "content_block_start") {
           currentBlockIndex = event.index;
           if (event.content_block.type === "tool_use") {
@@ -213,6 +227,7 @@ export class AnthropicProvider implements LLMClient {
         } else if (event.type === "content_block_delta") {
           const delta = event as ContentBlockDelta;
           if (delta.delta.type === "text_delta") {
+            chunkCount++;
             yield {
               content: delta.delta.text,
               done: false,
@@ -224,6 +239,7 @@ export class AnthropicProvider implements LLMClient {
             }
           }
         } else if (event.type === "message_stop") {
+          chunkCount++;
           const toolCalls: ToolCall[] | undefined =
             toolCallsBuffer.size > 0
               ? Array.from(toolCallsBuffer.values()).map((tc) => ({
@@ -248,25 +264,44 @@ export class AnthropicProvider implements LLMClient {
   }
 
   async getCapabilities(model: string): Promise<ModelCapabilities> {
+    // Guard: check cache first
+    const cached = this._capabilitiesCache.get(model);
+    if (cached) return cached;
+
     const modelContextWindow: Record<string, number> = {
       "claude-3-5-sonnet-20241022": 200000,
       "claude-3-5-haiku-20241022": 200000,
       "claude-3-opus-20240229": 200000,
       "claude-3-sonnet-20240229": 200000,
       "claude-3-haiku-20240307": 200000,
+      "claude-sonnet-4-20250520": 200000,
+      "claude-opus-4-20250520": 200000,
+      "claude-haiku-4-20250520": 200000,
     };
 
     const hasThinking = modelRegistrySupportsThinking(model);
+    const contextWindow = modelContextWindow[model];
 
-    return {
+    // Warn for unknown models with hardcoded fallback
+    if (!contextWindow) {
+      console.warn(
+        `[WARN] Unknown model "${model}" - using default context window of 200000 tokens. ` +
+          "Context limits may be inaccurate. Consider updating the model registry.",
+      );
+    }
+
+    const capabilities: ModelCapabilities = {
       modelName: model,
       supportsTools: true,
       supportsStreaming: true,
       supportsSystemPrompt: true,
       supportsToolStreaming: true,
       supportsThinking: hasThinking,
-      contextWindow: modelContextWindow[model] ?? 200000,
+      contextWindow: contextWindow ?? 200000,
       maxOutputTokens: 8192,
     };
+
+    this._capabilitiesCache.set(model, capabilities);
+    return capabilities;
   }
 }

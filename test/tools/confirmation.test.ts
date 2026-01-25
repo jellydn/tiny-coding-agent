@@ -4,7 +4,7 @@ import {
   getConfirmationHandler,
   type ConfirmationRequest,
   type ConfirmationResult,
-} from "../src/confirmation.js";
+} from "../../src/tools/confirmation.js";
 
 describe("confirmation", () => {
   beforeEach(() => {

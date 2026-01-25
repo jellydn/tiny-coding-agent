@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { unlinkSync } from "node:fs";
-import { MemoryStore, calculateContextBudget } from "@/core/memory.js";
+import { MemoryStore, calculateContextBudget } from "../../src/core/memory.js";
 
 const tempFile = "/tmp/test-memory-store.json";
 

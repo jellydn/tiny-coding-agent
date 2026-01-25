@@ -5,14 +5,17 @@
 ## Test Framework
 
 **Runner:**
+
 - bun:test (built into Bun runtime)
 - Config: No separate config file, uses defaults
 - Version: Bundled with Bun
 
 **Assertion Library:**
+
 - bun:test assertions (`expect`, `toBe`, `toEqual`, `toBeDefined`, etc.)
 
 **Run Commands:**
+
 ```bash
 bun test                    # Run all tests
 bun test <file>             # Run single test file
@@ -23,6 +26,7 @@ bun test:watch              # Watch mode for TDD
 ## Test File Organization
 
 **Location:**
+
 - `test/` directory at project root (parallel to `src/`)
 - Mirror `src/` directory structure:
   - `test/core/` for core module tests
@@ -33,9 +37,11 @@ bun test:watch              # Watch mode for TDD
   - `test/ui/` for UI tests
 
 **Naming:**
+
 - `{module}.test.ts` pattern: `memory.test.ts`, `agent.test.ts`, `file-tools.test.ts`
 
 **Structure:**
+
 ```
 test/
   core/
@@ -54,6 +60,7 @@ test/
 ## Test Structure
 
 **Suite Organization:**
+
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
@@ -62,12 +69,12 @@ describe("ModuleName", () => {
     it("should do something", () => {
       // Test implementation
     });
-    
+
     it("should handle edge case", () => {
       // Test implementation
     });
   });
-  
+
   describe("anotherMethod()", () => {
     it("should return expected value", () => {
       // Test implementation
@@ -77,12 +84,14 @@ describe("ModuleName", () => {
 ```
 
 **Patterns:**
+
 - Nested `describe` blocks for methods/features
 - `beforeEach` for setup
 - `afterEach` for cleanup
 - One expectation per test for clarity (not required but preferred)
 
 **Example from `test/core/memory.test.ts`:**
+
 ```typescript
 describe("MemoryStore", () => {
   describe("_evictIfNeeded()", () => {
@@ -95,7 +104,7 @@ describe("MemoryStore", () => {
       expect(store.count()).toBe(3);
     });
   });
-  
+
   describe("findRelevant()", () => {
     it("should return memories that match the query", () => {
       const store = new MemoryStore({ filePath: tempFile, maxMemories: 10 });
@@ -122,12 +131,12 @@ class MockLLMClient implements LLMClient {
       finishReason: "stop",
     };
   }
-  
+
   async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
     yield { content: "Mock response", done: false };
     yield { done: true };
   }
-  
+
   async getCapabilities(_model: string) {
     return {
       maxTokens: 100000,
@@ -165,13 +174,16 @@ Use type assertion to access private members for testing:
 const agentPrivate = agent as unknown as {
   _activeSkillAllowedTools: string[] | undefined;
   _conversationManager: ConversationManager;
-  _getToolDefinitions(): ReturnType<typeof import("./agent.ts").Agent.prototype._getToolDefinitions>;
+  _getToolDefinitions(): ReturnType<
+    typeof import("./agent.ts").Agent.prototype._getToolDefinitions
+  >;
 };
 ```
 
 ## Fixtures and Factories
 
 **Test Data:**
+
 - Manual creation in tests
 - Helper functions for common setups:
 
@@ -185,6 +197,7 @@ function createMessages(...contents: string[]): Message[] {
 ```
 
 **Temporary Files:**
+
 - Use `/tmp/` for temp file tests
 - Clean up in `beforeEach` and `afterEach`:
 
@@ -213,6 +226,7 @@ afterEach(() => {
 **Requirements:** None explicitly enforced
 
 **View Coverage:**
+
 ```bash
 bun test --coverage  # Note: Check if supported by bun version
 ```
@@ -222,36 +236,41 @@ bun test --coverage  # Note: Check if supported by bun version
 ## Test Types
 
 **Unit Tests:**
+
 - Test individual classes and functions in isolation
 - Mock external dependencies (LLM clients, file system)
 - Example: `test/core/memory.test.ts` tests `MemoryStore` class
 
 **Integration Tests:**
+
 - Test tool registry and tool execution
 - Example: `test/tools/file-tools.test.ts` tests file tool validation
 
 **No E2E Tests:**
+
 - Project does not use Playwright, Cypress, or other E2E frameworks
 - Agent behavior tested via unit/mock tests
 
 ## Common Patterns
 
 **Async Testing:**
+
 ```typescript
 it("should load conversation from file when conversationFile is set", async () => {
   writeFileSync(tempConversationFile, JSON.stringify({ messages: existingConversation }, null, 2));
   const llm = new MockLLMClient();
   const registry = new ToolRegistry();
   const agent = new Agent(llm, registry, { conversationFile: tempConversationFile });
-  
+
   for await (const _chunk of agent.runStream("New message", "mock-model")) {
   }
-  
+
   expect(history[0]).toEqual({ role: "user", content: "Previous user message" });
 });
 ```
 
 **Error Testing:**
+
 ```typescript
 it("should return file not found error for ENOENT", () => {
   const err = { code: "ENOENT", message: "enoent" } as NodeJS.ErrnoException;
@@ -262,6 +281,7 @@ it("should return file not found error for ENOENT", () => {
 ```
 
 **Stream Testing:**
+
 ```typescript
 async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
   yield { content: "Mock response", done: false };
@@ -272,26 +292,28 @@ async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>
 ## What to Mock
 
 **Mock These:**
+
 - LLM clients (`LLMClient` interface)
 - File system operations (via error injection)
 - External services (APIs, databases)
 - Time-dependent behavior (use controlled mocks)
 
 **Don't Mock:**
+
 - Built-in Node.js modules (test directly)
 - Simple utility functions
 - Internal class logic (test the behavior, not implementation)
 
 ## Key Test Files
 
-| File | Purpose |
-|------|---------|
-| `test/core/memory.test.ts` | MemoryStore class tests |
-| `test/core/agent.test.ts` | Agent class with mock LLM |
-| `test/tools/file-tools.test.ts` | File validation and error handling |
-| `test/providers/anthropic.test.ts` | Anthropic provider tests |
-| `test/config/loader.test.ts` | Config loading tests |
+| File                               | Purpose                            |
+| ---------------------------------- | ---------------------------------- |
+| `test/core/memory.test.ts`         | MemoryStore class tests            |
+| `test/core/agent.test.ts`          | Agent class with mock LLM          |
+| `test/tools/file-tools.test.ts`    | File validation and error handling |
+| `test/providers/anthropic.test.ts` | Anthropic provider tests           |
+| `test/config/loader.test.ts`       | Config loading tests               |
 
 ---
 
-*Testing analysis: 2026-01-25*
+_Testing analysis: 2026-01-25_

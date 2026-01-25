@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
-import { McpManager, setGlobalMcpManager, getGlobalMcpManager } from "../src/manager.js";
-import { McpClient } from "../src/client.js";
-import type { McpServerConfig } from "../config/schema.js";
-import type { McpToolDefinition } from "../src/types.js";
+import {
+  McpManager,
+  setGlobalMcpManager,
+  getGlobalMcpManager,
+  clearGlobalMcpManager,
+} from "../../src/mcp/manager.js";
+import { McpClient } from "../../src/mcp/client.js";
+import type { McpServerConfig } from "../../src/config/schema.js";
+import type { McpToolDefinition } from "../../src/mcp/types.js";
 
 describe("McpManager", () => {
   let originalGlobalManager: McpManager | null;
@@ -13,7 +18,11 @@ describe("McpManager", () => {
   });
 
   afterEach(() => {
-    setGlobalMcpManager(originalGlobalManager);
+    if (originalGlobalManager) {
+      setGlobalMcpManager(originalGlobalManager);
+    } else {
+      clearGlobalMcpManager();
+    }
   });
 
   describe("global singleton", () => {
@@ -25,7 +34,7 @@ describe("McpManager", () => {
     });
 
     it("should return null when no global manager set", () => {
-      setGlobalMcpManager(null);
+      clearGlobalMcpManager();
 
       expect(getGlobalMcpManager()).toBeNull();
     });
@@ -269,6 +278,151 @@ describe("McpManager", () => {
       expect(tool.name).toBe("mcp_fileserver_list-files");
       expect(tool.description).toContain("[MCP: fileserver]");
       expect(tool.dangerous).toContain("fileserver");
+    });
+  });
+
+  describe("server failures and reconnection", () => {
+    it("should handle connection failures gracefully", async () => {
+      const connectSpy = vi
+        .spyOn(McpClient.prototype, "connect")
+        .mockRejectedValue(new Error("Connection failed"));
+
+      try {
+        const manager = new McpManager({ verbose: true });
+        const config: McpServerConfig = { command: "echo", args: [] };
+        const result = await manager.addServer("failing", config);
+
+        // Should still return true (server registered, will retry on use)
+        expect(result).toBe(true);
+
+        const status = manager.getServerStatus();
+        expect(status.length).toBe(1);
+        expect(status[0]?.connected).toBe(false);
+      } finally {
+        connectSpy.mockRestore();
+      }
+    });
+
+    it("should attempt reconnection on tool call after failure", async () => {
+      let connectCallCount = 0;
+      const connectSpy = vi
+        .spyOn(McpClient.prototype, "connect")
+        .mockImplementation(async function () {
+          connectCallCount++;
+          if (connectCallCount === 1) {
+            throw new Error("Initial connection failed");
+          }
+          // Second call succeeds
+        });
+
+      try {
+        const manager = new McpManager();
+        const config: McpServerConfig = { command: "echo", args: [] };
+        await manager.addServer("retry", config);
+
+        // First attempt already made during addServer, failed
+        expect(connectCallCount).toBe(1);
+
+        const status = manager.getServerStatus();
+        expect(status[0]?.connected).toBe(false);
+      } finally {
+        connectSpy.mockRestore();
+      }
+    });
+
+    it("should report tool conflicts gracefully", async () => {
+      const manager = new McpManager();
+      const toolDef: McpToolDefinition = {
+        name: "read-file",
+        description: "Read a file",
+        inputSchema: { type: "object", properties: { path: { type: "string" } } },
+      };
+
+      // Register first tool
+      const tool1 = manager.createToolFromMcp("server1", toolDef);
+
+      // Try to register second tool with same name from different server
+      const tool2 = manager.createToolFromMcp("server2", toolDef);
+
+      // Both tools should be created (conflict handling is in registry)
+      expect(tool1.name).not.toBe(tool2.name);
+    });
+
+    it("should handle multiple servers with different connection states", async () => {
+      const manager = new McpManager();
+      const config1: McpServerConfig = { command: "echo", args: [] };
+      const config2: McpServerConfig = { command: "cat", args: [] };
+
+      await manager.addServer("server1", config1);
+      await manager.addServer("server2", config2);
+
+      const status = manager.getServerStatus();
+      expect(status.length).toBe(2);
+
+      const server1 = status.find((s) => s.name === "server1");
+      const server2 = status.find((s) => s.name === "server2");
+
+      expect(server1).toBeDefined();
+      expect(server2).toBeDefined();
+    });
+  });
+
+  describe("verbose mode", () => {
+    it("should log warnings when verbose is enabled", async () => {
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      try {
+        const manager = new McpManager({ verbose: true });
+        const config: McpServerConfig = { command: "nonexistent-command-xyz", args: [] };
+        await manager.addServer("test", config);
+
+        // Should have logged a warning about unavailable command
+        expect(consoleSpy).toHaveBeenCalled();
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+
+    it("should not log when verbose is disabled", async () => {
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      try {
+        const manager = new McpManager({ verbose: false });
+        const config: McpServerConfig = { command: "nonexistent-command-xyz", args: [] };
+        await manager.addServer("test", config);
+
+        // Should not have logged
+        expect(consoleSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("disabled patterns", () => {
+    it("should disable servers matching patterns", async () => {
+      const manager = new McpManager({ disabledPatterns: ["test-*"] });
+      const config: McpServerConfig = { command: "echo", args: [] };
+
+      await manager.addServer("test-server", config);
+
+      const status = manager.getServerStatus();
+      expect(status.length).toBe(1);
+      // Pattern matches, so toolCount should be 0 (tools filtered)
+      expect(status[0]?.toolCount).toBe(0);
+    });
+
+    it("should allow non-matching servers", async () => {
+      const manager = new McpManager({ disabledPatterns: ["test-*"] });
+      const config: McpServerConfig = { command: "echo", args: [] };
+
+      await manager.addServer("allowed-server", config);
+
+      const status = manager.getServerStatus();
+      expect(status.length).toBe(1);
+      // Pattern doesn't match, tools are not filtered
+      // Note: echo command may not provide tools, but pattern matching is tested
+      expect(status[0]?.name).toBe("allowed-server");
     });
   });
 });

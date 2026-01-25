@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { createSkillTool } from "../src/skill-tool.js";
+import { createSkillTool } from "../../src/tools/skill-tool.js";
 
 describe("skill-tool with allowed-tools callback", () => {
   const tempDir = "/tmp/test-skill-tool";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseSkillFrontmatter } from "../src/parser.js";
+import { parseSkillFrontmatter } from "../../src/skills/parser.js";
 
 describe("parseSkillFrontmatter", () => {
   describe("valid frontmatter", () => {

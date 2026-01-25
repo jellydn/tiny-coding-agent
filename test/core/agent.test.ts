@@ -6,10 +6,10 @@ import type {
   ChatOptions,
   StreamChunk,
   ChatResponse,
-} from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
-import { Agent } from "../src/agent.js";
-import { ConversationManager } from "../src/conversation.js";
+} from "../../src/providers/types.js";
+import { ToolRegistry } from "../../src/tools/registry.js";
+import { Agent } from "../../src/core/agent.js";
+import { ConversationManager } from "../../src/core/conversation.js";
 
 const tempConversationFile = "/tmp/test-agent-conversation.json";
 
@@ -326,7 +326,7 @@ describe("Agent", () => {
         _activeSkillAllowedTools: string[] | undefined;
         _toolRegistry: ToolRegistry;
         _getToolDefinitions(): ReturnType<
-          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+          typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions
         >;
       };
       expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
@@ -365,7 +365,7 @@ describe("Agent", () => {
       const agentPrivate = agent as unknown as {
         _activeSkillAllowedTools: string[] | undefined;
         _getToolDefinitions(): ReturnType<
-          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+          typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions
         >;
       };
       expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
@@ -407,7 +407,7 @@ describe("Agent", () => {
       const agentPrivate = agent as unknown as {
         _activeSkillAllowedTools: string[] | undefined;
         _getToolDefinitions(): ReturnType<
-          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+          typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions
         >;
       };
       expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
@@ -439,7 +439,7 @@ describe("Agent", () => {
       const agentPrivate = agent as unknown as {
         _activeSkillAllowedTools: string[] | undefined;
         _getToolDefinitions(): ReturnType<
-          typeof import("./agent.js").Agent.prototype._getToolDefinitions
+          typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions
         >;
       };
 

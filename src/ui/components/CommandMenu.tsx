@@ -60,7 +60,7 @@ export function CommandMenu({
   }, [filter]);
 
   useInput(
-    (input, key) => {
+    (_input, key) => {
       if (key.downArrow) {
         setSelectedIndex((prev) => Math.min(prev + 1, filteredCommands.length - 1));
       } else if (key.upArrow) {
