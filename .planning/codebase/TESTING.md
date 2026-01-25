@@ -5,142 +5,113 @@
 ## Test Framework
 
 **Runner:**
-
-- `bun:test` - Built-in test runner in Bun
-- Version: Bundled with Bun runtime
+- bun:test (built into Bun runtime)
+- Version: latest (via `@types/bun` dev dependency)
+- Config: No separate config file; uses bun:test conventions
 
 **Assertion Library:**
-
-- `bun:test` built-in assertions
-- Matchers: `expect()`, `toBe()`, `toEqual()`, `toContain()`, `toBeDefined()`, etc.
+- Built-in `expect` from bun:test
+- Matchers: `toBe()`, `toEqual()`, `toBeDefined()`, `toBeUndefined()`, `toBeGreaterThan()`, `toContain()`, `toThrow()`, etc.
 
 **Run Commands:**
-
 ```bash
-bun test                   # Run all tests
-bun test <file>            # Run single test file
-bun test <pattern>         # Run tests matching pattern
-bun test:watch             # Watch mode for TDD
+bun test                    # Run all tests
+bun test <file>             # Run single test file (e.g., "bun test tools/file.test.ts")
+bun test <pattern>          # Run tests matching pattern (e.g., "bun test memory")
+bun test:watch              # Watch mode for TDD
 ```
 
 ## Test File Organization
 
 **Location:**
-
 - Separate `test/` directory at project root
-- Parallel structure to `src/` directory
+- Mirrors source structure: `test/core/`, `test/tools/`, `test/providers/`, etc.
 
 **Naming:**
-
-- `*.test.ts` - All test files
-- Example: `agent.test.ts`, `file-tools.test.ts`, `memory.test.ts`
+- `*.test.ts` suffix for all test files
+- Examples: `agent.test.ts`, `memory.test.ts`, `file-tools.test.ts`
 
 **Structure:**
-
 ```
 test/
+├── agent.test.ts           # Core agent tests
+├── memory.test.ts          # Memory store tests
 ├── core/
 │   ├── agent.test.ts
 │   ├── conversation.test.ts
 │   └── memory.test.ts
 ├── tools/
-│   ├── bash-tool.test.ts
 │   ├── file-tools.test.ts
-│   ├── gitignore.test.ts
-│   └── search-tools.test.ts
+│   ├── bash-tool.test.ts
+│   ├── registry.test.ts
+│   └── skill-tool.test.ts
+├── providers/
+│   ├── anthropic.test.ts
+│   └── ollama.test.ts
 ├── security/
-│   ├── command-injection.test.ts
-│   └── file-validation.test.ts
-└── providers/
-    └── anthropic-provider.test.ts
+│   ├── file-validation.test.ts
+│   └── command-injection.test.ts
+└── e2e/
+    └── agent-loop.test.ts
 ```
 
 ## Test Structure
 
 **Suite Organization:**
-
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-describe("Component/Module", () => {
+describe("ComponentName", () => {
   describe("methodName()", () => {
     it("should do expected behavior", () => {
       // Test implementation
     });
 
     it("should handle edge case", () => {
-      // Edge case test
+      // Test implementation
+    });
+  });
+
+  describe("error scenarios", () => {
+    it("should return error for invalid input", () => {
+      // Error handling test
     });
   });
 });
 ```
 
-**Patterns:**
-
-**Setup with beforeEach:**
+**BeforeEach/AfterEach:**
+- Use for test setup and teardown
+- Clean up temp files, reset state
 
 ```typescript
-const tempFile = "/tmp/test-file.json";
-
 beforeEach(() => {
   try {
     unlinkSync(tempFile);
   } catch {
-    // Ignore if file doesn't exist
+    /* ignore - file may not exist */
   }
 });
-```
 
-**Teardown with afterEach:**
-
-```typescript
 afterEach(() => {
   try {
     unlinkSync(tempFile);
   } catch {
-    // Ignore if file doesn't exist
+    /* ignore */
   }
-});
-```
-
-**Nested Describe Blocks:**
-
-```typescript
-describe("MemoryStore", () => {
-  describe("_evictIfNeeded()", () => {
-    it("should evict oldest memories when over max limit", () => {
-      const store = new MemoryStore({ filePath: tempFile, maxMemories: 3 });
-      store.add("memory 1");
-      store.add("memory 2");
-      store.add("memory 3");
-      store.add("memory 4");
-      expect(store.count()).toBe(3);
-    });
-  });
-
-  describe("findRelevant()", () => {
-    it("should return memories that match the query", () => {
-      const store = new MemoryStore({ filePath: tempFile, maxMemories: 10 });
-      store.add("TypeScript is great");
-      const results = store.findRelevant("TypeScript", 2);
-      expect(results.length).toBe(2);
-    });
-  });
 });
 ```
 
 ## Mocking
 
-**Framework:**
+**Framework:** bun:test built-in mocking (via class implementations)
 
-- Manual mocks (no external mocking library)
-- Class-based mock implementations
+**Patterns:**
 
-**MockLLMClient Pattern:**
-
-For testing components that depend on `LLMClient`:
-
+**1. Implement Interface for Mocking:**
 ```typescript
+import type { LLMClient, ChatOptions, ChatResponse } from "@/providers/types.js";
+
 class MockLLMClient implements LLMClient {
   async chat(_options: ChatOptions): Promise<ChatResponse> {
     return {
@@ -168,24 +139,18 @@ class MockLLMClient implements LLMClient {
 }
 ```
 
-**Mock Tool Registrations:**
-
+**2. Type Casting for Private Members:**
 ```typescript
-const registry = new ToolRegistry();
-registry.register({
-  name: "read",
-  description: "Read a file",
-  parameters: {
-    type: "object",
-    properties: { path: { type: "string" } },
-    required: ["path"],
-  },
-  execute: async () => ({ success: true, output: "file content" }),
-});
+// Access private members via type casting for testing
+const agentPrivate = agent as unknown as {
+  _conversationManager: ConversationManager;
+  _activeSkillAllowedTools: string[] | undefined;
+};
+
+expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
 ```
 
-**Stream Mocking with State:**
-
+**3. Dynamic Mock Behavior:**
 ```typescript
 class ToolCallMockLLMClient implements LLMClient {
   private callCount = 0;
@@ -208,29 +173,28 @@ class ToolCallMockLLMClient implements LLMClient {
       };
       yield { done: true };
     } else {
-      // Second call: provide final answer
-      yield { content: "Final answer", done: false };
+      // Second call: provide final answer after error
+      yield { content: "I couldn't find that tool.", done: false };
       yield { done: true };
     }
   }
 }
 ```
 
-**Private Member Access in Tests:**
+**What to Mock:**
+- LLM clients (implement `LLMClient` interface)
+- File system operations (create temp files)
+- External services (API clients)
+- Tool dependencies
 
-```typescript
-// Use type assertion to access private members for testing
-const agentPrivate = agent as unknown as {
-  _activeSkillAllowedTools: string[] | undefined;
-  _getToolDefinitions(): ToolDefinition[];
-};
-expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
-```
+**What NOT to Mock:**
+- Core business logic being tested
+- Simple data structures
+- Utility functions that are directly tested
 
 ## Fixtures and Factories
 
 **Test Data Factories:**
-
 ```typescript
 function createMessages(...contents: string[]): Message[] {
   return contents.map((content, i) => ({
@@ -241,37 +205,83 @@ function createMessages(...contents: string[]): Message[] {
 ```
 
 **Location:**
+- Inline in test files for specific test utilities
+- Shared fixtures can be placed in `test/utils/` or at top of test files
 
-- Inline in test files for test-specific helpers
-- Exported from source modules for shared utilities
-
-**Temporary Files:**
-
+**Temp Directory Setup:**
 ```typescript
-const tempFile = "/tmp/test-memory-store.json";
-const tempConversationFile = "/tmp/test-agent-conversation.json";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { mkdirSync } from "node:fs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const tempDir = path.join(__dirname, "..", "..", "tmp");
+
+// Ensure temp directory exists
+try {
+  mkdirSync(tempDir, { recursive: true });
+} catch {
+  /* ignore */
+}
 ```
+
+## Coverage
+
+**Requirements:** None explicitly enforced
+
+**View Coverage:**
+```bash
+# bun test does not have built-in coverage
+# External tools like c8 or istanbul can be used if needed
+```
+
+**Coverage Expectations:**
+- Aim for comprehensive coverage of core logic
+- Integration tests cover file I/O and persistence
+- E2E tests cover agent loop behavior
+
+## Test Types
+
+**Unit Tests:**
+- Test single functions/classes in isolation
+- Mock all external dependencies
+- Location: `test/utils/`, `test/core/agent.test.ts`
+
+**Integration Tests:**
+- Test file I/O, persistence, multi-component interaction
+- Use temp files for file operations
+- Location: `test/memory.test.ts`, `test/tools/file-tools.test.ts`
+
+**E2E Tests:**
+- Test full agent loop with mocked LLM
+- Location: `test/e2e/agent-loop.test.ts`
 
 ## Common Patterns
 
-**Async Testing with Generators:**
-
+**Async Testing:**
 ```typescript
-it("should maintain conversation history across multiple turns", async () => {
-  const llm = new MockLLMClient();
-  const agent = new Agent(llm, registry);
+it("should load conversation from file when conversationFile is set", async () => {
+  writeFileSync(tempConversationFile, JSON.stringify({ messages: existingConversation }, null, 2));
 
-  for await (const _chunk of agent.runStream("Hello", "mock-model")) {
+  const llm = new MockLLMClient();
+  const registry = new ToolRegistry();
+  const agent = new Agent(llm, registry, {
+    conversationFile: tempConversationFile,
+  });
+
+  for await (const _chunk of agent.runStream("New message", "mock-model")) {
     // Consume stream
   }
 
-  const history = agent._conversationManager.getHistory();
-  expect(history.length).toBeGreaterThan(0);
+  const history = agentPrivate._conversationManager.getHistory();
+  expect(history[0]).toEqual({
+    role: "user",
+    content: "Previous user message",
+  });
 });
 ```
 
 **Error Testing:**
-
 ```typescript
 it("should return file not found error for ENOENT", () => {
   const err = { code: "ENOENT", message: "enoent" } as NodeJS.ErrnoException;
@@ -281,101 +291,52 @@ it("should return file not found error for ENOENT", () => {
 });
 ```
 
-**Edge Case Testing:**
-
+**Stream Testing:**
 ```typescript
-it("should handle empty input", () => {
-  const store = new MemoryStore({ filePath: tempFile, maxMemories: 10 });
-  store.add("");
-  expect(store.count()).toBe(1);
+it("should yield chunks from LLM", async () => {
+  const chunks: string[] = [];
+  for await (const chunk of agent.runStream("Hello", "mock-model")) {
+    if (chunk.content) chunks.push(chunk.content);
+  }
+
+  expect(chunks.length).toBeGreaterThan(0);
 });
 ```
 
-**Private Member Testing:**
-
+**Private Method Testing:**
 ```typescript
 it("should update in-memory history when called", () => {
-  const agent = new Agent(llm, registry);
   const messages = createMessages("User message", "Assistant response");
-
   agent._updateConversationHistory(messages);
 
-  expect(
-    (
-      agent as unknown as { _conversationManager: ConversationManager }
-    )._conversationManager.getHistory(),
-  ).toEqual(messages);
+  const history = (agent as unknown as { _conversationManager: ConversationManager })
+    ._conversationManager.getHistory();
+  expect(history).toEqual(messages);
 });
 ```
 
-## Test Categories
-
-**Unit Tests:**
-
-- Test individual functions and classes in isolation
-- Mock all external dependencies
-- Example: `memory.test.ts`, `file-tools.test.ts`
-
-**Integration Tests:**
-
-- Test multiple components working together
-- Use real file system operations with temp files
-- Example: `agent.test.ts`, `bash-tool.test.ts`
-
-**Security Tests:**
-
-- Test security boundaries and validation
-- Example: `command-injection.test.ts`, `file-validation.test.ts`
-
-## Test Utilities
-
-**File System Helpers:**
-
+**File Cleanup Pattern:**
 ```typescript
-import { unlinkSync, writeFileSync } from "node:fs";
+describe("MemoryStore", () => {
+  const tempFile = path.join(tempDir, "test-memory.json");
 
-beforeEach(() => {
-  try {
-    unlinkSync(tempFile);
-  } catch {
-    // Ignore if file doesn't exist
-  }
-});
+  beforeEach(() => {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  afterEach(() => {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  });
 ```
-
-**Assertion Patterns:**
-
-- `toBe()` - Strict equality
-- `toEqual()` - Deep equality (objects, arrays)
-- `toContain()` - Array/string contains value
-- `toBeDefined()` - Value is not undefined
-- `toBeGreaterThan()` - Numeric comparison
-- `toBeTruthy()` - Truthy check
-- `toBeInstanceOf()` - Class instance check
-
-## Coverage
-
-**Requirements:**
-
-- Not explicitly enforced in configuration
-- Manual coverage awareness during development
-
-**View Coverage:**
-
-```bash
-bun test --coverage  # Not currently configured
-```
-
-## Best Practices Observed
-
-1. **Test file location**: Parallel structure to `src/` in `test/` directory
-2. **Cleanup**: Always clean up temp files in `beforeEach`/`afterEach`
-3. **Descriptive names**: Test names describe behavior, not implementation
-4. **Isolated tests**: Each test should be independent
-5. **Mock patterns**: Manual mocks for clean, type-safe testing
-6. **Edge cases**: Test boundary conditions and error paths
-7. **Private access**: Use type assertions for testing private members when needed
 
 ---
 
-_Testing analysis: 2026-01-25_
+*Testing analysis: 2026-01-25*

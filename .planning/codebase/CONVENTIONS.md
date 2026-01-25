@@ -2,318 +2,165 @@
 
 **Analysis Date:** 2026-01-25
 
-## Languages
+## Naming Patterns
 
-**Primary:**
+**Files:**
+- kebab-case for all files: `file-tools.ts`, `memory-store.ts`, `agent-loop.ts`
+- `.test.ts` suffix for test files: `agent.test.ts`, `memory.test.ts`
+- `.d.ts` for type declarations if needed
 
-- TypeScript 5+ - All source code and tests
-- ES Modules - Native ESM with `.js` extension in imports
+**Classes and Types:**
+- PascalCase: `class MemoryStore`, `interface ToolOptions`, `type MemoryCategory`
+- Interface naming: `Tool`, `ChatOptions`, `StreamChunk` (no "I" prefix)
 
-**Secondary:**
-
-- JSON - Configuration files
-- Markdown - Documentation
-
-## Runtime
-
-**Environment:**
-
-- Node.js 18+ (ES Modules support)
-- Bun runtime for development and testing
-
-**Package Manager:**
-
-- Bun (lockfile: `bun.lock`)
-
-## Frameworks
-
-**Core:**
-
-- TypeScript 5.9.3 - Type safety
-- Zod 4.x - Runtime validation
-
-**Testing:**
-
-- bun:test - Built-in test runner
-
-**Build/Dev:**
-
-- oxlint 1.39.0 - Linting
-- oxfmt 0.26.0 - Formatting
-- TypeScript compiler - Type checking
-
-## Key Dependencies
-
-**Critical:**
-
-- `@anthropic-ai/sdk` - Anthropic LLM provider
-- `@modelcontextprotocol/sdk` - MCP protocol support
-- `openai` - OpenAI LLM provider
-- `ollama` - Ollama LLM provider
-- `zod` - Schema validation
-
-**Infrastructure:**
-
-- `ink` + `react` - CLI UI components
-- `tiktoken` - Token counting
-
-## Configuration
-
-**TypeScript (`tsconfig.json`):**
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "verbatimModuleSyntax": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
-  }
-}
-```
-
-**Linting (`.oxlintrc.json`):**
-
-- Uses `oxlint` with plugins: `unicorn`, `typescript`, `oxc`
-- Rules enabled as `warn` level
-
-**Formatting (`.oxfmtrc.json`):**
-
-- Uses `oxfmt` with default settings
+**Functions and Variables:**
+- camelCase: `findRelevant()`, `getCapabilities()`, `maxMemories`
+- Private members: leading underscore `_memories`, `_filePath`
+- Constants: SCREAMING_SNAKE_CASE: `SAVE_DEBOUNCE_MS`, `CATEGORY_MULTIPLIERS`
 
 ## Code Style
 
-### Naming Patterns
+**Formatting:**
+- oxfmt is the primary formatter (default config in `.oxfmtrc.json`)
+- Run `bun run format` to format code
+- Run `bun run format:check` to check formatting only
 
-**Files:**
+**Linting:**
+- oxlint is the linter with plugins: `unicorn`, `typescript`, `oxc`
+- Configured in `.oxlintrc.json` with extensive rule set
+- Run `bun run lint` to lint
+- Run `bun run lint:fix` to auto-fix issues
 
-- `kebab-case.ts` - All source files
-- Example: `file-tools.ts`, `bash-tool.ts`, `memory-store.ts`
+**Key linting rules enforced:**
+- `no-unused-vars`: unused variables flagged
+- `typescript/no-floating-promises`: floating promises must be awaited or explicitly discarded
+- `unicorn/prefer-string-starts-ends-with`: use startsWith/endsWith over regex
+- `oxc/bad-comparison-sequence`: catches `x === y === z` patterns
 
-**Directories:**
+## Import Organization
 
-- `kebab-case` - All directories
-- Example: `core/`, `tools/`, `providers/`
-
-**Classes/Types:**
-
-- `PascalCase` - Classes, interfaces, types, enums
-- Example: `Agent`, `MemoryStore`, `ToolResult`
-
-**Functions/Variables:**
-
-- `camelCase` - Functions, variables, object properties
-- Example: `runStream()`, `handleFileError()`, `maxIterations`
-
-**Constants:**
-
-- `SCREAMING_SNAKE_CASE` - Constant values
-- Example: `MAX_OUTPUT_LENGTH`, `PROVIDER_CACHE_MAX_SIZE`
-
-**Private Members:**
-
-- `_prefix` (underscore) - Private class properties
-- Example: `_defaultLlmClient`, `_conversationManager`
-
-### Strings & Variables
-
-```typescript
-const message = "text"; // Double quotes for strings
-let count = 0; // let only when reassigning
-const timeout = args.timeout ?? 60000; // ?? for nullish coalescing defaults
-```
-
-### Imports & Path Aliases
-
-**Organization (in order):**
-
-1. Node.js built-ins with `node:` prefix
-2. External package imports
-3. Path alias imports with `.js` extension for internal modules
-
-```typescript
-import * as fs from "node:fs/promises"; // Node built-ins
-import OpenAI from "openai"; // External deps
-import type { Tool } from "./types.js"; // Internal: .js extension
-import { Agent } from "@/core/agent.js"; // Path alias
-```
+**Order:**
+1. Node.js built-ins with `node:` prefix: `import * as fs from "node:fs/promises"`
+2. External dependencies: `import OpenAI from "openai"`
+3. Internal imports with `.js` extension: `import type { Tool } from "./types.js"`
 
 **Path Aliases:**
+- `@/*` alias configured in `tsconfig.json` for `src/*`
+- Example: `import { Agent } from "@/core/agent.js"`
+- Internal type imports use `import type`: `import type { LLMClient } from "@/providers/types.js"`
 
-- `@/*` maps to `src/*`
-- Example: `@/tools/registry.js` → `src/tools/registry.js`
+## TypeScript Strictness
 
-### TypeScript Specifics
+**Compiler Options in `tsconfig.json`:**
+- `verbatimModuleSyntax`: Requires explicit `import type` for types only
+- `noUncheckedIndexedAccess`: Indexed access types require validation checks
+- `noImplicitOverride`: Override methods must use `override` keyword
+- `strict`: All strict checks enabled
+- `noUnusedLocals`: false (not enforced)
+- `noUnusedParameters`: false (not enforced)
 
-**Strict Mode Enabled:**
+**Type Practices:**
+- Use `satisfies` for type narrowing with validation: `const config = settings satisfies Config`
+- Zod for runtime validation of inputs and configs: `const schema = z.object({...})`
 
-- Full strict type checking
-- `verbatimModuleSyntax` - Requires explicit type imports with `import type`
-- `noUncheckedIndexedAccess` - Indexed access requires validation
-- `noImplicitOverride` - Override methods must use `override` keyword
+## Error Handling
 
-**Type Narrowing:**
-
-- Use `satisfies` for type narrowing with validation
-- Use Zod for runtime validation of external inputs
-
-### Error Handling
-
-**Pattern: Return structured results**
-
-Never throw for expected failures. Return `{ success: boolean; error?: string; output?: string }`:
+**Structured Result Pattern:**
+Return objects with `success` boolean, not thrown exceptions:
 
 ```typescript
-async function readFile(filePath: string): Promise<ToolResult> {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return { success: true, output: content };
-  } catch (err) {
-    const error = err as NodeJS.ErrnoException;
-    if (error.code === "ENOENT") {
-      return { success: false, error: `File not found: ${filePath}` };
-    }
-    if (error.code === "EACCES") {
-      return { success: false, error: `Permission denied: ${filePath}` };
-    }
-    return { success: false, error: error.message };
+try {
+  await fs.readFile(filePath, "utf-8");
+} catch (err) {
+  const error = err as NodeJS.ErrnoException;
+  if (error.code === "ENOENT") {
+    return { success: false, error: `File not found: ${filePath}` };
   }
+  return { success: false, error: error.message };
 }
 ```
 
 **Error Codes:**
+- `ENOENT`: File/directory not found
+- `EACCES`: Permission denied
+- `EISDIR`: Is a directory (not a file)
+- `ENOTDIR`: Not a directory
 
-- `ENOENT` - File/directory not found
-- `EACCES` - Permission denied
-- `ENOTDIR` - Path component is not a directory
-- `EISDIR` - Is a directory
+**Tool Execution Results:**
+- Always return `{ success: boolean; output?: string; error?: string }`
+- Tool registry wraps execution to provide consistent error format
 
-### Async Patterns
+## Logging
+
+**Framework:** `console` (no external logging library)
+
+**Patterns:**
+- Use `[ClassName]` prefix for log messages: `console.error(\`[MemoryStore] Failed to load memories: ${err}\`)`
+- Error logging with `console.error`
+- Debug/info logging with `console.log` or `console.info` as needed
+
+**JSDoc Comments:**
+Use for public methods and complex logic:
 
 ```typescript
-async function fetchData(url: string): Promise<Result<Data>> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
-    return { success: true, data: await response.json() };
-  } catch (err) {
-    return { success: false, error: (err as Error).message };
-  }
-}
+/**
+ * Mark all memories as accessed (updates lastAccessedAt and increments accessCount)
+ */
+touchAll(): void {
 ```
 
-### Guard Clauses
+## Function Design
 
+**Parameters:**
+- Optional parameters with `= {}` or `??` defaults
+- Type all parameters explicitly
+
+**Return Values:**
+- Promise<T> for async functions
+- Structured objects for complex returns: `{ context: Message[]; stats: ContextStats }`
+
+**Guard Clauses:**
 Move preconditions to top, return early:
 
 ```typescript
-function processFile(filePath: string): Result<void> {
-  if (!filePath) return { success: false, error: "File path required" };
-  if (isSensitiveFile(filePath)) return { success: false, error: "Cannot process sensitive file" };
-
-  // Main logic
+if (!this._filePath) {
+  return;
 }
 ```
 
-### Module Design
+## React & Ink (CLI UI)
 
-**Exports:**
-
-- Named exports preferred for internal modules
-- Barrel files (`index.ts`) for re-exports from directories
-
-**Pattern:**
+**Component Style:**
+- Function components with TypeScript interfaces for props
+- Import React types: `import type { FC } from "react"` or use `React.FC<Props>`
+- Ink components: `import { Box, Text } from "ink"`
 
 ```typescript
-// src/tools/file-tools.ts
-export const readFileTool: Tool = {
-  /* ... */
-};
-export const writeFileTool: Tool = {
-  /* ... */
-};
-
-// src/tools/index.ts
-export { readFileTool, writeFileTool } from "./file-tools.js";
-```
-
-### Function Design
-
-**Parameters:**
-
-- Use objects for multiple parameters (options pattern)
-- Type validation with Zod schemas for tool arguments
-
-**Return Values:**
-
-- Async generators for streaming (`async *` pattern)
-- Structured results for operations
-
-### Comments
-
-**When to Comment:**
-
-- Complex algorithm logic
-- Non-obvious workarounds
-- TODO/FIXME for technical debt
-
-**JSDoc:**
-
-- Use for public API documentation
-- Required for utility functions exported from modules
-
-### Tool Definition Pattern
-
-```typescript
-export const readFileTool: Tool = {
-  name: "read_file",
-  description: "Read file contents...",
-  dangerous: (args) => (isSensitiveFile(args.path) ? "Reading sensitive file" : false),
-  parameters: {
-    type: "object",
-    properties: { path: { type: "string", description: "File path" } },
-    required: ["path"],
-  },
-  async execute(args): Promise<ToolResult> {
-    // Implementation
-  },
-};
-```
-
-### Class Design
-
-**Private Properties:**
-
-- Use `_` prefix for private class members
-- `private` keyword for true encapsulation
-
-**Constructor:**
-
-- Options object pattern for optional parameters
-- Default values with nullish coalescing
-
-```typescript
-export class Agent {
-  private _defaultLlmClient: LLMClient;
-  private _toolRegistry: ToolRegistry;
-  private _maxIterations: number;
-  private _verbose: boolean;
-
-  constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
-    this._defaultLlmClient = llmClient;
-    this._toolRegistry = toolRegistry;
-    this._maxIterations = options.maxIterations ?? 20;
-    this._verbose = options.verbose ?? false;
-  }
+interface Props {
+  message: string;
 }
+
+export const Message: React.FC<Props> = ({ message }) => (
+  <Box><Text>{message}</Text></Box>
+);
 ```
+
+## Async Patterns
+
+**Promise Handling:**
+- Use `async/await` consistently
+- Handle promise rejection with try/catch returning structured results
+- Explicit `void` for discarded promises: `void this._save()`
+
+**Nullish Coalescing:**
+Use `??` for nullish defaults: `const timeout = args.timeout ?? 60000`
+
+## Strings
+
+**Quotes:**
+- Double quotes for strings: `const message = "text"`
+- Template literals for interpolation: `` `File not found: ${filePath}` ``
 
 ---
 
-_Convention analysis: 2026-01-25_
+*Convention analysis: 2026-01-25*

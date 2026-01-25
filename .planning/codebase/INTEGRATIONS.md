@@ -6,178 +6,165 @@
 
 **LLM Providers:**
 
-| Provider        | SDK/Client                  | Auth                                       | Models                                            |
-| --------------- | --------------------------- | ------------------------------------------ | ------------------------------------------------- |
-| **OpenAI**      | `openai` ^6.16.0            | `apiKey` config or `OPENAI_API_KEY` env    | gpt-4o, gpt-4o-mini, o1, o3-mini                  |
-| **Anthropic**   | `@anthropic-ai/sdk` ^0.71.2 | `apiKey` config or `ANTHROPIC_API_KEY` env | claude-3-5-sonnet, claude-3-opus, claude-4 series |
-| **Ollama**      | `ollama` ^0.6.3             | Optional `apiKey` for remote               | llama3.2, any Ollama model                        |
-| **OllamaCloud** | Custom                      | `apiKey` config                            | Cloud-hosted Ollama models                        |
-| **OpenRouter**  | OpenAI-compatible           | `apiKey` config                            | Various provider models                           |
-| **OpenCode**    | OpenAI-compatible           | `apiKey` config                            | OpenCode models                                   |
+- **OpenAI** - GPT-4o, GPT-4o-mini, GPT-4-turbo, o1, o3-mini models
+  - SDK: `openai` npm package
+  - Auth: `OPENAI_API_KEY` or config `providers.openai.apiKey`
+  - Base URL: `https://api.openai.com/v1` (configurable)
 
-**LLM Provider Configuration:**
+- **Anthropic** - Claude 3.5, Claude 3 Opus, Claude 4 models
+  - SDK: `@anthropic-ai/sdk` npm package
+  - Auth: `ANTHROPIC_API_KEY` or config `providers.anthropic.apiKey`
+  - Supports thinking/block computation
 
-- Config file: `~/.tiny-agent/config.yaml`
-- Location: `src/config/schema.ts`, `src/config/loader.ts`
+- **Ollama (Local)** - Local LLM inference
+  - SDK: `ollama` npm package + HTTP client
+  - Auth: Optional `OLLAMA_API_KEY` for remote Ollama
+  - Base URL: `http://localhost:11434` (configurable)
+  - Requires Ollama server running locally
 
-```yaml
-providers:
-  openai:
-    apiKey: ${OPENAI_API_KEY}
-    baseUrl: https://api.openai.com/v1
-  anthropic:
-    apiKey: ${ANTHROPIC_API_KEY}
-  ollama:
-    baseUrl: http://localhost:11434
-```
+- **Ollama Cloud** - Hosted Ollama API
+  - Wraps OllamaProvider with cloud endpoint
+  - Auth: `OLLAMA_CLOUD_API_KEY` or config `providers.ollamaCloud.apiKey`
+  - Base URL: `https://ollama.com` (configurable)
+
+- **OpenRouter** - Unified LLM routing
+  - Extends OpenAIProvider with custom base URL
+  - Auth: `OPENROUTER_API_KEY` or config `providers.openrouter.apiKey`
+  - Base URL: `https://openrouter.ai/api/v1`
+
+- **OpenCode** - Code-focused LLM service
+  - Extends OpenAIProvider with custom base URL
+  - Auth: `OPENCODE_API_KEY` or config `providers.opencode.apiKey`
+  - Base URL: `https://opencode.ai/zen/v1`
 
 ## Data Storage
 
-**Configuration:**
+**Databases:**
+- None - No external database integration
 
-- Format: YAML or JSON
-- Location: `~/.tiny-agent/config.yaml` (default) or `~/.tiny-agent/config.json`
-- Loader: `src/config/loader.ts` with `yaml` package for parsing
+**File Storage:**
+- Local filesystem only
+- Config: `~/.tiny-agent/config.yaml` or `config.json`
+- Conversation history: `~/.tiny-agent/conversation.jsonl` (file path configurable)
+- Memory: `~/.tiny-agent/memory.jsonl` (file path configurable)
 
-**Conversation History:**
-
-- Format: JSON lines
-- Default location: `~/.tiny-agent/conversation.json`
-- Override: `TINY_AGENT_CONVERSATION_FILE` env var
-
-**Memory/Persistent Context:**
-
-- Format: JSON
-- Location: `~/.tiny-agent/memory.json`
-- Override: `TINY_AGENT_MEMORY_FILE` env var
-- Implementation: `src/core/memory.ts` - Token-aware memory management
-
-**Local Models:**
-
-- Ollama: HTTP connection to `http://localhost:11434` (default)
-- Configurable via `baseUrl` in provider config
+**Caching:**
+- None - In-memory only
 
 ## Authentication & Identity
 
-**API Key Management:**
-
-- Environment variable interpolation in config: `${VAR_NAME}`
-- Example: `apiKey: ${OPENAI_API_KEY}` in config.yaml
-- Throws error if referenced env var is not set
-
-**Model Context Protocol (MCP):**
-
-- Provider: `@modelcontextprotocol/sdk` ^1.25.2
-- Client: `src/mcp/client.ts` - StdioClientTransport for server communication
-- Manager: `src/mcp/manager.ts` - Tool registry integration
-
-**MCP Server Configuration:**
-
-```yaml
-mcpServers:
-  context7:
-    command: npx
-    args: ["-y", "@upstash/context7-mcp"]
-  serena:
-    command: uvx
-    args: ["-y", "serena-mcp-server"]
-    env:
-      SERENA_API_KEY: ${SERENA_API_KEY}
-```
+**Auth Provider:**
+- Per-provider API keys
+- No unified authentication layer
+- Configured via environment variables or config file
+- Config loader interpolates `${VAR_NAME}` syntax from environment
 
 ## Monitoring & Observability
 
-**Logging:**
+**Error Tracking:**
+- None - Console.error only
 
-- Framework: Console logging with tag prefixes
-- Levels: Controlled via `DEBUG`, `RUST_LOG`, `LOG_LEVEL` env vars for MCP servers
-- Location: `src/utils/` - Utility functions
-
-**Error Handling:**
-
-- Structured error returns: `{ success: false, error: string }`
-- No crash reporting currently implemented
+**Logs:**
+- Console.warn for security warnings and deprecations
+- Console.log for verbose plugin signatures (when `TINY_AGENT_VERBOSE=true`)
+- No structured logging
 
 ## CI/CD & Deployment
 
 **Hosting:**
-
-- GitHub Repository: jellydn/tiny-coding-agent
-- Release automation: GitHub Actions workflows
+- Standalone binary (`tiny-agent`) - deploy anywhere
+- No cloud hosting dependency
 
 **CI Pipeline:**
-
-- File: `.github/workflows/ci.yml`
-- Runs: Typecheck, lint, test on push/PR
-
-**Release Pipeline:**
-
-- File: `.github/workflows/release.yml`
-- Automated releases via bumpp
-- Commands: `release:patch`, `release:minor`, `release:major`
-
-**Homebrew:**
-
-- Formula: `.github/homebrew-tiny-agent`
-- Distribution via Homebrew cask
+- No CI service detected (no GitHub Actions, CircleCI, etc.)
+- Release workflow uses `bumpp` for versioning
 
 ## Environment Configuration
 
-**Required env vars for cloud providers:**
+**Required env vars:**
+- Provider API keys (as needed):
+  - `OPENAI_API_KEY`
+  - `ANTHROPIC_API_KEY`
+  - `OLLAMA_API_KEY` (for remote Ollama)
+  - `OLLAMA_CLOUD_API_KEY`
+  - `OPENROUTER_API_KEY`
+  - `OPENCODE_API_KEY`
+  - `TAVILY_API_KEY` (optional, for Tavily search)
 
-| Variable            | Provider  | Required               |
-| ------------------- | --------- | ---------------------- |
-| `OPENAI_API_KEY`    | OpenAI    | If using OpenAI models |
-| `ANTHROPIC_API_KEY` | Anthropic | If using Claude models |
-| `OLLAMA_HOST`       | Ollama    | For non-local Ollama   |
-
-**Optional env vars:**
-
-| Variable                        | Purpose                   |
-| ------------------------------- | ------------------------- |
-| `TINY_AGENT_CONFIG_YAML`        | Override config file path |
-| `TINY_AGENT_CONFIG_JSON`        | Override JSON config path |
-| `TINY_AGENT_MODEL`              | Override default model    |
-| `TINY_AGENT_SYSTEM_PROMPT`      | Override system prompt    |
-| `TINY_AGENT_CONVERSATION_FILE`  | Conversation history path |
-| `TINY_AGENT_MEMORY_FILE`        | Memory storage path       |
-| `TINY_AGENT_MAX_CONTEXT_TOKENS` | Max context window        |
-| `TINY_AGENT_MAX_MEMORY_TOKENS`  | Max memory tokens         |
-
-**MCP Server Environment:**
-
-- MCP servers run as child processes
-- Safe env vars passed through: `PATH`, `HOME`, `USER`, `TERM`, `EDITOR`, etc.
-- Custom env vars configured per server in config
+**Secrets location:**
+- Environment variables (recommended)
+- Config file with interpolation: `${VAR_NAME}`
+- Config file location: `~/.tiny-agent/` (user home directory)
 
 ## Webhooks & Callbacks
 
-**MCP Tool Callbacks:**
+**Incoming:**
+- None - Agent does not expose HTTP endpoints
 
-- MCP servers provide tools via stdio transport
-- Tool invocation: `src/mcp/client.ts` `callTool()` method
-- Results returned as `{ content: Array, isError: boolean }`
+**Outgoing:**
+- MCP server connections via stdio (not HTTP)
+- LLM API calls to provider endpoints
+- Web search HTTP requests to DuckDuckGo/Tavily
 
-**Outgoing Webhooks:**
+## MCP (Model Context Protocol) Integration
 
-- Not currently implemented as a feature
-- Could be added via custom tools or MCP servers
+**MCP Servers:**
+- **Context7** - Documentation lookups for libraries/frameworks
+  - Default enabled
+  - Install: `npx -y @upstash/context7-mcp`
+  - Zero dependencies on external APIs
 
-## Skills & Plugins
+- **Serena** - Semantic code operations (optional)
+  - Requires `uv` package manager
+  - Install: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - GitHub: `git+https://github.com/oraios/serena`
+
+**MCP Configuration:**
+- Config key: `mcpServers` object in config
+- Per-server: `command`, `args`, `env`
+- Environment filtering: Only safe env vars passed to MCP servers
+- Tool filtering: `disabledMcpPatterns` glob patterns to exclude tools
+
+**MCP Client:**
+- Location: `src/mcp/client.ts`
+- Transport: StdioClientTransport
+- Tool discovery: Auto-discovers tools on connection
+- Error handling: Connection failures logged, agent continues
+
+## Search Integration
+
+**Search Providers:**
+
+- **DuckDuckGo** - Free HTML-based search
+  - Requires: No API key
+  - Implementation: HTML scraping (fragile, no rate limits)
+  - Location: `src/tools/search-providers/duckduckgo.ts`
+  - User-Agent: Chrome browser spoofing to avoid blocking
+
+- **Tavily** - API-based search (optional)
+  - Requires: `TAVILY_API_KEY`
+  - Implementation: TavilyProvider (code exists, needs import)
+  - Better reliability than DuckDuckGo scraping
+
+**Web Search Tool:**
+- Location: `src/tools/web-search-tool.ts`
+- Configurable provider via `setGlobalSearchProvider()`
+- Supports timeout and result limits
+
+## Skill/Plugin System
 
 **Skill Loading:**
+- Location: `src/skills/` directory
+- File format: `SKILL.md` with YAML frontmatter
+- Directories: `~/.tiny-agent/skills/`, `./.skills/`
+- Embedded skills: Baked into binary at build time
 
-- Format: Markdown with YAML frontmatter
-- Location: `~/.tiny-agent/skills/` and `./.skills/` (default)
-- Embedded skills: Generated at build time in `src/skills/embedded-content.ts`
-- Loader: `src/skills/loader.ts`
-
-**Plugin System:**
-
-- Directory-based plugin loading: `src/tools/plugin-loader.ts`
-- Plugins discovered from skill directories
-- Signature verification: `src/skills/signature.ts` with `node:crypto`
+**Skill Signing:**
+- Cryptographic signature verification
+- Location: `src/skills/signature.ts`
+- Uses Node.js crypto module
+- Optional: `TINY_AGENT_WARN_UNSIGNED=true` for unsigned warnings
 
 ---
 
-_Integration audit: 2026-01-25_
+*Integration audit: 2026-01-25*

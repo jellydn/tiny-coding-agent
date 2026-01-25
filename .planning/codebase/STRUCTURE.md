@@ -5,293 +5,190 @@
 ## Directory Layout
 
 ```
-tiny-coding-agent/
-├── index.ts                    # Primary entry point
-├── package.json                # Project manifest (bun)
-├── tsconfig.json               # TypeScript config
-├── .oxlintrc.json              # Linting config
-├── .oxfmtrc.json               # Formatting config
-├── bump.config.ts              # Release config
-├── cspell.json                 # Spell check config
-├── renovate.json               # Dependency updates config
-│
+tiny-agent/
 ├── src/
-│   ├── core/                   # Agent loop, memory, conversation
-│   ├── tools/                  # Built-in tools (file, bash, grep, glob, web)
-│   ├── providers/              # LLM clients (OpenAI, Anthropic, Ollama, etc.)
-│   ├── mcp/                    # MCP client integration
-│   ├── cli/                    # CLI interface, command handlers
-│   ├── config/                 # Configuration loading and schema
-│   ├── skills/                 # Skill discovery and loading
-│   ├── ui/                     # React/Ink components for CLI output
-│   ├── utils/                  # Shared utilities (retry, XML, command)
-│   └── index.ts                # Core exports barrel
-│
-├── test/                       # Test files (mirrors src structure)
-│   ├── core/
-│   ├── tools/
-│   ├── providers/
-│   ├── mcp/
-│   ├── cli/
-│   ├── skills/
-│   ├── security/
-│   ├── e2e/
-│   ├── performance/
-│   └── *.test.ts
-│
-├── scripts/                    # Build/generation scripts
-│   ├── generate-embedded-skills.ts
-│   └── ralph/                  # PRD and planning documents
-│
-├── .planning/codebase/         # Generated architecture docs (this file)
-│
-└── .skills/                    # Default skill directory
+│   ├── cli/              # CLI entry points and command handlers
+│   ├── core/             # Agent loop and state management
+│   ├── tools/            # Built-in tools and registry
+│   ├── providers/        # LLM provider implementations
+│   ├── mcp/              # MCP server integration
+│   ├── skills/           # Skill loading and management
+│   ├── ui/               # Ink React components for CLI
+│   ├── config/           # Configuration loading and schema
+│   └── utils/            # Shared utilities
+├── test/                 # Test fixtures and e2e tests
+├── tasks/                # Task definitions for the agent
+├── scripts/              # Build and utility scripts
+├── docs/                 # Documentation
+├── index.ts              # Primary entry point
+├── tsconfig.json         # TypeScript configuration
+└── package.json          # Dependencies
 ```
 
 ## Directory Purposes
 
-**`src/core/`:**
+**`src/cli/`:**
+- Purpose: CLI interface and command routing
+- Contains: `main.tsx` (1360+ lines - main CLI logic), `index.ts` (reexports), `chat-commands.ts`, `status-line.ts`
+- Key files:
+  - `main.tsx`: Command handlers (handleRun, handleChat, handleConfig, handleStatus, handleMemory, handleSkill, handleMcp)
+  - `status-line.ts`: Status line component for Ink
 
-- Purpose: Agent loop orchestration, memory management, conversation history
+**`src/core/`:**
+- Purpose: Agent orchestration and state
 - Contains: `agent.ts` (main Agent class), `memory.ts` (MemoryStore), `conversation.ts` (ConversationManager), `tokens.ts` (token counting)
-- Key files: `agent.ts` (849 lines), `memory.ts` (410 lines)
+- Key files:
+  - `agent.ts`: Agent loop, loop detection, streaming response
+  - `memory.ts`: Memory persistence, context budgeting, relevance scoring
+  - `conversation.ts`: Conversation history management
+  - `tokens.ts`: Token counting utilities
 
 **`src/tools/`:**
-
-- Purpose: Built-in tool implementations
-- Contains: Tool registry, file operations, bash execution, search tools, web search, plugin loader
-- Key files: `registry.ts` (155 lines), `file-tools.ts`, `bash-tool.ts`, `search-tools.ts`, `skill-tool.ts`
-- Subdirs: `search-providers/` (DuckDuckGo integration)
+- Purpose: Built-in tools and tool registry
+- Contains: `registry.ts` (ToolRegistry), `file-tools.ts` (file operations), `bash-tool.ts` (shell `search-tools.ts),` (grep, glob), `web-search-tool.ts`, `skill-tool.ts`
+- Key files:
+  - `registry.ts`: Tool registration, execution, format conversion (OpenAI/Anthropic)
+  - `file-tools.ts`: read_file, write_file, edit_file, list_directory with validation
+  - `bash-tool.ts`: Command execution with output capture
+  - `search-tools.ts`: grep and glob search tools
 
 **`src/providers/`:**
-
-- Purpose: LLM client implementations for different providers
-- Contains: OpenAI, Anthropic, Ollama, OpenRouter, OpenCode providers, factory pattern
-- Key files: `factory.ts` (63 lines), `types.ts` (67 lines), `model-registry.ts` (model detection)
-- Subdirs: None (flat structure)
+- Purpose: LLM provider implementations
+- Contains: `factory.ts` (provider creation), `openai.ts`, `anthropic.ts`, `ollama.ts`, `ollama-cloud.ts`, `openrouter.ts`, `opencode.ts`, `types.ts`
+- Key files:
+  - `factory.ts`: createProvider(), detectProvider(), provider mapping
+  - `types.ts`: LLMClient interface, Message, ToolCall, ChatOptions
+  - `capabilities.ts`: Model capabilities detection
 
 **`src/mcp/`:**
-
-- Purpose: Model Context Protocol client integration
-- Contains: `McpManager` class, `McpClient` class, types
-- Key files: `manager.ts` (223 lines), `client.ts`, `types.ts`, `index.ts`
-
-**`src/cli/`:**
-
-- Purpose: Command-line interface, command handlers
-- Contains: `main.tsx` (1366 lines - largest file), command handlers
-- Key files: `main.tsx` (CLI router and handlers), `index.ts` (exports), `status-line.ts`, `chat-commands.ts`
-
-**`src/config/`:**
-
-- Purpose: Configuration loading from YAML/JSON, validation, schema
-- Contains: `loader.ts`, `schema.ts`, `index.ts`
-- Key files: `loader.ts` (237 lines), `schema.ts` (157 lines)
+- Purpose: MCP (Model Context Protocol) integration
+- Contains: `manager.ts` (McpManager), `client.ts` (McpClient), `types.ts`
+- Key files:
+  - `manager.ts`: Server management, tool adaptation, global singleton (deprecated)
+  - `client.ts`: MCP protocol communication
 
 **`src/skills/`:**
-
-- Purpose: Skill discovery, parsing, loading, embedded registry
-- Contains: Skill types, loader, parser, prompt generator, builtin registry
-- Key files: `loader.ts`, `parser.ts`, `prompt.ts`, `builtin-registry.ts`, `types.ts`
-- Special: `embedded-content.ts` (generated embedded skills)
+- Purpose: Skill discovery and loading
+- Contains: `loader.ts` (skill discovery), `parser.ts` (YAML frontmatter), `prompt.ts` (prompt generation), `builtin-registry.ts` (embedded skills)
+- Key files:
+  - `loader.ts`: discoverSkills(), getBuiltinSkillsDir()
+  - `parser.ts`: parseSkillFrontmatter() for YAML frontmatter parsing
 
 **`src/ui/`:**
+- Purpose: Ink React components for interactive CLI
+- Contains: `App.tsx`, `components/` (StatusLine, Message, ToolOutput, ToastList), `contexts/` (StatusLineContext, ChatContext, ToastContext)
+- Key files:
+  - `App.tsx`: Main interactive app component
+  - `components/`: Reusable UI components
+  - `contexts/`: React contexts for state management
+  - `status-line-manager.ts`: Singleton for status updates
 
-- Purpose: React/Ink components for interactive CLI
-- Contains: App component, status line manager, tool output components
-- Key files: `index.ts`, `status-line-manager.ts`, `utils.ts`
-- Subdirs: `components/`, `hooks/`, `errors/`, `types/`, `config/`, `contexts/`
+**`src/config/`:**
+- Purpose: Configuration loading and validation
+- Contains: `loader.ts` (config loading), `schema.ts` (Config type, validation)
+- Key files:
+  - `loader.ts`: loadConfig(), loadAgentsMd(), env var interpolation
+  - `schema.ts`: Config interface, validateConfig()
 
 **`src/utils/`:**
-
-- Purpose: Shared utilities used across the codebase
-- Contains: `retry.ts` (retry logic), `xml.ts` (XML escaping), `command.ts` (command availability)
-- Key files: Minimal utilities, typically single-purpose functions
+- Purpose: Shared utility functions
+- Contains: `command.ts` (command availability check), `retry.ts`, `xml.ts` (XML escaping)
+- Key files:
+  - `command.ts`: isCommandAvailable()
+  - `retry.ts`: Retry logic decorators
 
 ## Key File Locations
 
 **Entry Points:**
-
-- `index.ts` - Primary entry point (7 lines, delegates to CLI main)
-- `src/cli/main.tsx` - CLI router and handlers (1366 lines)
-- `src/cli/index.ts` - CLI barrel export
+- `index.ts`: Primary entry, exports from `src/cli/index.js`
+- `src/cli/main.tsx`: CLI command router and handlers (1360+ lines)
 
 **Configuration:**
-
-- `src/config/loader.ts` - Load config from `~/.tiny-agent/config.yaml` or `config.json`
-- `src/config/schema.ts` - Config validation and TypeScript types
+- `src/config/loader.ts`: Config loading with YAML/JSON support
+- `src/config/schema.ts`: Type definitions and validation
 
 **Core Logic:**
-
-- `src/core/agent.ts` - Main Agent class with `runStream()` generator
-- `src/core/memory.ts` - MemoryStore for persistent context
-- `src/core/conversation.ts` - ConversationManager for session history
-- `src/core/tokens.ts` - Token counting utilities (tiktoken or fallback)
-
-**Tool System:**
-
-- `src/tools/registry.ts` - ToolRegistry class for tool management
-- `src/tools/types.ts` - Tool interface definition
-- `src/tools/file-tools.ts` - File read/write/edit tools
-- `src/tools/bash-tool.ts` - Bash execution tool
-- `src/tools/skill-tool.ts` - Dynamic skill loading tool
-
-**LLM Providers:**
-
-- `src/providers/factory.ts` - Factory for creating LLM clients by model name
-- `src/providers/types.ts` - LLMClient interface and message types
-- `src/providers/openai.ts` - OpenAI provider implementation
-- `src/providers/anthropic.ts` - Anthropic provider implementation
-- `src/providers/ollama.ts` - Ollama local provider
-
-**MCP Integration:**
-
-- `src/mcp/manager.ts` - McpManager for MCP server lifecycle
-- `src/mcp/client.ts` - McpClient for server connection
-- `src/mcp/types.ts` - MCP-specific types
+- `src/core/agent.ts`: Main Agent class with streaming loop
+- `src/core/memory.ts`: MemoryStore with context budgeting
+- `src/tools/registry.ts`: ToolRegistry for tool management
 
 **Testing:**
-
-- `test/` - Test files mirroring src structure
-- `test/core/agent.test.ts` - Agent tests
-- `test/tools/file-tools.test.ts` - File tool tests
-- `test/e2e/agent-loop.test.ts` - End-to-end tests
+- `test/`: Test fixtures and e2e tests
+- `src/**/*.test.ts`: Unit tests (e.g., `src/core/agent.test.ts`)
 
 ## Naming Conventions
 
 **Files:**
-
-- `kebab-case.ts` for implementation files (e.g., `file-tools.ts`, `bash-tool.ts`)
-- `kebab-case.test.ts` for test files (e.g., `file-tools.test.ts`)
-- `index.ts` for barrel files
-- `.tsx` extension for React components (e.g., `main.tsx`)
+- kebab-case: `file-tools.ts`, `bash-tool.ts`, `status-line.ts`
+- PascalCase for components: `StatusLine.tsx`, `Message.tsx`, `App.tsx`
+- camelCase for utilities: `command.ts`, `retry.ts`, `xml.ts`
 
 **Directories:**
-
-- `lowercaseplural/` for module directories (e.g., `core/`, `tools/`, `providers/`)
+- kebab-case: `cli/`, `core/`, `tools/`, `providers/`, `mcp/`, `skills/`, `ui/`, `config/`, `utils/`
 
 **Classes/Types:**
+- PascalCase: `Agent`, `ToolRegistry`, `MemoryStore`, `ConversationManager`, `McpManager`
 
-- `PascalCase` for classes and exported types (e.g., `Agent`, `MemoryStore`, `ToolRegistry`)
-- `camelCase` for private/internal class members (e.g., `_memoryStore`, `_maxIterations`)
-
-**Functions:**
-
-- `camelCase` for functions (e.g., `createProvider()`, `loadConfig()`)
-- `_prefix` for private methods (e.g., `_initializeSkills()`, `_evictIfNeeded()`)
+**Functions/Variables:**
+- camelCase: `runStream`, `executeBatch`, `findRelevant`, `createProvider`
 
 **Constants:**
+- SCREAMING_SNAKE_CASE: `MAX_OUTPUT_LENGTH`, `SAVE_DEBOUNCE_MS`, `YAML_PATH`
 
-- `SCREAMING_SNAKE_CASE` for constants (e.g., `MAX_OUTPUT_LENGTH`, `SAVE_DEBOUNCE_MS`)
-
-**Variables:**
-
-- `camelCase` for variables (e.g., `toolRegistry`, `llmClient`)
-- `const` by default, `let` only when reassigning
-
-**Imports:**
-
-- Node.js built-ins with `node:` prefix: `import * as fs from "node:fs/promises"`
-- External packages: `import OpenAI from "openai"`
-- Internal with `.js` extension (due to `verbatimModuleSyntax`): `import { Agent } from "./agent.js"`
-
-**Path Aliases:**
-
-- `@/*` alias for `src/` root (configured in `tsconfig.json`)
-- Example: `import { Tool } from "@/tools/types.js"`
+**Private Members:**
+- _prefix: `_tools`, `_maxIterations`, `_providerCache`, `_memoryStore`
 
 ## Where to Add New Code
 
-**New Tool:**
-
-1. Create tool implementation in `src/tools/your-tool.ts`
-2. Export from `src/tools/index.ts`
-3. Register in `src/cli/main.tsx:setupTools()` function
-4. Add tests in `test/tools/your-tool.test.ts`
+**New Built-in Tool:**
+- Implementation: `src/tools/new-tool-name.ts`
+- Export: Add to `src/tools/index.ts` exports
+- Register in: `src/cli/main.tsx` `setupTools()` function
 
 **New LLM Provider:**
-
-1. Create provider in `src/providers/your-provider.ts`
-2. Implement `LLMClient` interface from `src/providers/types.ts`
-3. Register in `src/providers/factory.ts:PROVIDER_MAP`
-4. Add model detection in `src/providers/model-registry.ts`
-5. Add tests in `test/providers/your-provider.test.ts`
+- Implementation: `src/providers/new-provider.ts`
+- Export: Add to `src/providers/index.ts`
+- Register in: `src/providers/factory.ts` PROVIDER_MAP, `src/providers/model-registry.ts`
 
 **New CLI Command:**
-
-1. Add handler function in `src/cli/main.tsx`
-2. Add case in `main()` switch statement
-3. Update help text in `showHelp()` function
-4. Add tests in `test/cli/command.test.ts`
+- Implementation: Add handler function in `src/cli/main.tsx`
+- Register in: `main()` function command routing
+- Export: Add to `src/cli/index.ts` if needed
 
 **New UI Component:**
-
-1. Create component in `src/ui/components/YourComponent.tsx`
-2. Export from `src/ui/components/index.ts`
-3. Use in `src/ui/App.tsx` or other parent component
-4. Add tests in `test/ui/your-component.test.tsx`
+- Implementation: `src/ui/components/NewComponent.tsx`
+- Export: Add to `src/ui/components/index.ts`
 
 **New Utility:**
-
-1. Create in `src/utils/your-utility.ts`
-2. Export from `src/utils/index.ts` (if exists)
-3. Add tests in `test/utils/your-utility.test.ts`
+- Implementation: `src/utils/utility-name.ts`
+- Export: Add to barrel exports as needed
 
 **New Skill:**
-
-1. Create `SKILL.md` file in skill directory
-2. Add frontmatter with `name` and `description`
-3. Configure `skillDirectories` in `config.yaml`
-4. Skills are auto-discovered on startup
+- Location: `~/.tiny-agent/skills/skill-name/SKILL.md` (user) or `src/skills/builtin/skill-name/` (builtin)
+- Format: Markdown with YAML frontmatter
 
 ## Special Directories
 
+**`src/skills/builtin/`:**
+- Purpose: Embedded skills bundled with the agent
+- Generated: Yes, via `bun run generate:skills`
+- Committed: Yes, as generated TypeScript file
+
 **`test/`:**
-
-- Purpose: Test files
-- Structure: Mirrors `src/` directory layout
-- Contains: Unit tests, integration tests, e2e tests, security tests, performance benchmarks
+- Purpose: Test fixtures and end-to-end tests
 - Generated: No
 - Committed: Yes
 
-**`test/e2e/`:**
-
-- Purpose: End-to-end tests for agent loop
+**`tasks/`:**
+- Purpose: Task definitions for the agent to execute
 - Generated: No
 - Committed: Yes
-
-**`test/security/`:**
-
-- Purpose: Security-related tests (file validation, command injection, bash env)
-- Generated: No
-- Committed: Yes
-
-**`test/performance/`:**
-
-- Purpose: Performance benchmarks
-- Generated: No
-- Committed: Yes
-
-**`scripts/ralph/`:**
-
-- Purpose: PRD and planning documents for Ralph autonomous agent
-- Generated: Yes (from planning sessions)
-- Committed: Yes
-- Subdirs: `archive/` for historical plans
 
 **`.planning/codebase/`:**
-
-- Purpose: Generated architecture and structure documentation
-- Generated: Yes (by `/gsd-map-codebase` command)
-- Committed: No (gitignored)
-- Contains: This file, ARCHITECTURE.md, STACK.md, CONVENTIONS.md, etc.
-
-**`node_modules/` (not committed):**
-
-- Purpose: Dependencies
-- Generated: Yes (`bun install`)
-- Committed: No (.gitignored)
+- Purpose: Architecture documentation (this file)
+- Generated: No (created by GSD mapping)
+- Committed: Optionally
 
 ---
 
-_Structure analysis: 2026-01-25_
+*Structure analysis: 2026-01-25*
