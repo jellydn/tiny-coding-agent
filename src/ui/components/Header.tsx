@@ -1,5 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { parseModelString } from "../../providers/factory.js";
+import { getCachedOllamaModels } from "../../providers/ollama-models.js";
 import { detectProvider } from "../../providers/model-registry.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
 
@@ -15,9 +17,26 @@ export function Header({ model, skillCount }: HeaderProps): React.ReactElement {
 
   if (model) {
     try {
-      const provider = detectProvider(model);
-      providerDisplay = provider;
-      modelDisplay = model;
+      // Parse model@provider format first
+      const { model: modelName, provider: explicitProvider } = parseModelString(model);
+
+      // Use explicit provider if specified, otherwise detect
+      let providerType = explicitProvider;
+
+      if (!providerType) {
+        // Check if model exists in local Ollama before using pattern detection
+        const localOllamaModels = getCachedOllamaModels();
+        const isLocalOllamaModel = localOllamaModels.some((m) => m.id === modelName);
+
+        if (isLocalOllamaModel) {
+          providerType = "ollama";
+        } else {
+          providerType = detectProvider(modelName);
+        }
+      }
+
+      providerDisplay = providerType;
+      modelDisplay = modelName;
     } catch {
       providerDisplay = "unknown";
       modelDisplay = model;

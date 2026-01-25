@@ -1,28 +1,27 @@
-/**
- * Custom hook for command handling
- * Provides command registration, execution, and management
- */
-
 import { useCallback } from "react";
 import { MessageRole } from "../types/enums.js";
 import type { Command } from "../components/CommandMenu.js";
 import type { Agent } from "../../core/agent.js";
-import { getGlobalMcpManager } from "../../mcp/manager.js";
+import type { McpManager } from "../../mcp/manager.js";
 
 interface UseCommandHandlerProps {
   onAddMessage: (role: MessageRole, content: string) => void;
   onClearMessages: () => void;
   onSetShowModelPicker: (show: boolean) => void;
+  onSetShowToolsPanel?: (show: boolean) => void;
   onExit: () => void;
   agent?: Agent;
+  mcpManager?: McpManager | null;
 }
 
 export function useCommandHandler({
   onAddMessage,
   onClearMessages,
   onSetShowModelPicker,
+  onSetShowToolsPanel,
   onExit,
   agent,
+  mcpManager,
 }: UseCommandHandlerProps) {
   const handleSkillCommand = useCallback(
     async (args: string) => {
@@ -102,13 +101,13 @@ export function useCommandHandler({
   );
 
   const handleMcpCommand = useCallback(() => {
-    const mcpManager = getGlobalMcpManager();
-    if (!mcpManager) {
+    const manager = mcpManager ?? undefined;
+    if (!manager) {
       onAddMessage(MessageRole.ASSISTANT, "No MCP servers configured.");
       return;
     }
 
-    const servers = mcpManager.getServerStatus();
+    const servers = manager.getServerStatus();
     if (servers.length === 0) {
       onAddMessage(MessageRole.ASSISTANT, "No MCP servers registered.");
       return;
@@ -126,7 +125,7 @@ export function useCommandHandler({
       MessageRole.ASSISTANT,
       `MCP Servers:\n\n${lines}\n\nUse a tool from an MCP server to connect it.`,
     );
-  }, [onAddMessage]);
+  }, [mcpManager, onAddMessage]);
 
   const handleMemoryCommand = useCallback(() => {
     if (!agent) {
@@ -166,6 +165,7 @@ export function useCommandHandler({
   /help    - Show this help
   /clear   - Clear conversation
   /model   - Switch model
+  /tools   - View tool executions
   /mcp     - Show MCP server status
   /memory  - List memories
   /skill   - List skills
@@ -184,6 +184,13 @@ export function useCommandHandler({
         case "/memory":
           handleMemoryCommand();
           break;
+        case "/tools":
+          if (onSetShowToolsPanel) {
+            onSetShowToolsPanel(true);
+          } else {
+            onAddMessage(MessageRole.ASSISTANT, "No tools executed yet.");
+          }
+          break;
         default:
           onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
       }
@@ -192,6 +199,7 @@ export function useCommandHandler({
       onAddMessage,
       onClearMessages,
       onSetShowModelPicker,
+      onSetShowToolsPanel,
       onExit,
       handleSkillCommand,
       handleMcpCommand,

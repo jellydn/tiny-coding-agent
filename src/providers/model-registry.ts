@@ -4,12 +4,15 @@ export type ProviderType =
   | "ollama"
   | "ollamaCloud"
   | "openrouter"
-  | "opencode";
+  | "opencode"
+  | "zai";
 
 export interface ModelEntry {
   provider: ProviderType;
   supportsThinking: boolean;
   supportsTools: boolean;
+  contextWindow?: number;
+  maxOutputTokens?: number;
   patterns: string[];
 }
 
@@ -28,45 +31,83 @@ const MODEL_DATABASE: ModelEntry[] = [
   },
   {
     provider: "anthropic",
-    patterns: ["^claude-3-5", "^claude-4"],
+    patterns: ["^claude-3-5", "^claude-4", "^claude-3-opus", "^claude-3-sonnet", "^claude-3-haiku"],
     supportsThinking: true,
     supportsTools: true,
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
   },
   {
     provider: "anthropic",
     patterns: ["^claude"],
-    supportsThinking: false,
+    supportsThinking: true,
     supportsTools: true,
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
   },
   {
     provider: "openai",
     patterns: ["^o1", "^o3"],
     supportsThinking: true,
     supportsTools: false,
+    contextWindow: 200000,
+    maxOutputTokens: 100000,
   },
   {
     provider: "openai",
-    patterns: ["^gpt"],
-    supportsThinking: false,
+    patterns: ["^gpt-4o", "^gpt-4o-mini", "^gpt-4-turbo"],
+    supportsThinking: true,
     supportsTools: true,
+    contextWindow: 128000,
+    maxOutputTokens: 16384,
+  },
+  {
+    provider: "openai",
+    patterns: ["^gpt-3.5"],
+    supportsThinking: true,
+    supportsTools: true,
+    contextWindow: 16385,
+    maxOutputTokens: 4096,
+  },
+  {
+    provider: "openai",
+    patterns: ["^(gpt(?!-oss)(?!-v))"],
+    supportsThinking: true,
+    supportsTools: true,
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
   },
   {
     provider: "openrouter",
     patterns: ["^openrouter/", "^anthropic/", "^google/", "^meta/", "^mistralai/", "^deepseek/"],
-    supportsThinking: false,
+    supportsThinking: true,
     supportsTools: true,
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
   },
   {
     provider: "opencode",
     patterns: ["^opencode/", "^big-", "^qwen-"],
-    supportsThinking: false,
+    supportsThinking: true,
     supportsTools: true,
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
+  },
+  {
+    provider: "zai",
+    patterns: ["^glm-", "^zhipu/"],
+    supportsThinking: true,
+    supportsTools: true,
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
   },
   {
     provider: "ollama",
     patterns: [".*"],
-    supportsThinking: false,
+    supportsThinking: true,
     supportsTools: true,
+    contextWindow: 16385,
+    maxOutputTokens: 4096,
   },
 ];
 
@@ -126,4 +167,25 @@ export function getProviderPatterns(provider: ProviderType): string[] {
     }
   }
   return patterns;
+}
+
+export function getModelContextWindow(model: string): number {
+  const info = getModelInfo(model);
+  if (info?.contextWindow) return info.contextWindow;
+  const normalizedModel = model.trim().toLowerCase();
+  if (normalizedModel.startsWith("o1") || normalizedModel.startsWith("o3")) return 200000;
+  if (normalizedModel.startsWith("gpt-4o")) return 128000;
+  if (normalizedModel.startsWith("gpt-3.5")) return 16385;
+  if (normalizedModel.startsWith("claude")) return 200000;
+  return 16385;
+}
+
+export function getModelMaxOutputTokens(model: string): number {
+  const info = getModelInfo(model);
+  if (info?.maxOutputTokens) return info.maxOutputTokens;
+  const normalizedModel = model.trim().toLowerCase();
+  if (normalizedModel.startsWith("o1") || normalizedModel.startsWith("o3")) return 100000;
+  if (normalizedModel.startsWith("gpt-4o")) return 16384;
+  if (normalizedModel.startsWith("claude")) return 8192;
+  return 4096;
 }

@@ -11,7 +11,7 @@ import type {
   ShutdownOptions,
 } from "@/core/agent.js";
 import type { LLMClient } from "@/providers/types.js";
-import type { ToolRegistry } from "@/tools/registry.js";
+import { ToolRegistry } from "@/tools/registry.js";
 
 describe("Agent interfaces", () => {
   describe("ProviderConfigs", () => {
@@ -228,6 +228,7 @@ describe("Agent class structure", () => {
         modelName: "test",
         supportsTools: true,
         supportsStreaming: true,
+        supportsToolStreaming: true,
         supportsSystemPrompt: true,
         supportsThinking: false,
         contextWindow: 100000,
@@ -235,15 +236,10 @@ describe("Agent class structure", () => {
       }),
     };
 
-    // Create mock tool registry
-    const mockToolRegistry: ToolRegistry = {
-      list: () => [],
-      get: () => undefined,
-      execute: async () => ({ success: true, output: "done" }),
-      executeBatch: async () => [],
-    };
+    // Create tool registry (no tools needed for this test)
+    const toolRegistry = new ToolRegistry();
 
-    const agent = new Agent(mockLlmClient, mockToolRegistry);
+    const agent = new Agent(mockLlmClient, toolRegistry);
 
     expect(agent).toBeDefined();
   });

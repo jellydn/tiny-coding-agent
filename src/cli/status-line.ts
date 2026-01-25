@@ -98,11 +98,11 @@ export class StatusLine {
   private formatStatus(status: StatusDisplay["status"]): string {
     switch (status) {
       case "thinking":
-        return "\x1b[33m⏳ Thinking\x1b[0m";
+        return "\x1b[33mThinking\x1b[0m";
       case "ready":
-        return "\x1b[32m✓ Ready\x1b[0m";
+        return "\x1b[32mReady\x1b[0m";
       case "error":
-        return "\x1b[31m✗ Error\x1b[0m";
+        return "\x1b[31mError\x1b[0m";
       default:
         return "";
     }
@@ -120,7 +120,7 @@ export class StatusLine {
   }
 
   private formatTool(name: string, elapsed?: number): string {
-    let toolDisplay = `⚙ ${name}`;
+    let toolDisplay = `[${name}]`;
     if (elapsed !== undefined && elapsed > 0) {
       toolDisplay += ` ${elapsed.toFixed(1)}s`;
     }

@@ -90,10 +90,13 @@ describe("Memory Store Performance", () => {
 
     // Should have exactly 100 memories
     expect(store.count()).toBe(100);
-    // Most recent should be the last 100 added (IDs should be from the last 100)
-    const recent = store.list().slice(-5);
-    // Check that the content contains the expected memory numbers
-    expect(recent.every((m) => m.content.includes("Memory 1"))).toBe(true);
+    // Old memories (0-49) should be evicted
+    const all = store.list();
+    const hasOldMemory = all.some((m) => m.content.includes("Memory 0") || m.content.includes("Memory 49"));
+    expect(hasOldMemory).toBe(false);
+    // Recent memories (150-199) should be present
+    const hasNewMemory = all.some((m) => m.content.includes("Memory 150") || m.content.includes("Memory 199"));
+    expect(hasNewMemory).toBe(true);
   });
 });
 

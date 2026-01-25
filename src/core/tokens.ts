@@ -5,6 +5,8 @@ type Tiktoken = Awaited<ReturnType<typeof import("tiktoken").get_encoding>>;
 let _encoder: Tiktoken | null = null;
 let _warnedAboutFallback = false;
 
+const _tokenCache = new Map<string, number>();
+
 async function getEncoder(): Promise<Tiktoken | null> {
   if (_encoder) return _encoder;
 
@@ -27,7 +29,13 @@ async function getEncoder(): Promise<Tiktoken | null> {
 
 // Synchronous fallback using character heuristic (always works)
 export function countTokensSync(text: string): number {
-  return Math.ceil(text.length / 4);
+  const cached = _tokenCache.get(text);
+  if (cached !== undefined) return cached;
+  const count = Math.ceil(text.length / 4);
+  if (_tokenCache.size < 10000) {
+    _tokenCache.set(text, count);
+  }
+  return count;
 }
 
 // Async version using tiktoken (accurate for cl100k_base encoding)
@@ -124,4 +132,5 @@ export function freeTokenEncoder(): void {
     _encoder.free();
     _encoder = null;
   }
+  _tokenCache.clear();
 }

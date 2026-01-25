@@ -14,6 +14,7 @@ import { formatTimestamp } from "./utils.js";
 export function ChatApp(): React.ReactElement {
   const [inputValue, setInputValue] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showToolsPanel, setShowToolsPanel] = useState(false);
   const {
     messages,
     addMessage,
@@ -26,6 +27,7 @@ export function ChatApp(): React.ReactElement {
     cancelActiveRequest,
     enabledProviders,
     agent,
+    currentToolExecutions,
   } = useChatContext();
   const { addToast } = useToastContext();
 
@@ -33,11 +35,11 @@ export function ChatApp(): React.ReactElement {
     onAddMessage: addMessage,
     onClearMessages: clearMessages,
     onSetShowModelPicker: setShowModelPicker,
+    onSetShowToolsPanel: currentToolExecutions.length > 0 ? setShowToolsPanel : undefined,
     onExit: () => process.exit(0),
-    agent: agent ?? undefined,
+    agent,
   });
 
-  // Initialize agent when it becomes available (background, non-blocking)
   const [skillItems, setSkillItems] = useState<SkillMetadata[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const skillInvokedThisMessageRef = useRef<Set<string>>(new Set());
@@ -46,7 +48,6 @@ export function ChatApp(): React.ReactElement {
     if (!agent || isInitialized) return;
     const initAgent = async () => {
       try {
-        // Show "connecting" toasts first
         addToast("Connecting to MCP servers...", "info");
 
         await agent.waitForSkills();
@@ -54,7 +55,6 @@ export function ChatApp(): React.ReactElement {
         setSkillItems(skills);
         setIsInitialized(true);
 
-        // Show completion toasts for each category
         const toolCount = agent.getToolCount();
         if (toolCount > 0) {
           addToast(`${toolCount} tools loaded`, "success");
@@ -63,7 +63,10 @@ export function ChatApp(): React.ReactElement {
         const mcpServers = await agent.getMcpServerStatus();
         const mcpConnected = mcpServers.filter((s) => s.connected);
         if (mcpConnected.length > 0) {
-          addToast(`${mcpConnected.length} MCP server${mcpConnected.length > 1 ? "s" : ""} connected`, "success");
+          addToast(
+            `${mcpConnected.length} MCP server${mcpConnected.length > 1 ? "s" : ""} connected`,
+            "success",
+          );
         } else {
           addToast("No MCP servers configured", "info");
         }
@@ -71,17 +74,14 @@ export function ChatApp(): React.ReactElement {
         if (skills.length > 0) {
           addToast(`${skills.length} skills loaded`, "success");
         }
-      } catch {
-        // Silently fail - skills will be empty, user can retry or continue without skills
-      }
+      } catch {}
     };
     initAgent();
   }, [agent, isInitialized, addToast]);
 
-  // Handle escape key for cancellation
   useInput(
-    () => {
-      if (isThinking) {
+    (_input, key) => {
+      if (key.escape && isThinking && inputValue === "") {
         cancelActiveRequest();
         addMessage(MessageRole.ASSISTANT, "\nCancelled. Type a new message or /exit to quit.");
       }
@@ -164,21 +164,11 @@ export function ChatApp(): React.ReactElement {
     [agent, addMessage],
   );
 
-  const displayMessages = isThinking
-    ? [
-        ...messages,
-        {
-          id: "streaming",
-          role: MessageRole.ASSISTANT,
-          content: streamingText || "...",
-        },
-      ]
-    : messages;
-
   return (
     <Box flexDirection="column" height="100%">
       <ChatLayout
-        messages={displayMessages}
+        messages={messages}
+        streamingText={isThinking ? streamingText : undefined}
         currentModel={currentModel}
         inputValue={inputValue}
         onInputChange={handleInputChange}
@@ -190,11 +180,14 @@ export function ChatApp(): React.ReactElement {
         showModelPicker={showModelPicker}
         inputPlaceholder={
           isThinking
-            ? "Waiting for response... (ESC twice to cancel)"
-            : "Type a message... (/ for commands)"
+            ? "Waiting... (PgUp/PgDn or scroll to read, ESC to cancel)"
+            : "Type a message... (/ for commands, @ for skills)"
         }
         enabledProviders={enabledProviders}
         skillItems={skillItems}
+        toolExecutions={currentToolExecutions}
+        showToolsPanel={showToolsPanel}
+        onSetShowToolsPanel={setShowToolsPanel}
       />
     </Box>
   );
@@ -203,6 +196,7 @@ export function ChatApp(): React.ReactElement {
 interface AppProps {
   children?: React.ReactNode;
   initialModel?: string;
+  initialPrompt?: string;
   agent?: Agent;
   enabledProviders?: EnabledProviders;
 }
@@ -210,13 +204,19 @@ interface AppProps {
 export function App({
   children,
   initialModel,
+  initialPrompt,
   agent,
   enabledProviders,
 }: AppProps): React.ReactElement {
   return (
     <StatusLineProvider>
       <ToastProvider>
-        <ChatProvider initialModel={initialModel} agent={agent} enabledProviders={enabledProviders}>
+        <ChatProvider
+          initialModel={initialModel}
+          initialPrompt={initialPrompt}
+          agent={agent}
+          enabledProviders={enabledProviders}
+        >
           {children ?? <ChatApp />}
         </ChatProvider>
       </ToastProvider>

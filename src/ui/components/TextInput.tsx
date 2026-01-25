@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useState, useCallback, useRef } from "react";
+import { Box, Text, useInput, useStdout } from "ink";
 
 interface TextInputProps {
   onChange: (value: string) => void;
@@ -14,9 +14,12 @@ export function TextInput({
   placeholder = "Type a message...",
   disabled = false,
 }: TextInputProps): React.ReactElement {
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns || 80;
   const [value, setValue] = useState("");
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
-  // Use functional state update to avoid closure issues
   const handleInput = useCallback(
     (
       input: string,
@@ -32,68 +35,56 @@ export function TextInput({
     ) => {
       if (disabled) return;
 
-      // Handle backspace and delete keys
-      if (
-        key.backspace ||
-        key.delete ||
-        input === "\x7F" ||
-        input === "\b" ||
-        input === "\x1b[3~"
-      ) {
-        setValue((prev) => {
-          const newValue = prev.slice(0, -1);
-          onChange(newValue);
-          return newValue;
-        });
-        return;
-      }
+      queueMicrotask(() => {
+        const currentValue = valueRef.current;
 
-      // Handle return/submit
-      if (key.return) {
-        setValue((prev) => {
-          if (prev.trim()) {
-            onSubmit(prev);
+        if (
+          key.backspace ||
+          key.delete ||
+          input === "\x7F" ||
+          input === "\b" ||
+          input === "\x1b[3~"
+        ) {
+          const newValue = currentValue.slice(0, -1);
+          setValue(newValue);
+          onChange(newValue);
+          return;
+        }
+
+        if (key.return) {
+          if (currentValue.trim()) {
+            onSubmit(currentValue);
           }
-          return "";
-        });
-        return;
-      }
+          setValue("");
+          return;
+        }
 
-      // Handle escape - clear input
-      if (key.escape) {
-        setValue("");
-        onChange("");
-        return;
-      }
+        if (key.escape) {
+          setValue("");
+          onChange("");
+          return;
+        }
 
-      // Handle tab - insert tab character
-      if (input === "\t") {
-        setValue((prev) => {
-          const newValue = prev + "\t";
+        if (input === "\t") {
+          const newValue = currentValue + "\t";
+          setValue(newValue);
           onChange(newValue);
-          return newValue;
-        });
-        return;
-      }
+          return;
+        }
 
-      // Handle space
-      if (input === " ") {
-        setValue((prev) => {
-          const newValue = prev + " ";
+        if (input === " ") {
+          const newValue = currentValue + " ";
+          setValue(newValue);
           onChange(newValue);
-          return newValue;
-        });
-        return;
-      }
+          return;
+        }
 
-      // Handle regular character input (ignore ctrl/meta key combinations)
-      if (input && input.length === 1 && !key.ctrl && !key.meta) {
-        setValue((prev) => {
-          const newValue = prev + input;
+        if (input && input.length === 1 && !key.ctrl && !key.meta) {
+          const newValue = currentValue + input;
+          setValue(newValue);
           onChange(newValue);
-          return newValue;
-        });
-      }
+        }
+      });
     },
     [disabled, onChange, onSubmit],
   );
@@ -101,9 +92,9 @@ export function TextInput({
   useInput(handleInput, { isActive: !disabled });
 
   return (
-    <Box>
+    <Box width={terminalWidth}>
       <Text color="green" bold>
-        {"❯ "}
+        {"> "}
       </Text>
       {value ? <Text>{value}</Text> : <Text color="gray">{placeholder}</Text>}
     </Box>

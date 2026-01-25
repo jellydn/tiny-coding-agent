@@ -45,6 +45,7 @@ export function ollamaModelsToPickerItems(models: OllamaModel[]): ModelPickerIte
     id: m.name,
     name: m.name,
     description: m.size ? `${m.size} local` : "local",
+    source: "ollama-local",
   }));
 }
 
@@ -52,7 +53,12 @@ let cachedModels: ModelPickerItem[] | null = null;
 
 export function getCachedOllamaModels(): ModelPickerItem[] {
   if (cachedModels === null) {
-    cachedModels = ollamaModelsToPickerItems(getLocalOllamaModels());
+    const models = ollamaModelsToPickerItems(getLocalOllamaModels());
+    // Don't cache empty results - allows retry on next call
+    if (models.length > 0) {
+      cachedModels = models;
+    }
+    return models;
   }
   return cachedModels;
 }

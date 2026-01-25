@@ -52,12 +52,15 @@ function generateId(): string {
 
 export class MemoryStore {
   private _memories: Map<string, Memory> = new Map();
+  private _sortedIds: string[] = []; // Sorted by lastAccessedAt descending
   private _filePath?: string;
   private _maxMemories: number;
   private _maxMemoryTokens?: number;
   private _saveTimeout?: NodeJS.Timeout;
   private _initPromise?: Promise<void>;
   private _signalHandlersRegistered: boolean = false;
+  private _sigtermHandler?: () => Promise<void>;
+  private _sigintHandler?: () => Promise<void>;
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
@@ -88,6 +91,20 @@ export class MemoryStore {
     };
 
     this._memories.set(memory.id, memory);
+    // Insert into sorted array (descending by lastAccessedAt)
+    const newTime = new Date(memory.lastAccessedAt).getTime();
+    let insertIndex = 0;
+    for (let i = 0; i < this._sortedIds.length; i++) {
+      const existingId = this._sortedIds[i];
+      if (!existingId) continue;
+      const existingTime = new Date(this._memories.get(existingId)!.lastAccessedAt).getTime();
+      if (existingTime >= newTime) {
+        insertIndex = i;
+        break;
+      }
+      insertIndex = i + 1;
+    }
+    this._sortedIds.splice(insertIndex, 0, memory.id);
     this._evictIfNeeded();
     this._scheduleSave();
 
@@ -96,18 +113,44 @@ export class MemoryStore {
 
   get(id: string): Memory | undefined {
     const memory = this._memories.get(id);
-    if (memory) {
-      memory.lastAccessedAt = new Date().toISOString();
-      memory.accessCount++;
-      this._scheduleSave();
-    }
+    if (!memory) return undefined;
+
+    memory.lastAccessedAt = new Date().toISOString();
+    memory.accessCount++;
+    this._updateSortedPosition(id);
+    this._scheduleSave();
+
     return memory;
   }
 
+  private _updateSortedPosition(id: string): void {
+    const memory = this._memories.get(id);
+    if (!memory) return;
+
+    const newTime = new Date(memory.lastAccessedAt).getTime();
+    const currentIndex = this._sortedIds.indexOf(id);
+    if (currentIndex <= 0) return;
+
+    const prevId = this._sortedIds[currentIndex - 1];
+    if (!prevId) return;
+
+    const prevTime = new Date(this._memories.get(prevId)!.lastAccessedAt).getTime();
+    if (newTime <= prevTime) return;
+
+    this._sortedIds.splice(currentIndex, 1);
+    let insertIndex = currentIndex - 1;
+    while (insertIndex > 0) {
+      const checkId = this._sortedIds[insertIndex - 1];
+      if (!checkId) break;
+      const checkTime = new Date(this._memories.get(checkId)!.lastAccessedAt).getTime();
+      if (checkTime < newTime) break;
+      insertIndex--;
+    }
+    this._sortedIds.splice(insertIndex, 0, id);
+  }
+
   list(): Memory[] {
-    return Array.from(this._memories.values()).sort((a, b) => {
-      return new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime();
-    });
+    return this._sortedIds.map((id) => this._memories.get(id)!).filter(Boolean);
   }
 
   /**
@@ -119,6 +162,8 @@ export class MemoryStore {
       memory.lastAccessedAt = now;
       memory.accessCount++;
     }
+    // Rebuild sorted array - all have same timestamp, maintain relative order
+    this._sortedIds = Array.from(this._memories.keys());
     this._scheduleSave();
   }
 
@@ -129,6 +174,10 @@ export class MemoryStore {
   remove(id: string): boolean {
     const removed = this._memories.delete(id);
     if (removed) {
+      const index = this._sortedIds.indexOf(id);
+      if (index >= 0) {
+        this._sortedIds.splice(index, 1);
+      }
       this._scheduleSave();
     }
     return removed;
@@ -136,6 +185,7 @@ export class MemoryStore {
 
   clear(): void {
     this._memories.clear();
+    this._sortedIds = [];
     this._scheduleSave();
   }
 
@@ -214,6 +264,7 @@ export class MemoryStore {
   }
 
   async close(): Promise<void> {
+    this.removeSignalHandlers();
     await this.flush();
   }
 
@@ -222,15 +273,33 @@ export class MemoryStore {
 
     this._signalHandlersRegistered = true;
 
-    process.on("SIGTERM", async () => {
+    this._sigtermHandler = async () => {
       await this.flush();
       process.exit(1);
-    });
+    };
+    this._sigintHandler = async () => {
+      await this.flush();
+      process.exit(1);
+    };
 
-    process.on("SIGINT", async () => {
-      await this.flush();
-      process.exit(1);
-    });
+    process.on("SIGTERM", this._sigtermHandler);
+    process.on("SIGINT", this._sigintHandler);
+  }
+
+  /**
+   * Remove registered signal handlers to prevent handler accumulation.
+   * Should be called when MemoryStore is no longer needed.
+   */
+  removeSignalHandlers(): void {
+    if (this._signalHandlersRegistered && typeof process !== "undefined") {
+      if (this._sigtermHandler) {
+        process.removeListener("SIGTERM", this._sigtermHandler);
+      }
+      if (this._sigintHandler) {
+        process.removeListener("SIGINT", this._sigintHandler);
+      }
+      this._signalHandlersRegistered = false;
+    }
   }
 
   private _scheduleSave(): void {
@@ -266,19 +335,29 @@ export class MemoryStore {
 
       if (memories && Array.isArray(memories)) {
         for (const m of memories) {
-          this._memories.set(m.id, {
+          const memory: Memory = {
             id: m.id,
             content: m.content,
             category: m.category as MemoryCategory,
             createdAt: m.createdAt,
             lastAccessedAt: m.lastAccessedAt ?? m.createdAt,
             accessCount: m.accessCount ?? 0,
-          });
+          };
+          this._memories.set(m.id, memory);
+          this._sortedIds.push(m.id);
         }
+        // Sort once after loading all memories
+        this._sortedIds.sort((a, b) => {
+          const timeA = new Date(this._memories.get(a)!.lastAccessedAt).getTime();
+          const timeB = new Date(this._memories.get(b)!.lastAccessedAt).getTime();
+          return timeB - timeA; // Descending
+        });
       }
     } catch (err) {
       console.error(`[MemoryStore] Failed to load memories from ${this._filePath}: ${err}`);
-      console.error("[MemoryStore] Continuing with empty memory store");
+      console.warn(
+        "[MemoryStore] Continuing with empty memory store. Your memory file may be corrupted.",
+      );
     }
   }
 
@@ -332,14 +411,13 @@ export class MemoryStore {
     );
   }
 
-  /**
-   * Evict the least recently accessed memory
-   */
   private _evictOldest(): void {
-    const oldest = Array.from(this._memories.values()).sort(
-      (a, b) => new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
-    )[0];
-    if (oldest) this._memories.delete(oldest.id);
+    if (this._sortedIds.length === 0) return;
+    const lastIndex = this._sortedIds.length - 1;
+    const oldestId = this._sortedIds[lastIndex];
+    if (!oldestId) return;
+    this._memories.delete(oldestId);
+    this._sortedIds.splice(lastIndex, 1);
   }
 }
 

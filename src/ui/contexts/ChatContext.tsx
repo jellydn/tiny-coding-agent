@@ -28,31 +28,6 @@ function generateMessageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const MAX_ARG_LENGTH = 40;
-const MAX_OUTPUT_LINES = 10;
-
-function formatToolCall(te: ToolExecution): string {
-  const argsStr = te.args
-    ? Object.entries(te.args)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => {
-          const str = typeof v === "string" ? v : JSON.stringify(v);
-          return `${k}=${str.length > MAX_ARG_LENGTH ? str.slice(0, MAX_ARG_LENGTH) + "..." : str}`;
-        })
-        .join(" ")
-    : "";
-  return `🔧 ${te.name}${argsStr ? ` ${argsStr}` : ""}`;
-}
-
-function formatToolOutput(te: ToolExecution): string {
-  const output = te.error || te.output || "";
-  if (!output) return "";
-  const allLines = output.split("\n");
-  const lines = allLines.slice(0, MAX_OUTPUT_LINES);
-  const prefix = te.error ? "✗" : "✓";
-  return `\n${prefix} ${lines.join("\n  ")}${lines.length < allLines.length ? "\n  ..." : ""}`;
-}
-
 interface ChatContextValue {
   messages: ChatMessage[];
   addMessage: (
@@ -91,6 +66,7 @@ export function useChatContext(): ChatContextValue {
 interface ChatProviderProps {
   children: ReactNode;
   initialModel?: string;
+  initialPrompt?: string;
   agent?: Agent;
   enabledProviders?: EnabledProviders;
 }
@@ -98,6 +74,7 @@ interface ChatProviderProps {
 export function ChatProvider({
   children,
   initialModel = "",
+  initialPrompt,
   agent,
   enabledProviders,
 }: ChatProviderProps): React.ReactElement {
@@ -106,8 +83,8 @@ export function ChatProvider({
   const [streamingText, setStreamingTextState] = useState("");
   const [currentModel, setCurrentModelState] = useState(initialModel);
   const [currentToolExecutions, setCurrentToolExecutions] = useState<ToolExecution[]>([]);
-  const seenToolsRef = useRef<Set<string>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const initialPromptSentRef = useRef(false);
 
   // Initialize status line with model on mount
   useEffect(() => {
@@ -138,6 +115,8 @@ export function ChatProvider({
 
   const clearMessages = useCallback(() => {
     setMessages([]);
+    setCurrentToolExecutions([]);
+    setStreamingTextState("");
     if (agent) {
       agent.startChatSession();
     }
@@ -185,11 +164,12 @@ export function ChatProvider({
         setThinking(true);
         setStreamingText("");
         setCurrentToolExecutions([]);
-        seenToolsRef.current.clear();
         statusLineManager.setStatus(StatusType.THINKING);
         statusLineManager.setModel(currentModel.replace(/^opencode\//, ""));
 
         let accumulatedContent = "";
+        const accumulatedTools: ToolExecution[] = [];
+        const seenToolIds = new Set<string>();
 
         let wasAborted = false;
 
@@ -208,33 +188,49 @@ export function ChatProvider({
             }
 
             if (chunk.toolExecutions) {
-              setCurrentToolExecutions([...chunk.toolExecutions]);
-
               for (const te of chunk.toolExecutions) {
-                const toolKey = `${te.name}-${te.status}`;
+                const toolId = `${te.name}-${JSON.stringify(te.args)}`;
+                const existingIdx = accumulatedTools.findIndex(
+                  (t) => `${t.name}-${JSON.stringify(t.args)}` === toolId,
+                );
 
-                if (te.status === ToolStatus.RUNNING) {
-                  if (!seenToolsRef.current.has(toolKey)) {
-                    seenToolsRef.current.add(toolKey);
-                    accumulatedContent += `\n${formatToolCall(te)}`;
-                    setStreamingText(accumulatedContent);
-                  }
-                } else if (te.status === ToolStatus.COMPLETE || te.status === ToolStatus.ERROR) {
-                  if (!seenToolsRef.current.has(toolKey)) {
-                    seenToolsRef.current.add(toolKey);
-                    accumulatedContent += formatToolOutput(te);
-                    setStreamingText(accumulatedContent);
-                  }
+                if (existingIdx >= 0) {
+                  accumulatedTools[existingIdx] = te;
+                } else if (!seenToolIds.has(toolId)) {
+                  seenToolIds.add(toolId);
+                  accumulatedTools.push(te);
                 }
               }
+              setCurrentToolExecutions([...accumulatedTools]);
+            }
 
-              const runningTool = chunk.toolExecutions.find(
-                (te) => te.status === ToolStatus.RUNNING,
-              );
-              if (runningTool) {
-                statusLineManager.setTool(runningTool.name);
+            if (accumulatedContent.trim() || accumulatedTools.length > 0) {
+              let streamingText = accumulatedContent.trim();
+              for (const te of accumulatedTools) {
+                const argsStr = Object.entries(te.args ?? {})
+                  .filter(([, v]) => v !== undefined)
+                  .map(([, v]) => (typeof v === "string" ? v : JSON.stringify(v)))
+                  .join(" ");
+
+                if (te.status === "running") {
+                  streamingText += `\n[running] ${te.name}${argsStr ? ` ${argsStr}` : ""}...`;
+                } else {
+                  const icon = te.status === "complete" ? "[✓]" : "[✗]";
+                  const duration = te.duration ? ` (${te.duration}ms)` : "";
+                  streamingText += `\n${icon} ${te.name}${argsStr ? ` ${argsStr}` : ""}${duration}`;
+                }
               }
-              // Don't clear tool on complete - keep it visible until next tool starts
+              if (accumulatedTools.length > 0) streamingText += "\n";
+              setStreamingText(streamingText);
+            } else {
+              setStreamingText("Thinking...");
+            }
+
+            const runningTool = accumulatedTools.find((te) => te.status === "running");
+            if (runningTool) {
+              statusLineManager.setTool(runningTool.name);
+            } else {
+              statusLineManager.setTool(undefined);
             }
 
             if (chunk.contextStats) {
@@ -254,11 +250,20 @@ export function ChatProvider({
           }
         }
 
-        if (accumulatedContent) {
-          const finalContent = wasAborted
-            ? accumulatedContent + "\n\n*(cancelled)*"
-            : accumulatedContent;
-          addMessage(MessageRole.ASSISTANT, finalContent);
+        let finalContent = accumulatedContent;
+        const toolMarkerMatch = accumulatedContent.match(/\n(\[✓\]|\[✗\]|\[running\])/);
+        if (toolMarkerMatch) {
+          finalContent = accumulatedContent.slice(0, toolMarkerMatch.index);
+        }
+        finalContent = finalContent.trim();
+
+        if (!finalContent && accumulatedTools.length > 0) {
+          finalContent = "(Tool execution completed)";
+        }
+
+        if (finalContent) {
+          if (wasAborted) addMessage(MessageRole.ASSISTANT, finalContent + "\n\n*(cancelled)*");
+          else addMessage(MessageRole.ASSISTANT, finalContent);
         }
         statusLineManager.setStatus(wasAborted ? StatusType.READY : StatusType.READY);
       } catch (err) {
@@ -273,11 +278,17 @@ export function ChatProvider({
         }
         setThinking(false);
         setStreamingText("");
-        setCurrentToolExecutions([]);
       }
     },
-    [agent, currentModel, addMessage, setThinking, setStreamingText, handleChatError],
+    [agent, currentModel, addMessage, handleChatError],
   );
+
+  useEffect(() => {
+    if (initialPrompt && agent && !initialPromptSentRef.current) {
+      initialPromptSentRef.current = true;
+      sendMessage(initialPrompt);
+    }
+  }, [initialPrompt, agent, sendMessage]);
 
   return (
     <ChatContext.Provider

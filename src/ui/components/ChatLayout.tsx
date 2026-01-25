@@ -1,12 +1,13 @@
-import type React from "react";
-import { Box, Text } from "ink";
+import React, { useMemo } from "react";
+import { Box, Text, useInput, useStdout } from "ink";
 import { Header } from "./Header.js";
 import { MessageList, type ChatMessage } from "./MessageList.js";
 import { StatusLine } from "./StatusLine.js";
 import { TextInput } from "./TextInput.js";
 import { CommandMenu, type Command } from "./CommandMenu.js";
-import { ToastList } from "./ToastList.js";
+import { ToolsPanel, type ToolSummary } from "./ToolsPanel.js";
 import type { SkillMetadata } from "../../skills/types.js";
+import type { ToolExecution } from "../../core/agent.js";
 import {
   ModelPicker,
   DEFAULT_MODELS,
@@ -16,9 +17,23 @@ import {
 } from "./ModelPicker.js";
 import { SkillPicker } from "./SkillPicker.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
+import type { ToolCallStatus } from "./ToolCall.js";
+import { ThinkingTagFilter } from "../../cli/main.js";
+
+function convertToolStatus(status: string): ToolCallStatus {
+  switch (status) {
+    case "complete":
+      return "success";
+    case "error":
+      return "error";
+    default:
+      return "pending";
+  }
+}
 
 interface ChatLayoutProps {
   messages: ChatMessage[];
+  streamingText?: string;
   currentModel?: string;
   inputValue: string;
   onInputChange: (value: string) => void;
@@ -31,6 +46,9 @@ interface ChatLayoutProps {
   showModelPicker?: boolean;
   enabledProviders?: EnabledProviders;
   skillItems?: SkillMetadata[];
+  toolExecutions?: ToolExecution[];
+  showToolsPanel?: boolean;
+  onSetShowToolsPanel?: (show: boolean) => void;
 }
 
 function WelcomeMessage(): React.ReactElement {
@@ -62,6 +80,7 @@ function WelcomeMessage(): React.ReactElement {
 
 export function ChatLayout({
   messages,
+  streamingText,
   currentModel,
   inputValue,
   onInputChange,
@@ -74,12 +93,44 @@ export function ChatLayout({
   showModelPicker = false,
   enabledProviders,
   skillItems = [],
+  toolExecutions = [],
+  showToolsPanel = false,
+  onSetShowToolsPanel,
 }: ChatLayoutProps): React.ReactElement {
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns || 80;
   const statusContext = useStatusLine();
+
   const showCommandMenu = !inputDisabled && inputValue.startsWith("/");
   const commandFilter = showCommandMenu ? inputValue.slice(1) : "";
   const showSkillPicker = !inputDisabled && inputValue.startsWith("@") && skillItems.length > 0;
   const skillFilter = showSkillPicker ? inputValue.slice(1) : "";
+
+  const toolSummaries: ToolSummary[] = useMemo(() => {
+    return toolExecutions.map((te) => ({
+      name: te.name,
+      args: te.args ?? {},
+      status: convertToolStatus(te.status),
+      duration: te.duration,
+    }));
+  }, [toolExecutions]);
+
+  const thinkFilterRef = React.useRef(new ThinkingTagFilter());
+  const filteredStreamingText = useMemo(() => {
+    if (!streamingText) return undefined;
+    return thinkFilterRef.current.filter(streamingText);
+  }, [streamingText]);
+
+  const hasRunningTool = toolSummaries.some((t) => t.status === "pending");
+
+  useInput(
+    (_input, key) => {
+      if (key.return && showToolsPanel && onSetShowToolsPanel) {
+        onSetShowToolsPanel(false);
+      }
+    },
+    { isActive: showToolsPanel },
+  );
 
   const availableModels: ModelPickerItem[] = enabledProviders
     ? getModelsForProviders(enabledProviders)
@@ -109,57 +160,81 @@ export function ChatLayout({
     <Box flexDirection="column" height="100%">
       <Header model={currentModel} skillCount={skillItems.length} />
 
-      <ToastList />
-
       <Box flexDirection="column" flexGrow={1}>
         {messages.length === 0 ? <WelcomeMessage /> : <MessageList messages={messages} />}
-      </Box>
 
-      <Box flexShrink={0} marginY={1}>
-        {showCommandMenu && (
-          <CommandMenu
-            filter={commandFilter}
-            onSelect={handleCommandSelect}
-            onClose={() => onInputChange("")}
-            skillItems={skillItems}
-          />
+        {filteredStreamingText !== undefined && (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color="cyan" bold>
+              Assistant:
+            </Text>
+            <Box marginTop={1}>
+              <Text wrap="wrap">{filteredStreamingText || "..."}</Text>
+            </Box>
+          </Box>
         )}
-        {showModelPicker && (
-          <ModelPicker
-            models={availableModels}
-            currentModel={currentModel ?? ""}
-            onSelect={handleModelSelect}
-            onClose={() => onModelSelect?.("")}
-          />
+
+        {!showToolsPanel && hasRunningTool && (
+          <Box marginY={1}>
+            <Text color="cyan" dimColor>
+              [Tools ({toolSummaries.length})] Type /tools to view
+            </Text>
+          </Box>
         )}
-        {showSkillPicker && (
-          <SkillPicker
-            skills={skillItems}
-            filter={skillFilter}
-            onSelect={handleSkillSelect}
-            onClose={() => onInputChange("")}
-          />
-        )}
-        {!showCommandMenu && !showModelPicker && !showSkillPicker && (
-          <TextInput
-            value={inputValue}
-            onChange={onInputChange}
-            onSubmit={onInputSubmit}
-            placeholder={inputPlaceholder}
-            disabled={inputDisabled}
-          />
+
+        {showToolsPanel && (
+          <Box marginY={1}>
+            <ToolsPanel tools={toolSummaries} onClose={() => onSetShowToolsPanel?.(false)} />
+          </Box>
         )}
       </Box>
 
-      <Box flexShrink={0} borderStyle="single" borderColor="gray" paddingX={1}>
-        <StatusLine
-          status={statusContext.status}
-          model={statusContext.model}
-          tokensUsed={statusContext.tokensUsed}
-          tokensMax={statusContext.tokensMax}
-          tool={statusContext.tool}
-          mcpServerCount={statusContext.mcpServerCount}
-        />
+      <Box flexDirection="column" flexShrink={0}>
+        <Box width={terminalWidth} borderStyle="single" borderColor="gray" paddingX={1}>
+          <StatusLine
+            status={statusContext.status}
+            model={statusContext.model}
+            tokensUsed={statusContext.tokensUsed}
+            tokensMax={statusContext.tokensMax}
+            tool={statusContext.tool}
+            mcpServerCount={statusContext.mcpServerCount}
+          />
+        </Box>
+
+        <Box width={terminalWidth}>
+          {showCommandMenu && (
+            <CommandMenu
+              filter={commandFilter}
+              onSelect={handleCommandSelect}
+              onClose={() => onInputChange("")}
+              skillItems={skillItems}
+            />
+          )}
+          {showModelPicker && (
+            <ModelPicker
+              models={availableModels}
+              currentModel={currentModel ?? ""}
+              onSelect={handleModelSelect}
+              onClose={() => onModelSelect?.("")}
+            />
+          )}
+          {showSkillPicker && (
+            <SkillPicker
+              skills={skillItems}
+              filter={skillFilter}
+              onSelect={handleSkillSelect}
+              onClose={() => onInputChange("")}
+            />
+          )}
+          {!showCommandMenu && !showModelPicker && !showSkillPicker && (
+            <TextInput
+              onChange={onInputChange}
+              onSubmit={onInputSubmit}
+              placeholder={inputPlaceholder}
+              disabled={inputDisabled}
+            />
+          )}
+        </Box>
       </Box>
     </Box>
   );

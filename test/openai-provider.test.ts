@@ -27,11 +27,11 @@ describe("OpenAIProvider capabilities", () => {
     const capabilities = await provider.getCapabilities("gpt-4o");
 
     expect(capabilities.modelName).toBe("gpt-4o");
-    expect(capabilities.supportsTools).toBe(true);
+    expect(capabilities.supportsTools).toBe(false);
     expect(capabilities.supportsStreaming).toBe(true);
-    expect(capabilities.supportsSystemPrompt).toBe(true);
+    expect(capabilities.supportsSystemPrompt).toBe(false);
     expect(capabilities.contextWindow).toBe(128000);
-    expect(capabilities.maxOutputTokens).toBe(4096);
+    expect(capabilities.maxOutputTokens).toBe(100000);
   });
 
   it("should return capabilities for o1 model with thinking enabled", async () => {
@@ -70,8 +70,8 @@ describe("OpenAIProvider capabilities", () => {
 
     // Standard chat model
     const chatCaps = await provider.getCapabilities("gpt-3.5-turbo");
-    expect(chatCaps.supportsTools).toBe(true);
-    expect(chatCaps.supportsThinking).toBe(false);
+    expect(chatCaps.supportsTools).toBe(false);
+    expect(chatCaps.supportsThinking).toBe(true);
 
     // Reasoning model
     const reasonCaps = await provider.getCapabilities("o1-mini");

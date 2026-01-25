@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { isTool, loadPlugins } from "../../src/tools/plugin-loader.js";
-import { mkdirSync, rmdirSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ const testDir = join(tmpdir(), "test-plugins");
 
 beforeEach(() => {
   try {
-    rmdirSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   } catch {
     /* ignore */
   }
@@ -18,7 +18,7 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    rmdirSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   } catch {
     /* ignore */
   }

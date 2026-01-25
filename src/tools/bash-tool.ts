@@ -16,6 +16,15 @@ const READ_ONLY_COMMANDS = new Set([
   "git stash",
   "git reflog",
   "git describe",
+  "git rev-parse",
+  "git rev-list",
+  "git merge-base",
+  "git for-each-ref",
+  "git name-rev",
+  "git blame",
+  "git log --oneline",
+  "git log --pretty",
+  "git log --format",
   "ls",
   "dir",
   "cat",
@@ -38,7 +47,8 @@ const READ_ONLY_COMMANDS = new Set([
 const DESTRUCTIVE_PATTERNS = [
   /\brm\s/,
   /\bmv\s/,
-  /\bgit\s+(commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase)\b/,
+  /\bgit\s+(?:commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase|cherry-pick|revert|fetch|pull|merge\s+)\b/,
+  /\bgit\s+checkout\s+-b\b/,
   /\brmdir\b/,
   />[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
   />>[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
@@ -99,35 +109,35 @@ function filterSafeEnvironment(): NodeJS.ProcessEnv {
   return safeEnv;
 }
 
-function detectShellMetacharacters(command: string): string[] {
-  const metacharacters: string[] = [];
-  const patterns: [RegExp, string][] = [
+function detectShellMetacharacters(command: string): string[] | null {
+  const suspiciousPatterns: [RegExp, string][] = [
     [/;/, "semicolon"],
-    [/\|/, "pipe"],
-    [/\$/, "variable expansion"],
-    [/`/, "command substitution"],
+    [/\$/, "dollar sign"],
+    [/`/, "backtick"],
     [/\n/, "newline"],
     [/\r/, "carriage return"],
-    [/&&/, "AND operator"],
-    [/\|\|/, "OR operator"],
-    [/<</, "heredoc"],
-    [/>/, "redirection"],
-    [/>>/, "append redirection"],
+    [/\((?![^)]*\))/, "parenthesis"],
   ];
 
-  for (const [pattern, name] of patterns) {
+  const detected: string[] = [];
+  for (const [pattern, name] of suspiciousPatterns) {
     if (pattern.test(command)) {
-      metacharacters.push(name);
+      detected.push(name);
     }
   }
 
-  return metacharacters;
+  return detected.length > 0 ? detected : null;
+}
+
+export interface BashOptions {
+  strict?: boolean;
 }
 
 const bashArgsSchema = z.object({
   command: z.string(),
   cwd: z.string().optional(),
   timeout: z.number().optional(),
+  strict: z.boolean().optional(),
 });
 
 export const bashTool: Tool = {
@@ -135,9 +145,15 @@ export const bashTool: Tool = {
   description:
     "Execute a shell command and return stdout, stderr, and exit code. Use for running builds, tests, scripts, and system commands.",
   dangerous: (args) => {
-    const { command } = args as { command: string };
+    const { command, strict } = args as { command: string; strict?: boolean };
     if (isDestructiveCommand(command)) {
       return `Destructive command: ${command}`;
+    }
+    if (strict) {
+      const metacharacters = detectShellMetacharacters(command);
+      if (metacharacters) {
+        return `Command contains shell metacharacters in strict mode: ${metacharacters.join(", ")}`;
+      }
     }
     return false;
   },
@@ -156,6 +172,10 @@ export const bashTool: Tool = {
         type: "number",
         description: `Timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})`,
       },
+      strict: {
+        type: "boolean",
+        description: "Block commands with shell metacharacters for security",
+      },
     },
     required: ["command"],
   },
@@ -165,13 +185,20 @@ export const bashTool: Tool = {
       return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
     }
 
-    const { command, cwd, timeout } = parsed.data;
+    const { command, cwd, timeout, strict } = parsed.data;
     const effectiveTimeout = timeout ?? DEFAULT_TIMEOUT_MS;
 
-    const metacharacters = detectShellMetacharacters(command);
-    if (metacharacters.length > 0) {
-      const warning = `[Security] Command contains shell metacharacters: ${metacharacters.join(", ")}. This is allowed for legitimate shell usage but review the command if unexpected.`;
-      console.warn(warning);
+    const suspiciousChars = detectShellMetacharacters(command);
+    if (suspiciousChars) {
+      if (strict) {
+        return {
+          success: false,
+          error: `[Security] Command blocked in strict mode: contains shell metacharacters ${suspiciousChars.join(", ")}`,
+        };
+      }
+      console.warn(
+        `[Security] Command contains potentially unsafe metacharacters: ${suspiciousChars.join(", ")}`,
+      );
     }
 
     return new Promise((resolve) => {
@@ -220,37 +247,35 @@ export const bashTool: Tool = {
         if (killed) {
           resolve({
             success: false,
-            error: `Command timed out after ${effectiveTimeout}ms`,
-            output: formatOutput(stdoutStr, stderrStr, null),
+            error:
+              formatOutput(stdoutStr, stderrStr) || `Command timed out after ${effectiveTimeout}ms`,
           });
           return;
         }
 
-        const output = formatOutput(stdoutStr, stderrStr, exitCode);
+        const output = formatOutput(stdoutStr, stderrStr);
+        const hasOutput = stdoutStr.trim().length > 0 || stderrStr.trim().length > 0;
+        const error = exitCode !== 0 ? (hasOutput ? undefined : `Command exited with code ${exitCode}`) : undefined;
 
         resolve({
           success: exitCode === 0,
           output,
-          error: exitCode !== 0 ? `Command exited with code ${exitCode}` : undefined,
+          error,
         });
       });
     });
   },
 };
 
-function formatOutput(stdout: string, stderr: string, exitCode: number | null): string {
+function formatOutput(stdout: string, stderr: string): string {
   const parts: string[] = [];
 
   if (stdout.trim()) {
-    parts.push(`stdout:\n${stdout.trim()}`);
+    parts.push(stdout.trim());
   }
 
   if (stderr.trim()) {
-    parts.push(`stderr:\n${stderr.trim()}`);
-  }
-
-  if (exitCode !== null) {
-    parts.push(`exit_code: ${exitCode}`);
+    parts.push(`[stderr]\n${stderr.trim()}`);
   }
 
   return parts.join("\n\n") || "(no output)";

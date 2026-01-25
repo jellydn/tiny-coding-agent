@@ -11,16 +11,16 @@ export function ToastList(): React.ReactElement | null {
     <Box flexDirection="column" marginBottom={1}>
       {toasts.map((toast) => {
         let color = "gray";
-        let icon = "ℹ";
+        let icon = "[info]";
         if (toast.type === "success") {
           color = "green";
-          icon = "✓";
+          icon = "[✓]";
         } else if (toast.type === "warning") {
           color = "yellow";
-          icon = "!";
+          icon = "[!]";
         } else if (toast.type === "error") {
           color = "red";
-          icon = "✗";
+          icon = "[✗]";
         }
 
         return (

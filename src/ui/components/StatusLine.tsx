@@ -57,7 +57,6 @@ export function StatusLine({
     setElapsed(0);
   }, [status, tool]);
 
-  // Always show model if available
   if (model) {
     const maxModelWidth = Math.max(
       LAYOUT.CONTEXT_MAX_MODEL_WIDTH,
@@ -71,7 +70,6 @@ export function StatusLine({
     );
   }
 
-  // Always show context if available
   if (tokensUsed !== undefined && tokensMax !== undefined) {
     if (elements.length > 0) {
       elements.push(<Text key={`sep-c-${elements.length}`}> | </Text>);
@@ -85,7 +83,6 @@ export function StatusLine({
     );
   }
 
-  // Always show MCP count if available
   if (mcpServerCount !== undefined && mcpServerCount > 0) {
     if (elements.length > 0) {
       elements.push(<Text key={`sep-m-${elements.length}`}> | </Text>);
@@ -97,7 +94,6 @@ export function StatusLine({
     );
   }
 
-  // Show status label only when there's actual activity
   if (status) {
     const statusLabel = STATUS_CONFIG.LABELS[status] || status;
     const statusColor = STATUS_CONFIG.COLORS[status];
@@ -109,22 +105,20 @@ export function StatusLine({
     );
   }
 
-  // Show tool with timer when running
   if (tool) {
     const timeStr = `${elapsed.toFixed(1)}s`;
     elements.push(<Text key={`sep-t-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="tool" color="cyan">
-        ⚙ {tool} {timeStr}
+        [{tool}] {timeStr}
       </Text>,
     );
   } else if (status === "thinking") {
-    // Show thinking timer when thinking (no tool)
     const timeStr = `${elapsed.toFixed(1)}s`;
     elements.push(<Text key={`sep-th-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="thinking" color="yellow">
-        ⏳ {timeStr}
+        Thinking {timeStr}
       </Text>,
     );
   }
@@ -132,7 +126,7 @@ export function StatusLine({
   if (elements.length === 0) {
     return (
       <Box flexDirection="row">
-        <Text color="green">✓ Ready</Text>
+        <Text color="green">Ready</Text>
         <Text> | </Text>
         <Text color="gray">Type a message to start</Text>
       </Box>

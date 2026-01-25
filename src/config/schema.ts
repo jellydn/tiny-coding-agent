@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -20,6 +22,28 @@ export interface ToolConfig {
   options?: Record<string, unknown>;
 }
 
+export const providerConfigSchema = z.object({
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+});
+
+export const thinkingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  effort: z.enum(["none", "low", "medium", "high"]).optional(),
+  budgetTokens: z.number().optional(),
+});
+
+export const mcpServerSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  env: z.object({}).optional(),
+});
+
+export const toolConfigSchema = z.object({
+  enabled: z.boolean(),
+  options: z.object({}).optional(),
+});
+
 export interface Config {
   defaultModel: string;
   systemPrompt?: string;
@@ -37,14 +61,10 @@ export interface Config {
     ollamaCloud?: ProviderConfig;
     openrouter?: ProviderConfig;
     opencode?: ProviderConfig;
+    zai?: ProviderConfig;
   };
   mcpServers?: Record<string, McpServerConfig>;
   tools?: Record<string, ToolConfig>;
-  /**
-   * Array of glob patterns to disable MCP tools.
-   * Tools matching any pattern will be excluded.
-   * Example: ["*_memory_*", "*_task_*", "mcp_serena_*"]
-   */
   disabledMcpPatterns?: string[];
 }
 
@@ -67,6 +87,20 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
     errors.push({
       field: "defaultModel",
       message: "defaultModel is required and must be a non-empty string",
+    });
+  }
+
+  if (c.maxContextTokens !== undefined && (typeof c.maxContextTokens !== "number" || c.maxContextTokens <= 0)) {
+    errors.push({
+      field: "maxContextTokens",
+      message: "maxContextTokens must be a positive number",
+    });
+  }
+
+  if (c.maxMemoryTokens !== undefined && (typeof c.maxMemoryTokens !== "number" || c.maxMemoryTokens <= 0)) {
+    errors.push({
+      field: "maxMemoryTokens",
+      message: "maxMemoryTokens must be a positive number",
     });
   }
 

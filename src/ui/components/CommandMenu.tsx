@@ -18,6 +18,7 @@ const STATIC_COMMANDS: Command[] = [
   { name: "/help", description: "Show available commands" },
   { name: "/clear", description: "Clear the conversation" },
   { name: "/model", description: "Switch the model" },
+  { name: "/tools", description: "View tool executions" },
   { name: "/mcp", description: "Show MCP server status" },
   { name: "/memory", description: "List memories" },
   { name: "/exit", description: "Exit the session" },

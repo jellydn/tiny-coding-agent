@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { grepTool, globTool } from "../../src/tools/search-tools.js";
-import { mkdirSync, rmdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -8,7 +8,7 @@ const testDir = join(tmpdir(), "test-search-tools");
 
 beforeEach(() => {
   try {
-    rmdirSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   } catch {
     /* ignore */
   }
@@ -17,7 +17,7 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    rmdirSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   } catch {
     /* ignore */
   }

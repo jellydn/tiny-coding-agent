@@ -5,34 +5,6 @@ import { McpClient } from "./client.js";
 import type { McpToolDefinition, McpConnection } from "./types.js";
 import { isCommandAvailable } from "../utils/command.js";
 
-/**
- * @deprecated Global MCP manager creates implicit dependencies. Use dependency injection instead.
- * Will be removed in a future version. Pass McpManager instances explicitly to components.
- */
-let _globalMcpManager: McpManager | null = null;
-
-/**
- * @deprecated Use dependency injection instead. Pass McpManager instances explicitly.
- */
-export function setGlobalMcpManager(manager: McpManager | null): void {
-  _globalMcpManager = manager;
-}
-
-/**
- * @deprecated Use dependency injection instead. Pass McpManager instances explicitly.
- */
-export function getGlobalMcpManager(): McpManager | null {
-  return _globalMcpManager;
-}
-
-/**
- * Clears the global MCP manager. Useful for testing and cleanup.
- * Prefer using isolated instances over the global singleton.
- */
-export function clearGlobalMcpManager(): void {
-  _globalMcpManager = null;
-}
-
 export function globToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[\\[.+?^${}()|]/g, "\\$&").replace(/\*/g, ".*?");
   return new RegExp(`^${escaped}$`);

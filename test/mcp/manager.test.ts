@@ -1,44 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
+import { describe, it, expect, vi } from "bun:test";
 import {
   McpManager,
-  setGlobalMcpManager,
-  getGlobalMcpManager,
-  clearGlobalMcpManager,
 } from "../../src/mcp/manager.js";
 import { McpClient } from "../../src/mcp/client.js";
 import type { McpServerConfig } from "../../src/config/schema.js";
 import type { McpToolDefinition } from "../../src/mcp/types.js";
 
 describe("McpManager", () => {
-  let originalGlobalManager: McpManager | null;
-
-  beforeEach(() => {
-    originalGlobalManager = getGlobalMcpManager();
-    setGlobalMcpManager(new McpManager({}));
-  });
-
-  afterEach(() => {
-    if (originalGlobalManager) {
-      setGlobalMcpManager(originalGlobalManager);
-    } else {
-      clearGlobalMcpManager();
-    }
-  });
-
-  describe("global singleton", () => {
-    it("should provide access to global manager instance", () => {
-      const manager = new McpManager();
-      setGlobalMcpManager(manager);
-
-      expect(getGlobalMcpManager()).toBe(manager);
-    });
-
-    it("should return null when no global manager set", () => {
-      clearGlobalMcpManager();
-
-      expect(getGlobalMcpManager()).toBeNull();
-    });
-  });
 
   describe("addServer()", () => {
     it("should register a new server successfully", async () => {

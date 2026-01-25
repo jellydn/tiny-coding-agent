@@ -63,29 +63,17 @@ interface PathValidationResult {
   error?: string;
 }
 
-function validatePath(filePath: string): PathValidationResult {
-  const normalized = path.normalize(filePath);
-
-  // Check for directory traversal attempts
-  if (normalized.includes("..")) {
-    return { valid: false, error: 'Path cannot contain ".." for security reasons' };
+function isSensitiveSystemPath(resolved: string): string | undefined {
+  const sensitivePaths = ["/etc/", "/usr/", "/bin/", "/sbin/", "/sys/", "/proc/", "/dev/", "/root/"];
+  for (const sensitive of sensitivePaths) {
+    if (resolved.startsWith(sensitive)) {
+      return sensitive;
+    }
   }
+  return undefined;
+}
 
-  const resolved = path.resolve(filePath);
-
-  // Check if path attempts to write to sensitive system locations
-  const sensitivePaths = [
-    "/etc/",
-    "/usr/",
-    "/bin/",
-    "/sbin/",
-    "/sys/",
-    "/proc/",
-    "/dev/",
-    "/root/",
-  ];
-
-  // Expand home directory for comparison
+function isSensitiveHomePath(resolved: string): string | undefined {
   const homeDir = process.env.HOME ?? "";
   const homeSensitivePaths = [
     path.join(homeDir, ".ssh"),
@@ -93,20 +81,33 @@ function validatePath(filePath: string): PathValidationResult {
     path.join(homeDir, ".gnupg"),
     path.join(homeDir, ".pki"),
   ];
-
-  for (const sensitive of sensitivePaths) {
-    if (resolved.startsWith(sensitive)) {
-      return { valid: false, error: `Cannot write to system path: ${sensitive}` };
-    }
-  }
-
   for (const sensitive of homeSensitivePaths) {
     if (resolved.startsWith(sensitive)) {
-      return {
-        valid: false,
-        error: `Cannot write to sensitive directory: ${path.basename(sensitive)}`,
-      };
+      return sensitive;
     }
+  }
+  return undefined;
+}
+
+function validatePath(filePath: string): PathValidationResult {
+  const normalized = path.normalize(filePath);
+  if (normalized.includes("..")) {
+    return { valid: false, error: 'Path cannot contain ".." for security reasons' };
+  }
+
+  const resolved = path.resolve(filePath);
+
+  const systemPath = isSensitiveSystemPath(resolved);
+  if (systemPath) {
+    return { valid: false, error: `Cannot write to system path: ${systemPath}` };
+  }
+
+  const homePath = isSensitiveHomePath(resolved);
+  if (homePath) {
+    return {
+      valid: false,
+      error: `Cannot write to sensitive directory: ${path.basename(homePath)}`,
+    };
   }
 
   return { valid: true };
@@ -167,15 +168,17 @@ export const readFileTool: Tool = {
 
       const content = await fs.readFile(filePath, "utf-8");
 
+      const output = `[File: ${filePath}]\n${content}`;
+
       if (start_line !== undefined || end_line !== undefined) {
-        const lines = content.split("\n");
+        const lines = output.split("\n");
         const start = (start_line ?? 1) - 1;
         const end = end_line ?? lines.length;
         const selectedLines = lines.slice(start, end);
         return { success: true, output: selectedLines.join("\n") };
       }
 
-      return { success: true, output: content };
+      return { success: true, output };
     } catch (err) {
       return handleFileError(filePath, err, "Failed to read file");
     }
@@ -209,13 +212,11 @@ export const writeFileTool: Tool = {
 
     const { path: filePath, content } = parsed.data;
 
-    // Validate path for security
     const pathValidation = validatePath(filePath);
     if (!pathValidation.valid) {
       return { success: false, error: pathValidation.error };
     }
 
-    // Check for sensitive file patterns
     if (isSensitiveFile(filePath)) {
       return { success: false, error: `Cannot write to sensitive file: ${filePath}` };
     }
@@ -267,7 +268,6 @@ export const editFileTool: Tool = {
 
     const { path: filePath, old_str, new_str, replace_all } = parsed.data;
 
-    // Validate old_str and new_str for path traversal attempts
     const pathTraversalPattern = /\.\.[\\/]/;
     if (pathTraversalPattern.test(old_str) || pathTraversalPattern.test(new_str)) {
       return { success: false, error: "Edit strings must not contain path traversal sequences" };

@@ -1,6 +1,7 @@
 import type { LLMClient, Message } from "../providers/types.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolDefinition } from "../providers/types.js";
+import type { McpManager } from "../mcp/manager.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { countTokensSync, truncateMessages } from "./tokens.js";
@@ -13,7 +14,7 @@ import {
 } from "./memory.js";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ThinkingConfig, ProviderConfig } from "../config/schema.js";
-import { createProvider, detectProvider } from "../providers/factory.js";
+import { createProvider, detectProvider, parseModelString } from "../providers/factory.js";
 import {
   discoverSkills,
   generateSkillsPrompt,
@@ -26,49 +27,60 @@ import { ConversationManager } from "./conversation.js";
 
 const MAX_OUTPUT_LENGTH = 500;
 
-function checkAborted(signal?: AbortSignal): void {
+// Loop detection thresholds
+const LOOP_DETECTION = {
+  MIN_RECENT_CALLS: 3,
+  IDENTICAL_REPEAT: 3,
+  SAME_TOOL_THRESHOLD: 5,
+  DOMINANT_TOOL_THRESHOLD: 8,
+  LOOKBACK_WINDOW: 10,
+} as const;
+
+export function checkAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
 }
 
-function isLooping(recentToolCalls: string[]): boolean {
-  if (recentToolCalls.length < 3) return false;
+export function isLooping(recentToolCalls: string[]): boolean {
+  if (recentToolCalls.length < LOOP_DETECTION.MIN_RECENT_CALLS) return false;
 
-  const lastThree = recentToolCalls.slice(-3);
-  const allIdentical = lastThree.every((call) => call === lastThree[0]);
-  if (allIdentical) return true;
+  const extractTool = (call: string): string => call.match(/^([^:]+):/)?.[1] ?? "";
+  const lastCall = recentToolCalls[recentToolCalls.length - 1] ?? "";
+  const lastTool = extractTool(lastCall);
 
-  const lastFive = recentToolCalls.slice(-5);
-  const firstToolName = lastFive[0]?.match(/^([^:]+):/)?.[1];
-  const allSameTool = lastFive.every((call) => {
-    const match = call.match(/^([^:]+):/);
-    return match && match[1] === firstToolName;
-  });
-  if (allSameTool && lastFive.length >= 5) return true;
+  if (
+    recentToolCalls
+      .slice(-LOOP_DETECTION.IDENTICAL_REPEAT)
+      .every((c) => c === lastCall)
+  )
+    return true;
 
-  const lastTen = recentToolCalls.slice(-10);
-  const toolCounts: Record<string, number> = {};
-  for (const call of lastTen) {
-    const match = call.match(/^([^:]+):/);
-    const toolName = match?.[1];
-    if (toolName) {
-      toolCounts[toolName] = (toolCounts[toolName] || 0) + 1;
-    }
+  if (recentToolCalls.length >= LOOP_DETECTION.SAME_TOOL_THRESHOLD) {
+    const lastFive = recentToolCalls.slice(-LOOP_DETECTION.SAME_TOOL_THRESHOLD);
+    if (lastFive.every((c) => extractTool(c) === lastTool)) return true;
   }
-  const maxCount = Math.max(...Object.values(toolCounts), 0);
-  if (maxCount >= 8 && lastTen.length === 10) return true;
+
+  if (recentToolCalls.length >= LOOP_DETECTION.LOOKBACK_WINDOW) {
+    const counts: Record<string, number> = {};
+    for (const call of recentToolCalls.slice(-LOOP_DETECTION.LOOKBACK_WINDOW)) {
+      const tool = extractTool(call);
+      counts[tool] = (counts[tool] ?? 0) + 1;
+    }
+    if (Math.max(...Object.values(counts), 0) >= LOOP_DETECTION.DOMINANT_TOOL_THRESHOLD)
+      return true;
+  }
 
   return false;
 }
 
-function redactApiKey(key?: string): string {
+export function redactApiKey(key?: string): string {
   if (!key) return "(not set)";
   if (key.length <= 8) return "****";
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+  return `${key.slice(0, 4)}...REDACTED`;
 }
 
-function truncateOutput(output: string | undefined): string | undefined {
+export function truncateOutput(output: string | undefined): string | undefined {
   if (!output) return output;
   const lines = output.split("\n");
   if (lines.length > 10) {
@@ -91,6 +103,7 @@ export interface ProviderConfigs {
   ollamaCloud?: ProviderConfig;
   openrouter?: ProviderConfig;
   opencode?: ProviderConfig;
+  zai?: ProviderConfig;
 }
 
 export interface AgentOptions {
@@ -108,6 +121,7 @@ export interface AgentOptions {
   providerConfigs?: ProviderConfigs;
   providerCacheSize?: number;
   skillDirectories?: string[];
+  mcpManager?: McpManager | null;
 }
 
 export interface RuntimeConfig {
@@ -122,6 +136,8 @@ export interface ToolExecution {
   output?: string;
   error?: string;
   summary?: string;
+  duration?: number;
+  startTime?: number;
 }
 
 export interface AgentStreamChunk {
@@ -153,7 +169,7 @@ export interface ShutdownOptions {
   signal?: boolean;
 }
 
-function isValidToolCall(text: string): boolean {
+export function isValidToolCall(text: string): boolean {
   try {
     const parsed = JSON.parse(text);
     return typeof parsed?.name === "string";
@@ -209,6 +225,7 @@ export class Agent {
   private _skillsInitialized: boolean = false;
   private _skillsInitPromise?: Promise<void>;
   private _activeSkillAllowedTools: string[] | undefined;
+  private _mcpManager?: McpManager;
 
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._defaultLlmClient = llmClient;
@@ -222,6 +239,7 @@ export class Agent {
     this._memoryBudgetPercent = options.memoryBudgetPercent;
     this._trackContextUsage = options.trackContextUsage ?? false;
     this._thinking = options.thinking;
+    this._mcpManager = options.mcpManager ?? undefined;
     this._conversationManager = new ConversationManager(options.conversationFile);
 
     let effectiveSystemPrompt =
@@ -266,6 +284,20 @@ export class Agent {
     this._skillsInitialized = true;
   }
 
+  private _evictOldestCacheEntry(): void {
+    let oldestKey: string | null = null;
+    let oldestTimestamp = Infinity;
+    for (const [key, entry] of this._providerCache.entries()) {
+      if (entry.timestamp < oldestTimestamp) {
+        oldestTimestamp = entry.timestamp;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      this._providerCache.delete(oldestKey);
+    }
+  }
+
   private _getLlmClientForModel(model: string): LLMClient {
     if (!this._providerConfigs) return this._defaultLlmClient;
 
@@ -284,17 +316,7 @@ export class Agent {
       });
 
       if (this._providerCache.size >= this._providerCacheMaxSize) {
-        let oldestKey: string | null = null;
-        let oldestTimestamp = Infinity;
-        for (const [key, entry] of this._providerCache.entries()) {
-          if (entry.timestamp < oldestTimestamp) {
-            oldestTimestamp = entry.timestamp;
-            oldestKey = key;
-          }
-        }
-        if (oldestKey) {
-          this._providerCache.delete(oldestKey);
-        }
+        this._evictOldestCacheEntry();
       }
 
       this._providerCache.set(providerType, { client, timestamp: Date.now() });
@@ -321,7 +343,6 @@ export class Agent {
     runtimeConfig?: RuntimeConfig,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentStreamChunk, void, unknown> {
-    // Guard: ensure skills are initialized before processing
     if (this._skillsInitPromise) {
       await this._skillsInitPromise;
     }
@@ -331,6 +352,8 @@ export class Agent {
     const effectiveModel = runtimeConfig?.model ?? model;
     const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
     const llmClient = this._getLlmClientForModel(effectiveModel);
+
+    const { model: modelName } = parseModelString(effectiveModel);
 
     const conversationFile = this._conversationManager.conversationFile;
     let messages: Message[] = conversationFile
@@ -351,7 +374,6 @@ export class Agent {
     const systemTokens = countTokensSync(this._systemPrompt);
     const maxContextTokens = this._maxContextTokens ?? 0;
 
-    // Guard: no context limit - track stats for display only
     if (!this._maxContextTokens) {
       contextStats = buildStats({
         systemTokens,
@@ -360,9 +382,7 @@ export class Agent {
         truncationApplied: false,
         maxContextTokens,
       });
-    }
-    // Guard: memory store available - use memory-enhanced context
-    else if (this._memoryStore) {
+    } else if (this._memoryStore) {
       const { memoryBudget, conversationBudget } = calculateContextBudget(
         this._maxContextTokens,
         systemTokens,
@@ -383,9 +403,7 @@ export class Agent {
       contextStats = result.stats;
       memoryTokensUsed = result.stats.memoryTokens;
       truncationApplied = result.stats.truncationApplied;
-    }
-    // Default: truncate messages to fit context
-    else {
+    } else {
       const availableTokens = this._maxContextTokens - systemTokens - 1000;
       if (availableTokens > 0) {
         const truncated = await truncateMessages(messages, availableTokens);
@@ -433,7 +451,6 @@ export class Agent {
     const recentToolCalls: string[] = [];
     let loopDetected = false;
 
-    // Helper to rebuild context stats with current messages
     const updateStats = (): ContextStats =>
       buildStats({
         systemTokens,
@@ -458,7 +475,7 @@ export class Agent {
       }
 
       const stream = llmClient.stream({
-        model: effectiveModel,
+        model: modelName,
         messages: [
           {
             role: "system",
@@ -531,6 +548,8 @@ export class Agent {
 
       checkAborted(options?.signal);
 
+      const toolStartTime = Date.now();
+
       yield {
         content: "",
         iterations: iteration + 1,
@@ -539,6 +558,7 @@ export class Agent {
           name: tc.name,
           status: "running" as const,
           args: tc.arguments,
+          startTime: toolStartTime,
         })),
         contextStats,
       };
@@ -548,6 +568,9 @@ export class Agent {
         args: tc.arguments,
       }));
       const batchResults = await this._toolRegistry.executeBatch(calls);
+
+      const toolEndTime = Date.now();
+      const toolDuration = toolEndTime - toolStartTime;
 
       const resultMap = new Map(batchResults.map((br) => [br.name, br]));
       const getToolResult = (name: string) => resultMap.get(name)?.result;
@@ -569,6 +592,7 @@ export class Agent {
           args: toolCall?.arguments,
           output: result.success ? truncateOutput(result.output) : undefined,
           error: result.error ? truncateOutput(result.error) : undefined,
+          duration: toolDuration,
         })),
         contextStats,
       };
@@ -630,7 +654,6 @@ export class Agent {
         continue;
       }
 
-      // Guard: check for tool call loop
       if (recentToolCalls.length >= 3 && isLooping(recentToolCalls)) {
         const toolName = assistantToolCalls[0]?.name ?? "unknown";
         messages.push({
@@ -653,7 +676,7 @@ export class Agent {
       }
 
       const stream = llmClient.stream({
-        model: effectiveModel,
+        model: modelName,
         messages: [
           {
             role: "system",
@@ -732,15 +755,11 @@ export class Agent {
     return this._toolRegistry.list().length;
   }
 
-  async getMcpServerStatus(): Promise<Array<{ name: string; connected: boolean; toolCount: number }>> {
-    try {
-      const { getGlobalMcpManager } = await import("../mcp/manager.js");
-      const mcpManager = getGlobalMcpManager();
-      if (mcpManager) {
-        return mcpManager.getServerStatus();
-      }
-    } catch {
-      /* MCP not available */
+  async getMcpServerStatus(): Promise<
+    Array<{ name: string; connected: boolean; toolCount: number }>
+  > {
+    if (this._mcpManager) {
+      return this._mcpManager.getServerStatus();
     }
     return [];
   }
@@ -817,29 +836,24 @@ export class Agent {
       issues.push("Provider configs empty");
     }
 
-    // Get MCP server status if available
-    let mcpServers: Array<{ name: string; connected: boolean; toolCount: number }> = [];
-    try {
-      // Note: This uses deprecated global pattern - in future, inject MCP manager
-      const mcpManager = (await import("../mcp/manager.js")).getGlobalMcpManager();
-      if (mcpManager) {
-        mcpServers = mcpManager.getServerStatus();
-        const disconnected = mcpServers.filter((s) => !s.connected);
-        for (const server of disconnected) {
-          issues.push(`MCP server "${server.name}" disconnected`);
-        }
-      }
-    } catch {
-      /* MCP not available */
+    if (issues.length > 0) {
+      return {
+        ready: false,
+        issues,
+        providerCount: this._providerCache.size,
+        skillCount: this._skills.size,
+        memoryEnabled: !!this._memoryStore,
+        mcpServers: this._mcpManager?.getServerStatus() ?? [],
+      };
     }
 
     return {
-      ready: issues.length === 0,
+      ready: true,
       issues,
       providerCount: this._providerCache.size,
       skillCount: this._skills.size,
       memoryEnabled: !!this._memoryStore,
-      mcpServers,
+      mcpServers: this._mcpManager?.getServerStatus() ?? [],
     };
   }
 
@@ -861,7 +875,7 @@ export class Agent {
     const allTools = this._toolRegistry.list().map((tool) => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters as unknown as Record<string, unknown>,
+      parameters: tool.parameters,
     }));
 
     if (!this._activeSkillAllowedTools?.length) {

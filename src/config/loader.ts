@@ -132,17 +132,19 @@ function containsSensitivePattern(key: string): boolean {
 function interpolateEnvVars(value: string, keyPath: string = ""): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, envVar: string) => {
     const envValue = process.env[envVar];
-    if (
-      !envVar.startsWith("OPENAI") &&
-      !envVar.startsWith("ANTHROPIC") &&
-      !envVar.startsWith("AWS")
-    ) {
-      if (containsSensitivePattern(keyPath)) {
-        console.warn(
-          `[Security Warning] Config key "${keyPath}" appears to contain sensitive data. ` +
-            `Ensure this value is not logged or exposed in error messages.`,
-        );
-      }
+    const isWhitelistedProvider =
+      envVar.startsWith("OPENAI") ||
+      envVar.startsWith("ANTHROPIC") ||
+      envVar.startsWith("AWS") ||
+      envVar.startsWith("OLLAMA") ||
+      envVar.startsWith("OPENROUTER") ||
+      envVar.startsWith("OPENCODE");
+
+    if (!isWhitelistedProvider && containsSensitivePattern(keyPath)) {
+      console.warn(
+        `[Security Warning] Config key "${keyPath}" appears to contain sensitive data. ` +
+          `Ensure this value is not logged or exposed in error messages.`,
+      );
     }
     if (!envValue) {
       throw new Error(`Environment variable ${envVar} is not set`);

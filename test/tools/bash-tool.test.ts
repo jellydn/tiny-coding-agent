@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isDestructiveCommand } from "@/tools/bash-tool.ts";
+import { isDestructiveCommand } from "../../src/tools/bash-tool.js";
 
 describe("isDestructiveCommand()", () => {
   describe("read-only commands (safe)", () => {
