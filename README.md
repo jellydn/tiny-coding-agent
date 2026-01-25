@@ -403,13 +403,6 @@ Your skill prompt here...
 
 The skill content is loaded as a system prompt modification when the skill is activated.
 
-### Chat Commands for Skills
-
-| Command         | Description                         |
-| --------------- | ----------------------------------- |
-| `/skill`        | List all available skills           |
-| `@<skill-name>` | Load a skill (type @ to see picker) |
-
 ### Loading Skills
 
 The agent supports skills from multiple sources:
@@ -426,12 +419,17 @@ Skills are automatically discovered from `SKILL.md` files in your configured ski
 
 ### Chat Commands
 
-| Command                     | Description                   |
-| --------------------------- | ----------------------------- |
-| `/model <name>`             | Switch model                  |
-| `/thinking on\|off`         | Toggle thinking mode          |
-| `/effort low\|medium\|high` | Set effort level              |
-| `/bye`                      | Exit chat (Ctrl+D also works) |
+| Command         | Description                               |
+| --------------- | ----------------------------------------- |
+| `/help`         | Show available commands                   |
+| `/clear`        | Clear conversation history                |
+| `/model <name>` | Switch model                              |
+| `/tools`        | View tool execution history               |
+| `/mcp`          | Show MCP server status                    |
+| `/memory`       | List stored memories                      |
+| `/skill [name]` | List all skills, or load a specific skill |
+| `@<skill-name>` | Load a skill (type @ to see picker)       |
+| `/exit`         | Exit chat (Ctrl+D also works)             |
 
 ## Custom Plugins
 
