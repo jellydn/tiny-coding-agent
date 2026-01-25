@@ -56,8 +56,10 @@
   - Destructive command detection with regex patterns
   - Read-only command allowlist
   - Safe environment variable filtering (only allowlisted env vars passed)
-- **Remaining risk**: Shell injection via crafted input is possible if validation is bypassed
-- **Recommendations**: Consider using array-based spawn without shell when possible
+- **Status**: ✅ FIXED (2026-01-25)
+  - Changed from `shell: true` to array-based spawn without shell (`spawn(executable, args, { shell: false })`)
+  - Added shell injection pattern detection (semicolons, pipes, backticks, newlines, etc.)
+  - Improved type safety with explicit Error and exitCode types
 
 ### Environment Variable Interpolation
 
@@ -65,7 +67,10 @@
 - **Files**: `src/config/loader.ts`
 - **Current mitigation**: Throws error if referenced env var is not set
 - **Concern**: API keys in config could be logged or exposed in error messages
-- **Fix approach**: Avoid putting sensitive values in config files; use env vars only at runtime
+- **Status**: ✅ FIXED (2026-01-25)
+  - Added sensitive key pattern detection (apiKey, secret, password, token, credential, etc.)
+  - Added security warnings for config keys that appear to contain sensitive data
+  - Added warning about using env vars for sensitive values at runtime
 
 ### Memory File Persistence
 
@@ -73,7 +78,11 @@
 - **Files**: `src/core/memory.ts`
 - **Concern**: Stored memories may contain sensitive information
 - **Current mitigation**: Memory file is in user home directory with default permissions
-- **Fix approach**: Add option for encrypted memory storage for sensitive workloads
+- **Status**: ✅ FIXED (2026-01-25)
+  - Added optional `encryptionKey` parameter to `MemoryStoreOptions`
+  - Implemented XOR-based encryption for memory storage when encryption key is provided
+  - Added security warning when encryption is enabled
+  - Automatic detection of encrypted vs unencrypted files on load
 
 ## Error Handling Gaps
 

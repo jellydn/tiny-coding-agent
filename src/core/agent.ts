@@ -101,10 +101,12 @@ export interface AgentOptions {
   maxContextTokens?: number;
   memoryFile?: string;
   maxMemoryTokens?: number;
+  memoryBudgetPercent?: number;
   trackContextUsage?: boolean;
   agentsMdPath?: string;
   thinking?: ThinkingConfig;
   providerConfigs?: ProviderConfigs;
+  providerCacheSize?: number;
   skillDirectories?: string[];
 }
 
@@ -190,7 +192,8 @@ export class Agent {
   private _defaultLlmClient: LLMClient;
   private _providerConfigs?: ProviderConfigs;
   private _providerCache: Map<string, { client: LLMClient; timestamp: number }> = new Map();
-  private static readonly PROVIDER_CACHE_MAX_SIZE = 10;
+  private static readonly DEFAULT_PROVIDER_CACHE_SIZE = 10;
+  private _providerCacheMaxSize: number;
   private _toolRegistry: ToolRegistry;
   private _maxIterations: number;
   private _systemPrompt: string;
@@ -198,6 +201,7 @@ export class Agent {
   private _maxContextTokens?: number;
   private _memoryStore?: MemoryStore;
   private _maxMemoryTokens?: number;
+  private _memoryBudgetPercent?: number;
   private _trackContextUsage: boolean;
   private _thinking?: ThinkingConfig;
   private _conversationManager!: ConversationManager;
@@ -209,11 +213,13 @@ export class Agent {
   constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
     this._defaultLlmClient = llmClient;
     this._providerConfigs = options.providerConfigs;
+    this._providerCacheMaxSize = options.providerCacheSize ?? Agent.DEFAULT_PROVIDER_CACHE_SIZE;
     this._toolRegistry = toolRegistry;
     this._maxIterations = options.maxIterations ?? 20;
     this._verbose = options.verbose ?? false;
     this._maxContextTokens = options.maxContextTokens;
     this._maxMemoryTokens = options.maxMemoryTokens;
+    this._memoryBudgetPercent = options.memoryBudgetPercent;
     this._trackContextUsage = options.trackContextUsage ?? false;
     this._thinking = options.thinking;
     this._conversationManager = new ConversationManager(options.conversationFile);
@@ -277,7 +283,7 @@ export class Agent {
         providers: this._providerConfigs,
       });
 
-      if (this._providerCache.size >= Agent.PROVIDER_CACHE_MAX_SIZE) {
+      if (this._providerCache.size >= this._providerCacheMaxSize) {
         let oldestKey: string | null = null;
         let oldestTimestamp = Infinity;
         for (const [key, entry] of this._providerCache.entries()) {
@@ -294,7 +300,9 @@ export class Agent {
       this._providerCache.set(providerType, { client, timestamp: Date.now() });
       return client;
     } catch (err) {
-      if (this._verbose) console.error(`[Failed to create provider for ${providerType}: ${err}]`);
+      console.warn(
+        `[Agent] Failed to create provider for ${providerType}, falling back to default: ${err}`,
+      );
       return this._defaultLlmClient;
     }
   }
@@ -359,6 +367,7 @@ export class Agent {
         this._maxContextTokens,
         systemTokens,
         this._maxMemoryTokens,
+        { memoryBudgetPercent: this._memoryBudgetPercent },
       );
 
       const relevantMemories = this._memoryStore.findRelevant(userPrompt, 10);

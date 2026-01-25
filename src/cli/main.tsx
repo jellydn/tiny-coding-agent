@@ -351,7 +351,9 @@ async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRe
     setGlobalMcpManager(mcpManager);
 
     for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+      process.stdout.write(`  → Connecting to MCP: ${serverName}...\n`);
       await mcpManager.addServer(serverName, serverConfig);
+      process.stdout.write(`  ✓ Connected to ${serverName}\n`);
     }
     const allMcpTools = mcpManager.getAllTools();
     for (const [serverName, toolDefs] of allMcpTools) {
@@ -691,8 +693,14 @@ async function handleInteractiveChat(
   config: ReturnType<typeof loadConfig>,
   options: CliOptions,
 ): Promise<void> {
+  process.stdout.write("Initializing tiny-agent...\n");
+
   const llmClient = await createLLMClient(config, options);
+  process.stdout.write("  ✓ Connected to provider\n");
+
   const toolRegistry = await setupTools(config);
+  process.stdout.write("  ✓ Tools loaded\n");
+
   const initialModel = options.model || config.defaultModel;
 
   const enableMemory = !options.noMemory || config.memoryFile !== undefined;

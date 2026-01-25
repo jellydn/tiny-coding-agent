@@ -5,7 +5,6 @@ import { z } from "zod";
 const DEFAULT_TIMEOUT_MS = 60000;
 
 const READ_ONLY_COMMANDS = new Set([
-  // Git read-only
   "git status",
   "git log",
   "git show",
@@ -17,7 +16,6 @@ const READ_ONLY_COMMANDS = new Set([
   "git stash",
   "git reflog",
   "git describe",
-  // Shell read-only
   "ls",
   "dir",
   "cat",
@@ -31,7 +29,6 @@ const READ_ONLY_COMMANDS = new Set([
   "type",
   "file",
   "stat",
-  // Test runners
   "npm test",
   "npm run test",
   "bun test",
@@ -39,17 +36,12 @@ const READ_ONLY_COMMANDS = new Set([
 ]);
 
 const DESTRUCTIVE_PATTERNS = [
-  /\brm\s/, // rm command
-  /\bmv\s/, // mv command
-  /\bgit\s+(commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase)\b/, // dangerous git
+  /\brm\s/,
+  /\bmv\s/,
+  /\bgit\s+(commit|push|force-delete|branch\s+-D|reset\s+--hard|clean\s+-fdx?|rebase)\b/,
   /\brmdir\b/,
-  // Output redirection to file (but not /dev/, /proc/, /sys/)
-  // Matches: > file.txt, > /tmp/file.txt, > /home/user/file
-  // Doesn't match: > /dev/null, > /proc/version, > echo test
   />[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
-  // Append redirection to file (same rules as output)
   />>[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
-  // Input redirection from file (same rules)
   /<[ \t]*(?!\/(?:dev|proc|sys)\/)[^\s|>]/,
 ];
 
@@ -71,26 +63,6 @@ export function isDestructiveCommand(command: string): boolean {
   return false;
 }
 
-/**
- * Allowlist of safe environment variables to pass to shell commands.
- * This is more secure than a blocklist approach, as new secret-naming conventions
- * won't accidentally leak sensitive data.
- *
- * Common development environment variables that are safe to include:
- * - PATH: Command search paths
- * - HOME: User home directory
- * - USER: Current username
- * - SHELL: Current shell
- * - LANG: Locale settings
- * - TERM: Terminal type
- * - NODE_ENV: Node.js environment (development/production)
- * - TZ: Timezone setting
- * - PWD: Current working directory
- * - LOGNAME: Alternative to USER
- * - EDITOR/VISUAL: Default text editors
- * - PAGER: Default pager program
- * - BROWSER: Default web browser
- */
 const SAFE_ENV_KEYS = [
   "PATH",
   "HOME",
@@ -114,22 +86,42 @@ const SAFE_ENV_KEYS = [
   "TMP",
 ];
 
-/**
- * Filter environment variables to only include safe allowlisted keys.
- * This prevents accidental leakage of sensitive credentials via environment.
- */
 function filterSafeEnvironment(): NodeJS.ProcessEnv {
   const safeEnv: NodeJS.ProcessEnv = {};
   const allowlist = new Set(SAFE_ENV_KEYS);
 
   for (const [key, value] of Object.entries(process.env)) {
-    // Only include variables that are in the allowlist and have a value
     if (value && allowlist.has(key)) {
       safeEnv[key] = value;
     }
   }
 
   return safeEnv;
+}
+
+function detectShellMetacharacters(command: string): string[] {
+  const metacharacters: string[] = [];
+  const patterns: [RegExp, string][] = [
+    [/;/, "semicolon"],
+    [/\|/, "pipe"],
+    [/\$/, "variable expansion"],
+    [/`/, "command substitution"],
+    [/\n/, "newline"],
+    [/\r/, "carriage return"],
+    [/&&/, "AND operator"],
+    [/\|\|/, "OR operator"],
+    [/<</, "heredoc"],
+    [/>/, "redirection"],
+    [/>>/, "append redirection"],
+  ];
+
+  for (const [pattern, name] of patterns) {
+    if (pattern.test(command)) {
+      metacharacters.push(name);
+    }
+  }
+
+  return metacharacters;
 }
 
 const bashArgsSchema = z.object({
@@ -176,12 +168,18 @@ export const bashTool: Tool = {
     const { command, cwd, timeout } = parsed.data;
     const effectiveTimeout = timeout ?? DEFAULT_TIMEOUT_MS;
 
+    const metacharacters = detectShellMetacharacters(command);
+    if (metacharacters.length > 0) {
+      const warning = `[Security] Command contains shell metacharacters: ${metacharacters.join(", ")}. This is allowed for legitimate shell usage but review the command if unexpected.`;
+      console.warn(warning);
+    }
+
     return new Promise((resolve) => {
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
       let killed = false;
 
-      const child = spawn(command, [], {
+      const child = spawn(command, {
         shell: true,
         cwd,
         env: filterSafeEnvironment(),
@@ -205,7 +203,7 @@ export const bashTool: Tool = {
         stderr.push(data);
       });
 
-      child.on("error", (err) => {
+      child.on("error", (err: Error) => {
         clearTimeout(timeoutId);
         resolve({
           success: false,
@@ -213,7 +211,7 @@ export const bashTool: Tool = {
         });
       });
 
-      child.on("close", (exitCode) => {
+      child.on("close", (exitCode: number) => {
         clearTimeout(timeoutId);
 
         const stdoutStr = Buffer.concat(stdout).toString("utf-8");

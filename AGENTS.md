@@ -137,16 +137,6 @@ src/
   utils/      # Shared utilities
 ```
 
-## Key Dependencies
-
-| Category      | Packages                                |
-| ------------- | --------------------------------------- |
-| LLM Providers | `@anthropic-ai/sdk`, `openai`, `ollama` |
-| Protocols     | `@modelcontextprotocol/sdk`             |
-| Validation    | `zod`                                   |
-| CLI UI        | `ink`, `react`                          |
-| Encoding      | `tiktoken`                              |
-
 ## Agent Workflow
 
 1. **Understand First**: Read relevant files before making changes

@@ -114,9 +114,36 @@ skillDirectories:
   writeFileSync(YAML_PATH, configTemplate, "utf-8");
 }
 
-function interpolateEnvVars(value: string): string {
+const SENSITIVE_KEY_PATTERNS = [
+  /api[_-]?key/i,
+  /secret/i,
+  /password/i,
+  /token/i,
+  /credential/i,
+  /auth/i,
+  /private[_-]?key/i,
+  /access[_-]?key/i,
+];
+
+function containsSensitivePattern(key: string): boolean {
+  return SENSITIVE_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function interpolateEnvVars(value: string, keyPath: string = ""): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, envVar: string) => {
     const envValue = process.env[envVar];
+    if (
+      !envVar.startsWith("OPENAI") &&
+      !envVar.startsWith("ANTHROPIC") &&
+      !envVar.startsWith("AWS")
+    ) {
+      if (containsSensitivePattern(keyPath)) {
+        console.warn(
+          `[Security Warning] Config key "${keyPath}" appears to contain sensitive data. ` +
+            `Ensure this value is not logged or exposed in error messages.`,
+        );
+      }
+    }
     if (!envValue) {
       throw new Error(`Environment variable ${envVar} is not set`);
     }
@@ -124,14 +151,16 @@ function interpolateEnvVars(value: string): string {
   });
 }
 
-function interpolateObject(obj: unknown): unknown {
+function interpolateObject(obj: unknown, keyPath: string = ""): unknown {
   if (obj === null || typeof obj !== "object") return obj;
-  if (typeof obj === "string") return interpolateEnvVars(obj);
-  if (Array.isArray(obj)) return obj.map(interpolateObject);
+  if (typeof obj === "string") return interpolateEnvVars(obj, keyPath);
+  if (Array.isArray(obj))
+    return obj.map((item, index) => interpolateObject(item, `${keyPath}[${index}]`));
 
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    result[key] = interpolateObject(value);
+    const newKeyPath = keyPath ? `${keyPath}.${key}` : key;
+    result[key] = interpolateObject(value, newKeyPath);
   }
   return result;
 }
@@ -184,6 +213,11 @@ export function loadConfig(): Config {
     const errorMessages = errors.map((e) => `  - ${e.field}: ${e.message}`).join("\n");
     throw new Error(`Invalid config at ${configSource}:\n${errorMessages}`);
   }
+
+  console.warn(
+    `[Security] For sensitive configuration values (API keys, tokens), ` +
+      `use environment variables with \${VAR_NAME} syntax instead of hardcoding values.`,
+  );
 
   let config = interpolatedConfig as Config;
 

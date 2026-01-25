@@ -79,7 +79,10 @@ function parseToolCalls(
           name: tc.function.name,
           arguments: JSON.parse(tc.function.arguments || "{}"),
         };
-      } catch {
+      } catch (err) {
+        console.warn(
+          `[OpenAIProvider] Failed to parse tool arguments for ${tc.function.name}: ${err}`,
+        );
         return {
           id: tc.id,
           name: tc.function.name,
@@ -185,7 +188,10 @@ export class OpenAIProvider implements LLMClient {
                     name: tc.name,
                     arguments: JSON.parse(tc.args || "{}"),
                   };
-                } catch {
+                } catch (err) {
+                  console.warn(
+                    `[OpenAIProvider] Failed to parse streamed tool arguments for ${tc.name}: ${err}`,
+                  );
                   return {
                     id: tc.id,
                     name: tc.name,
