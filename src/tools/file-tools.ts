@@ -58,7 +58,71 @@ function isSensitiveFile(filePath: string): boolean {
   return SENSITIVE_PATTERNS.some((pattern) => pattern.test(filePath) || pattern.test(basename));
 }
 
-export { isSensitiveFile };
+interface PathValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+function isSensitiveSystemPath(resolved: string): string | undefined {
+  const sensitivePaths = [
+    "/etc/",
+    "/usr/",
+    "/bin/",
+    "/sbin/",
+    "/sys/",
+    "/proc/",
+    "/dev/",
+    "/root/",
+  ];
+  for (const sensitive of sensitivePaths) {
+    if (resolved.startsWith(sensitive)) {
+      return sensitive;
+    }
+  }
+  return undefined;
+}
+
+function isSensitiveHomePath(resolved: string): string | undefined {
+  const homeDir = process.env.HOME ?? "";
+  const homeSensitivePaths = [
+    path.join(homeDir, ".ssh"),
+    path.join(homeDir, ".aws"),
+    path.join(homeDir, ".gnupg"),
+    path.join(homeDir, ".pki"),
+  ];
+  for (const sensitive of homeSensitivePaths) {
+    if (resolved.startsWith(sensitive)) {
+      return sensitive;
+    }
+  }
+  return undefined;
+}
+
+function validatePath(filePath: string): PathValidationResult {
+  const normalized = path.normalize(filePath);
+  if (normalized.includes("..")) {
+    return { valid: false, error: 'Path cannot contain ".." for security reasons' };
+  }
+
+  const resolved = path.resolve(filePath);
+
+  const systemPath = isSensitiveSystemPath(resolved);
+  if (systemPath) {
+    return { valid: false, error: `Cannot write to system path: ${systemPath}` };
+  }
+
+  const homePath = isSensitiveHomePath(resolved);
+  if (homePath) {
+    return {
+      valid: false,
+      error: `Cannot write to sensitive directory: ${path.basename(homePath)}`,
+    };
+  }
+
+  return { valid: true };
+}
+
+export { isSensitiveFile, validatePath };
 
 export const readFileTool: Tool = {
   name: "read_file",
@@ -113,15 +177,17 @@ export const readFileTool: Tool = {
 
       const content = await fs.readFile(filePath, "utf-8");
 
+      const output = `[File: ${filePath}]\n${content}`;
+
       if (start_line !== undefined || end_line !== undefined) {
-        const lines = content.split("\n");
+        const lines = output.split("\n");
         const start = (start_line ?? 1) - 1;
         const end = end_line ?? lines.length;
         const selectedLines = lines.slice(start, end);
         return { success: true, output: selectedLines.join("\n") };
       }
 
-      return { success: true, output: content };
+      return { success: true, output };
     } catch (err) {
       return handleFileError(filePath, err, "Failed to read file");
     }
@@ -154,6 +220,15 @@ export const writeFileTool: Tool = {
     }
 
     const { path: filePath, content } = parsed.data;
+
+    const pathValidation = validatePath(filePath);
+    if (!pathValidation.valid) {
+      return { success: false, error: pathValidation.error };
+    }
+
+    if (isSensitiveFile(filePath)) {
+      return { success: false, error: `Cannot write to sensitive file: ${filePath}` };
+    }
 
     try {
       const dir = path.dirname(filePath);
@@ -201,6 +276,11 @@ export const editFileTool: Tool = {
     }
 
     const { path: filePath, old_str, new_str, replace_all } = parsed.data;
+
+    const pathTraversalPattern = /\.\.[\\/]/;
+    if (pathTraversalPattern.test(old_str) || pathTraversalPattern.test(new_str)) {
+      return { success: false, error: "Edit strings must not contain path traversal sequences" };
+    }
 
     try {
       const content = await fs.readFile(filePath, "utf-8");

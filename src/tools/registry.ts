@@ -60,29 +60,27 @@ export class ToolRegistry {
     }));
   }
 
-  isDangerous(name: string, args: Record<string, unknown>): boolean {
+  private _getDangerLevel(name: string, args: Record<string, unknown>): string | undefined {
     const tool = this._tools.get(name);
-    if (!tool?.dangerous) return false;
+    const dangerous = tool?.dangerous;
+    if (!dangerous) return undefined;
 
-    if (typeof tool.dangerous === "function") {
-      const result = tool.dangerous(args);
-      return result !== undefined && result !== false;
+    if (typeof dangerous === "function") {
+      const result = dangerous(args);
+      if (typeof result === "string") return result;
+      if (result === true) return `Execute ${name}`;
+      return undefined;
     }
-    return true;
+
+    return typeof dangerous === "string" ? dangerous : `Execute ${name}`;
+  }
+
+  isDangerous(name: string, args: Record<string, unknown>): boolean {
+    return this._getDangerLevel(name, args) !== undefined;
   }
 
   getDangerLevel(name: string, args: Record<string, unknown>): string | undefined {
-    const tool = this._tools.get(name);
-    if (!tool?.dangerous) return undefined;
-
-    if (typeof tool.dangerous === "string") return tool.dangerous;
-    if (tool.dangerous === true) return `Execute ${name}`;
-    if (typeof tool.dangerous === "function") {
-      const result = tool.dangerous(args);
-      if (typeof result === "string") return result;
-      if (result === true) return `Execute ${name}`;
-    }
-    return undefined;
+    return this._getDangerLevel(name, args);
   }
 
   async executeBatch(
@@ -90,65 +88,47 @@ export class ToolRegistry {
   ): Promise<
     Array<{ name: string; result: { success: boolean; output?: string; error?: string } }>
   > {
+    const results = await Promise.all(
+      calls.map(async (c) => ({ name: c.name, result: await this.execute(c.name, c.args) })),
+    );
+
+    const handler = getConfirmationHandler();
+    if (!handler) return results;
+
     const dangerousCalls = calls.filter((c) => this.isDangerous(c.name, c.args));
+    if (dangerousCalls.length === 0) return results;
 
-    if (dangerousCalls.length > 0) {
-      const handler = getConfirmationHandler();
-      if (handler) {
-        const actions = dangerousCalls.map((c) => ({
-          tool: c.name,
-          description: this.getDangerLevel(c.name, c.args) ?? "Execute",
-          args: c.args,
-        }));
+    const approved = await handler({
+      actions: dangerousCalls.map((c) => ({
+        tool: c.name,
+        description: this.getDangerLevel(c.name, c.args) ?? "Execute",
+        args: c.args,
+      })),
+    });
 
-        const approved = await handler({ actions });
-
-        if (approved === false) {
-          const results = await Promise.all(
-            calls.map(async (c) => {
-              const isDangerous = this.isDangerous(c.name, c.args);
-              if (!isDangerous) {
-                return { name: c.name, result: await this.execute(c.name, c.args) };
-              }
-              return {
-                name: c.name,
-                result: { success: false, error: "User declined confirmation" },
-              };
-            }),
-          );
-          return results;
-        }
-
-        if (typeof approved === "object" && approved.type === "partial") {
-          const selectedIndex = approved.selectedIndex;
-          const selectedToolName = dangerousCalls[selectedIndex]?.name;
-
-          const results = await Promise.all(
-            calls.map(async (c) => {
-              const isDangerous = this.isDangerous(c.name, c.args);
-              if (!isDangerous) {
-                return { name: c.name, result: await this.execute(c.name, c.args) };
-              }
-              if (c.name === selectedToolName) {
-                return { name: c.name, result: await this.execute(c.name, c.args) };
-              }
-              return {
-                name: c.name,
-                result: { success: false, error: "User declined confirmation" },
-              };
-            }),
-          );
-          return results;
-        }
-      }
+    // All declined or partial approval - filter out unapproved dangerous calls
+    if (approved === false) {
+      return results.map((r) => {
+        const call = calls.find((c) => c.name === r.name);
+        const isDangerous = call && this.isDangerous(call.name, call.args);
+        return isDangerous
+          ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
+          : r;
+      });
     }
 
-    const results = await Promise.all(
-      calls.map(async (c) => ({
-        name: c.name,
-        result: await this.execute(c.name, c.args),
-      })),
-    );
+    if (typeof approved === "object" && approved.type === "partial") {
+      const selectedToolName = dangerousCalls[approved.selectedIndex]?.name;
+      return results.map((r) => {
+        const call = calls.find((c) => c.name === r.name);
+        const isDangerous =
+          call && this.isDangerous(call.name, call.args) && call.name !== selectedToolName;
+        return isDangerous
+          ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
+          : r;
+      });
+    }
+
     return results;
   }
 
@@ -162,20 +142,13 @@ export class ToolRegistry {
   }> {
     const tool = this._tools.get(name);
     if (!tool) {
-      return {
-        success: false,
-        error: `Tool "${name}" not found`,
-      };
+      return { success: false, error: `Tool "${name}" not found` };
     }
 
     try {
       return await tool.execute(args);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        error: message,
-      };
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 }

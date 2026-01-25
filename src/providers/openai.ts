@@ -72,11 +72,24 @@ function parseToolCalls(
       (tc): tc is OpenAI.Chat.ChatCompletionMessageToolCall & { type: "function" } =>
         tc.type === "function",
     )
-    .map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: JSON.parse(tc.function.arguments || "{}"),
-    }));
+    .map((tc) => {
+      try {
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          arguments: JSON.parse(tc.function.arguments || "{}"),
+        };
+      } catch (err) {
+        console.warn(
+          `[OpenAIProvider] Failed to parse tool arguments for ${tc.function.name}: ${err}`,
+        );
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          arguments: {},
+        };
+      }
+    });
 }
 
 function mapFinishReason(reason: string | null): ChatResponse["finishReason"] {
@@ -94,6 +107,7 @@ function mapFinishReason(reason: string | null): ChatResponse["finishReason"] {
 
 export class OpenAIProvider implements LLMClient {
   private _client: OpenAI;
+  private _capabilitiesCache = new Map<string, ModelCapabilities>();
 
   constructor(config: OpenAIProviderConfig) {
     this._client = new OpenAI({
@@ -167,11 +181,24 @@ export class OpenAIProvider implements LLMClient {
       if (finishReason) {
         const toolCalls: ToolCall[] | undefined =
           toolCallsBuffer.size > 0
-            ? Array.from(toolCallsBuffer.values()).map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                arguments: JSON.parse(tc.args || "{}"),
-              }))
+            ? Array.from(toolCallsBuffer.values()).map((tc) => {
+                try {
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: JSON.parse(tc.args || "{}"),
+                  };
+                } catch (err) {
+                  console.warn(
+                    `[OpenAIProvider] Failed to parse streamed tool arguments for ${tc.name}: ${err}`,
+                  );
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: {},
+                  };
+                }
+              })
             : undefined;
 
         yield {
@@ -186,6 +213,10 @@ export class OpenAIProvider implements LLMClient {
   }
 
   async getCapabilities(model: string): Promise<ModelCapabilities> {
+    // Guard: check cache first
+    const cached = this._capabilitiesCache.get(model);
+    if (cached) return cached;
+
     const modelContextWindow: Record<string, number> = {
       "gpt-4o": 128000,
       "gpt-4o-mini": 128000,
@@ -200,7 +231,7 @@ export class OpenAIProvider implements LLMClient {
 
     const hasThinking = modelRegistrySupportsThinking(model);
 
-    return {
+    const capabilities: ModelCapabilities = {
       modelName: model,
       supportsTools: !hasThinking,
       supportsStreaming: true,
@@ -210,5 +241,8 @@ export class OpenAIProvider implements LLMClient {
       contextWindow: modelContextWindow[model] ?? 16385,
       maxOutputTokens: hasThinking ? 100000 : 4096,
     };
+
+    this._capabilitiesCache.set(model, capabilities);
+    return capabilities;
   }
 }

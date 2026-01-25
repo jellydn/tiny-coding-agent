@@ -38,7 +38,7 @@ async function loadPluginFile(filePath: string): Promise<Tool[]> {
   }
 }
 
-function isTool(obj: unknown): obj is Tool {
+export function isTool(obj: unknown): obj is Tool {
   if (obj === null || typeof obj !== "object") {
     return false;
   }
@@ -60,6 +60,8 @@ export async function loadPlugins(): Promise<Tool[]> {
   }
 
   const files = readdirSync(PLUGINS_DIR);
+  const loadErrors: Array<{ file: string; error: string }> = [];
+
   for (const file of files) {
     const filePath = join(PLUGINS_DIR, file);
     try {
@@ -67,8 +69,16 @@ export async function loadPlugins(): Promise<Tool[]> {
       tools.push(...pluginTools);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`Warning: ${message}`);
+      loadErrors.push({ file, error: message });
+      console.error(`Warning: Failed to load plugin from ${file}: ${message}`);
     }
+  }
+
+  // Report summary of plugin loading issues
+  if (loadErrors.length > 0) {
+    console.error(
+      `Failed to load ${loadErrors.length} plugin(s): ${loadErrors.map((e) => e.file).join(", ")}`,
+    );
   }
 
   return tools;

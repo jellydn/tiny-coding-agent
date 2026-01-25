@@ -4,7 +4,7 @@ import {
   isIgnored,
   findGitignorePatterns,
   clearPatternCache,
-} from "./gitignore.js";
+} from "../../src/tools/gitignore.js";
 
 describe("gitignore", () => {
   beforeEach(() => {

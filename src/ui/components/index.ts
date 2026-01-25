@@ -1,6 +1,8 @@
 export { Spinner } from "./Spinner.js";
 export { Message, InlineToolOutput } from "./Message.js";
 export { ToolOutput } from "./ToolOutput.js";
+export { ToolCall, type ToolCallProps, type ToolCallStatus } from "./ToolCall.js";
+export { ToolsPanel, type ToolSummary } from "./ToolsPanel.js";
 export { StatusLine } from "./StatusLine.js";
 export { HeaderBox } from "./HeaderBox.js";
 export { Header } from "./Header.js";
@@ -18,3 +20,5 @@ export {
   getModelsForProviders,
 } from "./ModelPicker.js";
 export { ChatLayout } from "./ChatLayout.js";
+export { SkillPicker } from "./SkillPicker.js";
+export { ToastList } from "./ToastList.js";

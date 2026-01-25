@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildThinkingConfig } from "./anthropic.js";
+import { buildThinkingConfig } from "../../src/providers/anthropic.js";
 
 describe("buildThinkingConfig()", () => {
   it("should return undefined when disabled", () => {

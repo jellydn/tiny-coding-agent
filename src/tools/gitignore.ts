@@ -7,23 +7,38 @@ export interface GitignorePattern {
   directoryOnly: boolean;
 }
 
-let patternCache = new Map<string, GitignorePattern[]>();
+interface CachedPatterns {
+  patterns: GitignorePattern[];
+  mtime: number;
+}
+
+let patternCache = new Map<string, CachedPatterns>();
 
 export async function loadGitignorePatterns(dirPath: string): Promise<GitignorePattern[]> {
   const resolvedPath = path.resolve(dirPath);
-
-  if (patternCache.has(resolvedPath)) {
-    return patternCache.get(resolvedPath)!;
-  }
+  const gitignorePath = path.join(resolvedPath, ".gitignore");
 
   try {
-    const gitignorePath = path.join(resolvedPath, ".gitignore");
+    const stats = await fs.stat(gitignorePath);
+    const cached = patternCache.get(resolvedPath);
+
+    // Use cache if file hasn't been modified
+    if (cached && cached.mtime === stats.mtimeMs) {
+      return cached.patterns;
+    }
+
+    // Parse and cache with modification time
     const content = await fs.readFile(gitignorePath, "utf-8");
     const patterns = parseGitignore(content);
-    patternCache.set(resolvedPath, patterns);
+    patternCache.set(resolvedPath, { patterns, mtime: stats.mtimeMs });
     return patterns;
   } catch {
-    patternCache.set(resolvedPath, []);
+    // No .gitignore file or error reading it
+    const cached = patternCache.get(resolvedPath);
+    if (cached) {
+      return cached.patterns;
+    }
+    patternCache.set(resolvedPath, { patterns: [], mtime: 0 });
     return [];
   }
 }
@@ -34,6 +49,7 @@ export function parseGitignore(content: string): GitignorePattern[] {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
 
+    // Guard clause: skip empty lines and comments
     if (!trimmed || trimmed.startsWith("#")) {
       continue;
     }
@@ -44,28 +60,20 @@ export function parseGitignore(content: string): GitignorePattern[] {
       patternStr = patternStr.slice(1);
     }
 
-    if (patternStr.startsWith("/")) {
+    // Track if pattern has leading slash (anchored to root)
+    const hasLeadingSlash = patternStr.startsWith("/");
+    if (hasLeadingSlash) {
       patternStr = patternStr.slice(1);
     }
 
-    if (patternStr.endsWith("/")) {
+    // Track if pattern is directory-only
+    const directoryOnly = patternStr.endsWith("/");
+    if (directoryOnly) {
       patternStr = patternStr.slice(0, -1);
     }
 
-    let regexStr = patternStr
-      .replace(/\./g, "\\.")
-      .replace(/\*\*/g, "___GLOBSTAR___")
-      .replace(/\*/g, "([^/]*)")
-      .replace(/___GLOBSTAR___/g, "([^/]*(/[^/]*)*)")
-      .replace(/\/+/g, "/");
-
-    if (patternStr.startsWith("/")) {
-      regexStr = `^${regexStr}`;
-    } else {
-      regexStr = `(^|/)${regexStr}`;
-    }
-
-    regexStr = `${regexStr}$`;
+    // Convert glob pattern to regex
+    let regexStr = globToRegex(patternStr, hasLeadingSlash);
 
     patterns.push({
       pattern: new RegExp(regexStr, "i"),
@@ -75,6 +83,35 @@ export function parseGitignore(content: string): GitignorePattern[] {
   }
 
   return patterns;
+}
+
+/**
+ * Convert a gitignore glob pattern to a RegExp string.
+ * Handles wildcards, globstars, and special characters.
+ */
+function globToRegex(glob: string, hasLeadingSlash: boolean): string {
+  const hasLeadingGlobstarSlash = glob.startsWith("**/");
+
+  // Escape regex special chars except *, ?, [, ]
+  const escaped = glob.replace(/[.+^${}()|\\]/g, "\\$&");
+
+  // Convert glob patterns to regex
+  let result = escaped
+    .replace(/\*\*/g, "___GLOBSTAR___")
+    .replace(/\*/g, "[^/]*")
+    .replace(/___GLOBSTAR___/g, ".*")
+    .replace(/\?/g, ".");
+
+  // Anchor the pattern
+  if (hasLeadingSlash) {
+    result = `^${result}(?:/|$)`;
+  } else if (hasLeadingGlobstarSlash) {
+    result = `^(?=.+/)${result}(?:/|$)`;
+  } else {
+    result = `(^|/)${result}(?:/|$)`;
+  }
+
+  return result;
 }
 
 export function isIgnored(

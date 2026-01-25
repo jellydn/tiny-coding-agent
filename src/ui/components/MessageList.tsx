@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+import React from "react";
 import { Box } from "ink";
 import { Message } from "./Message.js";
 import type { ChatMessage } from "../contexts/ChatContext.js";
@@ -9,17 +9,12 @@ interface MessageListProps {
   messages: ChatMessage[];
 }
 
-export const MessageList = memo(function MessageList({
-  messages,
-}: MessageListProps): React.ReactElement {
-  const visibleMessages = useMemo(() => messages.slice(-30), [messages]);
+export function MessageList({ messages }: MessageListProps): React.ReactElement {
+  const visibleMessages = messages.slice(-30);
   const lastMessage = visibleMessages[visibleMessages.length - 1];
   const isStreaming = lastMessage?.id === "streaming";
 
-  const otherMessages = useMemo(
-    () => (isStreaming ? visibleMessages.slice(0, -1) : visibleMessages),
-    [visibleMessages, isStreaming],
-  );
+  const otherMessages = isStreaming ? visibleMessages.slice(0, -1) : visibleMessages;
 
   return (
     <Box flexDirection="column">
@@ -33,6 +28,7 @@ export const MessageList = memo(function MessageList({
           toolArgs={msg.toolArgs}
         />
       ))}
+      {/* Tool executions are shown via streaming text during streaming - no need to render ToolCall */}
       {isStreaming && lastMessage && (
         <Message
           key={lastMessage.id}
@@ -45,4 +41,4 @@ export const MessageList = memo(function MessageList({
       )}
     </Box>
   );
-});
+}

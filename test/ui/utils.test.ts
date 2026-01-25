@@ -7,7 +7,7 @@ import {
   isJsonMode,
   resetUIContext,
   shouldUseInk,
-} from "./utils.js";
+} from "../../src/ui/utils.js";
 
 describe("UI Utils", () => {
   beforeEach(() => {

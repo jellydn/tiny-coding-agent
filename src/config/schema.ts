@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -20,6 +22,28 @@ export interface ToolConfig {
   options?: Record<string, unknown>;
 }
 
+export const providerConfigSchema = z.object({
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+});
+
+export const thinkingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  effort: z.enum(["none", "low", "medium", "high"]).optional(),
+  budgetTokens: z.number().optional(),
+});
+
+export const mcpServerSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  env: z.object({}).optional(),
+});
+
+export const toolConfigSchema = z.object({
+  enabled: z.boolean(),
+  options: z.object({}).optional(),
+});
+
 export interface Config {
   defaultModel: string;
   systemPrompt?: string;
@@ -28,6 +52,7 @@ export interface Config {
   memoryFile?: string;
   maxMemoryTokens?: number;
   trackContextUsage?: boolean;
+  skillDirectories?: string[];
   thinking?: ThinkingConfig;
   providers: {
     openai?: ProviderConfig;
@@ -36,9 +61,11 @@ export interface Config {
     ollamaCloud?: ProviderConfig;
     openrouter?: ProviderConfig;
     opencode?: ProviderConfig;
+    zai?: ProviderConfig;
   };
   mcpServers?: Record<string, McpServerConfig>;
   tools?: Record<string, ToolConfig>;
+  disabledMcpPatterns?: string[];
 }
 
 export interface ConfigValidationError {
@@ -63,6 +90,26 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
     });
   }
 
+  if (
+    c.maxContextTokens !== undefined &&
+    (typeof c.maxContextTokens !== "number" || c.maxContextTokens <= 0)
+  ) {
+    errors.push({
+      field: "maxContextTokens",
+      message: "maxContextTokens must be a positive number",
+    });
+  }
+
+  if (
+    c.maxMemoryTokens !== undefined &&
+    (typeof c.maxMemoryTokens !== "number" || c.maxMemoryTokens <= 0)
+  ) {
+    errors.push({
+      field: "maxMemoryTokens",
+      message: "maxMemoryTokens must be a positive number",
+    });
+  }
+
   if (c.providers !== undefined) {
     if (typeof c.providers !== "object" || c.providers === null) {
       errors.push({
@@ -76,6 +123,24 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
           errors.push({
             field: `providers.${name}`,
             message: `Provider ${name} must be an object`,
+          });
+        }
+      }
+    }
+  }
+
+  if (c.skillDirectories !== undefined) {
+    if (!Array.isArray(c.skillDirectories)) {
+      errors.push({
+        field: "skillDirectories",
+        message: "skillDirectories must be an array",
+      });
+    } else {
+      for (let i = 0; i < c.skillDirectories.length; i++) {
+        if (typeof c.skillDirectories[i] !== "string") {
+          errors.push({
+            field: `skillDirectories[${i}]`,
+            message: `skillDirectories[${i}] must be a string`,
           });
         }
       }
@@ -104,6 +169,24 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
               message: `MCP server ${name} requires a command string`,
             });
           }
+        }
+      }
+    }
+  }
+
+  if (c.disabledMcpPatterns !== undefined) {
+    if (!Array.isArray(c.disabledMcpPatterns)) {
+      errors.push({
+        field: "disabledMcpPatterns",
+        message: "disabledMcpPatterns must be an array",
+      });
+    } else {
+      for (let i = 0; i < c.disabledMcpPatterns.length; i++) {
+        if (typeof c.disabledMcpPatterns[i] !== "string") {
+          errors.push({
+            field: `disabledMcpPatterns[${i}]`,
+            message: `disabledMcpPatterns[${i}] must be a string`,
+          });
         }
       }
     }

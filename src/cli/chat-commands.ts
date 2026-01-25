@@ -20,48 +20,48 @@ export interface ParsedCommand {
   shouldExit?: boolean;
 }
 
+const THINKING_ON_VALUES = new Set(["on", "true", "enable"]);
+const THINKING_OFF_VALUES = new Set(["off", "false", "disable"]);
+
+function parseThinkingState(value: string): { enabled: boolean } | null {
+  if (THINKING_ON_VALUES.has(value)) return { enabled: true };
+  if (THINKING_OFF_VALUES.has(value)) return { enabled: false };
+  return null;
+}
+
 export function fuzzyMatch(input: string, target: string, threshold = 0.7): boolean {
-  const normalize = (s: string) => s.toLowerCase().trim();
-  const a = normalize(input);
-  const b = normalize(target);
+  const a = input.toLowerCase().trim();
+  const b = target.toLowerCase().trim();
 
   if (a === b) return true;
   if (a.startsWith(b) || b.startsWith(a)) return true;
 
-  const longer = a.length > b.length ? a : b;
-  if (longer.length === 0) return true;
+  // Levenshtein distance for short strings only
+  const len1 = a.length;
+  const len2 = b.length;
+  if (len1 === 0 || len2 === 0) return false;
+  if (len1 > 20 || len2 > 20) return false;
 
-  const editDistance = (str1: string, str2: string): number => {
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const dp: number[][] = Array.from(
-      { length: len2 + 1 },
-      () => Array(len1 + 1).fill(0) as number[],
-    );
+  const dp: number[][] = Array(len2 + 1)
+    .fill(null)
+    .map(() => Array(len1 + 1).fill(0));
 
-    for (let i = 0; i <= len2; i++) {
-      dp[i]![0] = i;
-    }
-    for (let j = 0; j <= len1; j++) {
-      dp[0]![j] = j;
-    }
+  for (let i = 0; i <= len2; i++) dp[i]![0] = i;
+  for (let j = 0; j <= len1; j++) dp[0]![j] = j;
 
-    for (let i = 1; i <= len2; i++) {
-      for (let j = 1; j <= len1; j++) {
-        if (str2[i - 1] === str1[j - 1]) {
-          dp[i]![j] = dp[i - 1]![j - 1]!;
-        } else {
-          dp[i]![j] = 1 + Math.min(dp[i - 1]![j]!, dp[i]![j - 1]!, dp[i - 1]![j - 1]!);
-        }
+  for (let i = 1; i <= len2; i++) {
+    for (let j = 1; j <= len1; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        dp[i]![j] = dp[i - 1]![j - 1]!;
+      } else {
+        dp[i]![j] = 1 + Math.min(dp[i - 1]![j]!, dp[i]![j - 1]!, dp[i - 1]![j - 1]!);
       }
     }
+  }
 
-    return dp[len2]![len1]!;
-  };
-
-  const distance = editDistance(a, b);
-  const similarity = 1 - distance / longer.length;
-  return similarity >= threshold;
+  const distance = dp[len2]![len1]!;
+  const longer = Math.max(len1, len2);
+  return 1 - distance / longer >= threshold;
 }
 
 export function parseChatCommand(input: string): ParsedCommand {
@@ -75,17 +75,11 @@ export function parseChatCommand(input: string): ParsedCommand {
 
   if (fuzzyMatch(cmd, COMMANDS.THINKING)) {
     const state = parts[1]?.toLowerCase() ?? "";
-    if (state === "on" || state === "true" || state === "enable") {
+    const thinkingState = parseThinkingState(state);
+    if (thinkingState) {
       return {
         isCommand: true,
-        newState: { thinking: { enabled: true } },
-        matchedCommand: COMMANDS.THINKING,
-      };
-    }
-    if (state === "off" || state === "false" || state === "disable") {
-      return {
-        isCommand: true,
-        newState: { thinking: { enabled: false } },
+        newState: { thinking: thinkingState },
         matchedCommand: COMMANDS.THINKING,
       };
     }

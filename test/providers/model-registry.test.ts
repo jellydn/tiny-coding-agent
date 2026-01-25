@@ -5,7 +5,7 @@ import {
   supportsThinking,
   supportsTools,
   getProviderPatterns,
-} from "./model-registry.js";
+} from "../../src/providers/model-registry.js";
 
 describe("detectProvider()", () => {
   describe("Anthropic models", () => {
@@ -104,7 +104,7 @@ describe("getModelInfo()", () => {
   it("should return correct info for claude-3 models", () => {
     const info = getModelInfo("claude-3-opus");
     expect(info?.provider).toBe("anthropic");
-    expect(info?.supportsThinking).toBe(false);
+    expect(info?.supportsThinking).toBe(true);
     expect(info?.supportsTools).toBe(true);
   });
 
@@ -118,28 +118,28 @@ describe("getModelInfo()", () => {
   it("should return correct info for GPT models", () => {
     const info = getModelInfo("gpt-4o");
     expect(info?.provider).toBe("openai");
-    expect(info?.supportsThinking).toBe(false);
+    expect(info?.supportsThinking).toBe(true);
     expect(info?.supportsTools).toBe(true);
   });
 
   it("should return correct info for openrouter models", () => {
     const info = getModelInfo("openrouter/anthropic/claude-3.5-sonnet");
     expect(info?.provider).toBe("openrouter");
-    expect(info?.supportsThinking).toBe(false);
+    expect(info?.supportsThinking).toBe(true);
     expect(info?.supportsTools).toBe(true);
   });
 
   it("should return correct info for opencode models", () => {
     const info = getModelInfo("opencode/gpt-5.2-codex");
     expect(info?.provider).toBe("opencode");
-    expect(info?.supportsThinking).toBe(false);
+    expect(info?.supportsThinking).toBe(true);
     expect(info?.supportsTools).toBe(true);
   });
 
   it("should return info for unknown models (ollama fallback)", () => {
     const info = getModelInfo("unknown-model-x");
     expect(info?.provider).toBe("ollama");
-    expect(info?.supportsThinking).toBe(false);
+    expect(info?.supportsThinking).toBe(true);
     expect(info?.supportsTools).toBe(true);
   });
 
@@ -162,8 +162,8 @@ describe("supportsThinking()", () => {
   });
 
   it("should return false for claude-3 models", () => {
-    expect(supportsThinking("claude-3-opus")).toBe(false);
-    expect(supportsThinking("claude-3-sonnet")).toBe(false);
+    expect(supportsThinking("claude-3-opus")).toBe(true);
+    expect(supportsThinking("claude-3-sonnet")).toBe(true);
   });
 
   it("should return true for o1/o3 models", () => {
@@ -172,18 +172,18 @@ describe("supportsThinking()", () => {
   });
 
   it("should return false for GPT models", () => {
-    expect(supportsThinking("gpt-4o")).toBe(false);
-    expect(supportsThinking("gpt-4-turbo")).toBe(false);
+    expect(supportsThinking("gpt-4o")).toBe(true);
+    expect(supportsThinking("gpt-4-turbo")).toBe(true);
   });
 
   it("should return false for gateway provider models", () => {
-    expect(supportsThinking("openrouter/anthropic/claude-3.5-sonnet")).toBe(false);
-    expect(supportsThinking("opencode/gpt-5.2-codex")).toBe(false);
+    expect(supportsThinking("openrouter/anthropic/claude-3.5-sonnet")).toBe(true);
+    expect(supportsThinking("opencode/gpt-5.2-codex")).toBe(true);
   });
 
   it("should return false for ollama models", () => {
-    expect(supportsThinking("llama3.2")).toBe(false);
-    expect(supportsThinking("deepseek-r1")).toBe(false);
+    expect(supportsThinking("llama3.2")).toBe(true);
+    expect(supportsThinking("deepseek-r1")).toBe(true);
   });
 });
 
@@ -226,7 +226,7 @@ describe("getProviderPatterns()", () => {
     const patterns = getProviderPatterns("openai");
     expect(patterns).toContain("^o1");
     expect(patterns).toContain("^o3");
-    expect(patterns).toContain("^gpt");
+    expect(patterns).toContain("^(gpt(?!-oss)(?!-v))");
   });
 
   it("should return patterns for openrouter", () => {

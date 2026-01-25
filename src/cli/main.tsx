@@ -1,160 +1,163 @@
+import { parseArgs, type CliOptions, createLLMClient, setupTools } from "./shared.js";
+import { handleMcp } from "./handlers/mcp.js";
+import { handleConfig } from "./handlers/config.js";
+import { handleMemory } from "./handlers/memory.js";
+import { handleSkill } from "./handlers/skill.js";
+import { handleStatus } from "./handlers/status.js";
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { loadConfig, getConfigPath } from "../config/loader.js";
-import { createProvider } from "../providers/factory.js";
-import type { LLMClient } from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
-import { fileTools, bashTool, searchTools, webSearchTool, loadPlugins } from "../tools/index.js";
+import { loadConfig } from "../config/loader.js";
+import { createSkillTool } from "../tools/index.js";
 import { Agent } from "../core/agent.js";
-import { McpManager } from "../mcp/manager.js";
-import type { ModelCapabilities } from "../providers/capabilities.js";
-import { MemoryStore } from "../core/memory.js";
 import { setNoColor, setJsonMode, shouldUseInk, isJsonMode } from "../ui/utils.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
 import { render } from "ink";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
-import { OpenAIProvider } from "../providers/openai.js";
-import { AnthropicProvider } from "../providers/anthropic.js";
-import { OllamaProvider } from "../providers/ollama.js";
-import { OpenRouterProvider } from "../providers/openrouter.js";
-import { OpenCodeProvider } from "../providers/opencode.js";
 
-/**
- * Configuration for tool output preview in plain text mode.
- * Can be overridden via TINY_AGENT_TOOL_PREVIEW_LINES environment variable.
- */
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
 
-interface CliOptions {
-  model?: string;
-  provider?: string;
-  verbose?: boolean;
-  save?: boolean;
-  help?: boolean;
-  noMemory?: boolean;
-  noTrackContext?: boolean;
-  noStatus?: boolean;
-  memoryFile?: string;
-  agentsMd?: string;
-  allowAll?: boolean;
-  noColor?: boolean;
-  json?: boolean;
+function getProviderDisplayName(providers: Record<string, unknown>): string {
+  if (providers.opencode) return "OpenCode";
+  if (providers.openai) return "OpenAI";
+  if (providers.anthropic) return "Anthropic";
+  if (providers.ollama) return "Ollama";
+  return "Default";
 }
 
-class ThinkingTagFilter {
+export class ThinkingTagFilter {
   private buffer = "";
-  private inThinkingBlock = false;
+  private pendingContent = "";
 
   filter(chunk: string): string {
+    if (this.pendingContent.length > 0) {
+      chunk = this.pendingContent + chunk;
+      this.pendingContent = "";
+    }
     this.buffer += chunk;
-    let output = "";
+    let result = "";
+    let lastIndex = 0;
 
-    while (this.buffer.length > 0) {
-      if (this.inThinkingBlock) {
-        const endIdx = this.buffer.indexOf("</think>");
-        if (endIdx !== -1) {
-          this.buffer = this.buffer.slice(endIdx + 8);
-          this.inThinkingBlock = false;
-        } else {
-          if (this.buffer.length > 100) {
-            this.buffer = this.buffer.slice(-20);
-          }
-          break;
-        }
-      } else {
-        const startIdx = this.buffer.indexOf("<think>");
-        if (startIdx !== -1) {
-          output += this.buffer.slice(0, startIdx);
-          this.buffer = this.buffer.slice(startIdx + 7);
-          this.inThinkingBlock = true;
-        } else {
-          const partialMatch = this.findPartialTag(this.buffer, "<think>");
-          if (partialMatch > 0) {
-            output += this.buffer.slice(0, this.buffer.length - partialMatch);
-            this.buffer = this.buffer.slice(-partialMatch);
-            break;
-          } else {
-            output += this.buffer;
-            this.buffer = "";
-          }
-        }
+    while (true) {
+      const startIdx = this.buffer.indexOf("<thinking>", lastIndex);
+      if (startIdx === -1) {
+        break;
       }
+
+      const endIdx = this.buffer.indexOf("</thinking>", startIdx + 11);
+      if (endIdx === -1) {
+        const contentBefore = this.buffer.slice(lastIndex, startIdx);
+        if (contentBefore.length > 0) {
+          result += contentBefore + "\n";
+        }
+        this.pendingContent = this.buffer.slice(startIdx);
+        this.buffer = "";
+        return result;
+      }
+
+      const contentBefore = this.buffer.slice(lastIndex, startIdx);
+      result += contentBefore;
+      const afterEnd = this.buffer.slice(endIdx + 11);
+      if (contentBefore.length > 0 && afterEnd.length > 0 && !afterEnd.startsWith("<thinking>")) {
+        result += "\n";
+      }
+      lastIndex = endIdx + 11;
     }
 
-    return output;
-  }
-
-  private findPartialTag(text: string, tag: string): number {
-    for (let i = 1; i < tag.length; i++) {
-      if (text.endsWith(tag.slice(0, i))) {
-        return i;
-      }
-    }
-    return 0;
+    result += this.buffer.slice(lastIndex);
+    this.buffer = "";
+    return result;
   }
 
   flush(): string {
-    const remaining = this.inThinkingBlock ? "" : this.buffer;
+    const remaining = this.buffer;
     this.buffer = "";
-    this.inThinkingBlock = false;
+    this.pendingContent = "";
     return remaining;
   }
 }
 
-function formatArgs(args: Record<string, unknown> | undefined): string {
+export function formatArgs(args: Record<string, unknown> | undefined): string {
   if (!args || Object.keys(args).length === 0) return "";
   const entries = Object.entries(args)
     .filter(([, v]) => v !== undefined)
     .map(([k, v]) => {
       const str = typeof v === "string" ? v : JSON.stringify(v);
-      if (k === "content" && str.length > 300) {
-        return `${k}=\n${str.slice(0, 300)}\n... (${str.length - 300} more chars)`;
-      }
-      if (str.length > 60) {
-        return `${k}=${str.slice(0, 60)}...`;
+      if (str.length >= 80) {
+        if (k === "content") {
+          return `${k}=\n${str.slice(0, 80)}\n... (${str.length - 80} more chars)`;
+        }
+        return `${k}=${str.slice(0, 80)}...`;
       }
       return `${k}=${str}`;
     });
   return entries.length > 0 ? ` (${entries.join(", ")})` : "";
 }
 
-function displayToolExecutionPlain(te: {
+type ToolExecutionDisplay = {
   name: string;
   status: "running" | "complete" | "error";
   args?: Record<string, unknown>;
   output?: string;
   error?: string;
-}): void {
+};
+
+type EnabledProviders = {
+  openai: boolean;
+  anthropic: boolean;
+  ollama: boolean;
+  ollamaCloud: boolean;
+  openrouter: boolean;
+  opencode: boolean;
+  zai: boolean;
+};
+
+function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
+  return {
+    openai: !!providers.openai,
+    anthropic: !!providers.anthropic,
+    ollama: !!providers.ollama,
+    ollamaCloud: !!providers.ollamaCloud,
+    openrouter: !!providers.openrouter,
+    opencode: !!providers.opencode,
+    zai: !!providers.zai,
+  };
+}
+
+function formatOutputPreview(output: string): string {
+  const lines = output.split("\n");
+  const preview =
+    lines.length > TOOL_PREVIEW_LINES
+      ? `${lines.slice(0, TOOL_PREVIEW_LINES).join("\n")}\n  ...`
+      : output;
+  return `  │ ${preview.split("\n").join("\n  │ ")}\n`;
+}
+
+function toolExecutionHeader(te: ToolExecutionDisplay, symbol: string): string {
   const argsStr = formatArgs(te.args);
-  if (te.status === "running") {
-    process.stdout.write(`  ${te.name}${argsStr} ...\n`);
-  } else if (te.status === "complete") {
-    process.stdout.write(`  ${te.name}${argsStr} ✓\n`);
-    if (te.output) {
-      const lines = te.output.split("\n");
-      const preview =
-        lines.length > TOOL_PREVIEW_LINES
-          ? lines.slice(0, TOOL_PREVIEW_LINES).join("\n") + "\n  ..."
-          : te.output;
-      process.stdout.write(`  │ ${preview.split("\n").join("\n  │ ")}\n`);
-    }
-  } else if (te.status === "error") {
-    process.stdout.write(`  ${te.name}${argsStr} ✗\n`);
-    if (te.error) {
-      process.stdout.write(`  │ ${te.error.split("\n").join("\n  │ ")}\n`);
-    }
+  return `  [${symbol}] ${te.name}${argsStr}\n`;
+}
+
+function displayToolExecutionPlain(te: ToolExecutionDisplay): void {
+  const isRunning = te.status === "running";
+  const isComplete = te.status === "complete";
+  const isError = te.status === "error";
+
+  if (isRunning) {
+    process.stdout.write(toolExecutionHeader(te, ""));
+    return;
+  }
+
+  const symbol = isComplete ? "✓" : isError ? "✗" : "";
+  process.stdout.write(toolExecutionHeader(te, symbol));
+
+  const outputToShow = isComplete ? te.output : isError ? te.error : undefined;
+  if (outputToShow) {
+    process.stdout.write(formatOutputPreview(outputToShow));
   }
 }
 
-function displayToolExecutionInk(te: {
-  name: string;
-  status: "running" | "complete" | "error";
-  args?: Record<string, unknown>;
-  output?: string;
-  error?: string;
-}): void {
+function displayToolExecutionInk(te: ToolExecutionDisplay): void {
   if (te.status === "running") {
     return;
   }
@@ -171,16 +174,7 @@ function displayToolExecutionInk(te: {
   unmount();
 }
 
-function displayToolExecution(
-  te: {
-    name: string;
-    status: "running" | "complete" | "error";
-    args?: Record<string, unknown>;
-    output?: string;
-    error?: string;
-  },
-  useInk: boolean,
-): void {
+function displayToolExecution(te: ToolExecutionDisplay, useInk: boolean): void {
   if (useInk) {
     displayToolExecutionInk(te);
   } else {
@@ -198,166 +192,14 @@ function outputJson(data: JsonOutput): void {
   console.log(JSON.stringify(data));
 }
 
-function parseArgs(): {
-  command: string;
-  args: string[];
-  options: CliOptions;
-} {
-  const args = process.argv.slice(2);
-  const options: CliOptions = {};
-  const positionalArgs: string[] = [];
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i] ?? "";
-    if (arg === "--help" || arg === "-h") {
-      options.help = true;
-    } else if (arg === "--model" && i + 1 < args.length) {
-      options.model = args[i + 1];
-      i++;
-    } else if (arg === "--provider" && i + 1 < args.length) {
-      options.provider = args[i + 1];
-      i++;
-    } else if (arg === "-v" || arg === "--verbose") {
-      options.verbose = true;
-    } else if (arg === "--save") {
-      options.save = true;
-    } else if (arg === "--no-memory") {
-      options.noMemory = true;
-    } else if (arg === "--no-track-context") {
-      options.noTrackContext = true;
-    } else if (arg === "--no-status") {
-      options.noStatus = true;
-    } else if (arg === "--agents-md" && i + 1 < args.length) {
-      options.agentsMd = args[i + 1];
-      i++;
-    } else if (arg === "--allow-all" || arg === "-y") {
-      options.allowAll = true;
-    } else if (arg === "--no-color") {
-      options.noColor = true;
-    } else if (arg === "--json") {
-      options.json = true;
-    } else if (arg && !arg.startsWith("-")) {
-      positionalArgs.push(arg);
-    }
-  }
-
-  const command = positionalArgs[0] || "chat";
-  const commandArgs = positionalArgs.slice(1);
-
-  return { command, args: commandArgs, options };
-}
-
-async function createLLMClient(
-  config: ReturnType<typeof loadConfig>,
-  options: CliOptions,
-): Promise<LLMClient> {
-  const model = options.model || config.defaultModel;
-  const provider = options.provider;
-
-  return createProvider({
-    model,
-    provider: provider as undefined | "openai" | "anthropic" | "ollama" | "openrouter" | "opencode",
-    providers: config.providers,
-  });
-}
-
-function createMemoryStore(
-  config: ReturnType<typeof loadConfig>,
-  options: CliOptions,
-): MemoryStore | undefined {
-  const memoryFile = options.memoryFile || config.memoryFile;
-  if (!memoryFile && !options.noMemory) {
-    return undefined;
-  }
-  return new MemoryStore({
-    filePath: memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`,
-  });
-}
-
-async function setupTools(config: ReturnType<typeof loadConfig>): Promise<ToolRegistry> {
-  const registry = new ToolRegistry();
-
-  const isToolEnabled = (name: string): boolean => {
-    if (config.tools === undefined) {
-      return true;
-    }
-    const toolConfig = config.tools[name];
-    return toolConfig === undefined || toolConfig.enabled === true;
-  };
-
-  // Register built-in tools if enabled
-  for (const tool of fileTools) {
-    if (isToolEnabled(tool.name)) {
-      registry.register(tool);
-    }
-  }
-  if (isToolEnabled(bashTool.name)) {
-    registry.register(bashTool);
-  }
-  for (const tool of searchTools) {
-    if (isToolEnabled(tool.name)) {
-      registry.register(tool);
-    }
-  }
-  if (isToolEnabled(webSearchTool.name)) {
-    registry.register(webSearchTool);
-  }
-
-  // Load and register plugins
-  try {
-    const plugins = await loadPlugins();
-    for (const tool of plugins) {
-      if (isToolEnabled(tool.name)) {
-        registry.register(tool);
-      }
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`Warning: Failed to load plugins: ${message}`);
-  }
-
-  // Initialize and register MCP tools if configured
-  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    const mcpManager = new McpManager();
-    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-      await mcpManager.addServer(serverName, serverConfig);
-    }
-    const allMcpTools = mcpManager.getAllTools();
-    for (const [serverName, toolDefs] of allMcpTools) {
-      for (const toolDef of toolDefs) {
-        const tool = mcpManager.createToolFromMcp(serverName, toolDef);
-        if (isToolEnabled(tool.name)) {
-          try {
-            registry.register(tool);
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            console.error(`Warning: Failed to register MCP tool: ${message}`);
-          }
-        }
-      }
-    }
-  }
-
-  return registry;
-}
-
 async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) {
-    return "";
-  }
+  if (process.stdin.isTTY) return "";
 
   return new Promise((resolve) => {
     let data = "";
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => {
-      data += chunk;
-    });
-    process.stdin.on("end", () => {
-      resolve(data);
-    });
-    process.stdin.on("error", () => {
-      resolve("");
-    });
+    process.stdin.on("data", (chunk) => (data += chunk));
+    process.stdin.on("end", () => resolve(data));
   });
 }
 
@@ -379,8 +221,36 @@ async function handleRun(
     process.exit(1);
   }
 
+  const jsonMode = isJsonMode();
+  const useInk = shouldUseInk();
+
+  // Display initialization progress
+  if (!jsonMode && !useInk) {
+    console.log("Initializing...");
+  }
+
   const llmClient = await createLLMClient(config, options);
-  const toolRegistry = await setupTools(config);
+  if (!jsonMode && !useInk) {
+    const providerName = getProviderDisplayName(config.providers);
+    console.log(`  Provider: ${providerName}`);
+  }
+
+  const { registry: toolRegistry, mcpManager } = await setupTools(config);
+  if (!jsonMode && !useInk) {
+    const toolCount = toolRegistry.list().length;
+    console.log(`  Tools: ${toolCount} loaded`);
+
+    if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+      if (mcpManager) {
+        const serverStatus = mcpManager.getServerStatus();
+        for (const server of serverStatus) {
+          const status = server.connected ? "●" : "○";
+          console.log(`  MCP: ${status} ${server.name} (${server.toolCount} tools)`);
+        }
+      }
+    }
+  }
+
   const model = options.model || config.defaultModel;
 
   const enableMemory = !options.noMemory || config.memoryFile !== undefined;
@@ -389,6 +259,10 @@ async function handleRun(
   const agentsMdPath =
     options.agentsMd ??
     (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
+
+  const skillDirectories = options.skillsDir
+    ? [...(config.skillDirectories || []), ...options.skillsDir]
+    : config.skillDirectories;
 
   const agent = new Agent(llmClient, toolRegistry, {
     verbose: options.verbose,
@@ -403,29 +277,45 @@ async function handleRun(
     agentsMdPath,
     thinking: config.thinking,
     providerConfigs: config.providers,
+    skillDirectories,
+    mcpManager,
   });
 
-  const toolCount = toolRegistry.list().length;
-  const memoryStatus = enableMemory ? "memory enabled" : "no memory";
-  const agentsMdStatus = agentsMdPath ? "AGENTS.md loaded" : "";
-  const jsonMode = isJsonMode();
-  const useInk = shouldUseInk();
+  const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+    agent._setSkillRestriction(allowedTools);
+  });
+  toolRegistry.register(skillTool);
 
-  if (!jsonMode) {
-    console.log(
-      `[${toolCount} tools, ${memoryStatus}${agentsMdStatus ? `, ${agentsMdStatus}` : ""}]`,
-    );
+  // Wait for skills to be initialized before getting the count
+  await agent.waitForSkills();
+
+  const skillCount = agent.getSkillRegistry().size;
+
+  if (!jsonMode && !useInk) {
+    if (skillCount > 0) {
+      console.log(`  Skills: ${skillCount} discovered`);
+    }
+    console.log(`  Memory: ${enableMemory ? "enabled" : "disabled"}`);
+    if (agentsMdPath) {
+      console.log(`  AGENTS.md: loaded`);
+    }
+    console.log(`  Model: ${model}`);
+    console.log(); // Empty line before starting
   }
 
   if (jsonMode) {
     outputJson({ type: "user", content: prompt });
   }
 
+  // Initialize status line with model and context info
+  statusLineManager.setModel(model);
+  const contextMax = maxContextTokens ?? 32000;
+  statusLineManager.setContext(0, contextMax);
+
   const runPrompt = async (currentPrompt: string): Promise<void> => {
     let accumulatedContent = "";
     const thinkFilter = new ThinkingTagFilter();
 
-    statusLineManager.setModel(model);
     statusLineManager.setStatus(StatusType.THINKING);
 
     for await (const chunk of agent.runStream(currentPrompt, model)) {
@@ -442,9 +332,8 @@ async function handleRun(
         const runningTool = chunk.toolExecutions.find((te) => te.status === "running");
         if (runningTool) {
           statusLineManager.setTool(runningTool.name);
-        } else {
-          statusLineManager.clearTool();
         }
+        // Don't clear tool on complete - keep it visible until next tool starts
 
         if (jsonMode) {
           for (const te of chunk.toolExecutions) {
@@ -463,11 +352,14 @@ async function handleRun(
           for (const te of chunk.toolExecutions) {
             displayToolExecution(te, useInk);
           }
-          if (!options.noTrackContext && chunk.contextStats) {
-            const ctx = chunk.contextStats;
-            statusLineManager.setContext(ctx.totalTokens, ctx.maxContextTokens);
-          }
         }
+      }
+
+      // Update context on every chunk (not just when tools execute)
+      if (!options.noTrackContext && chunk.contextStats) {
+        const ctx = chunk.contextStats;
+        const maxTokens = ctx.maxContextTokens ?? 32000;
+        statusLineManager.setContext(ctx.totalTokens, maxTokens);
       }
 
       if (chunk.done) {
@@ -498,9 +390,12 @@ async function handleRun(
 
   try {
     await runPrompt(prompt);
+    statusLineManager.clearTool();
+    statusLineManager.setStatus(StatusType.READY);
     process.exit(0);
   } catch (err) {
     statusLineManager.setStatus(StatusType.ERROR);
+    statusLineManager.clearTool();
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nError: ${message}`);
     statusLineManager.setStatus(StatusType.READY);
@@ -508,119 +403,13 @@ async function handleRun(
   }
 }
 
-async function handleStatus(
-  config: ReturnType<typeof loadConfig>,
-  options: CliOptions,
-): Promise<void> {
-  const llmClient = await createLLMClient(config, options);
-  const toolRegistry = await setupTools(config);
-  const model = options.model || config.defaultModel;
-
-  console.log("\n🤖 Tiny Agent Status");
-  console.log("===================\n");
-
-  console.log("Configuration:");
-  console.log(`  Model: ${model}`);
-
-  const providerName = (() => {
-    if (llmClient instanceof OpenAIProvider) {
-      const baseUrl = config.providers.openai?.baseUrl;
-      return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
-    }
-    if (llmClient instanceof AnthropicProvider) return "Anthropic";
-    if (llmClient instanceof OllamaProvider) {
-      const baseUrl = config.providers.ollama?.baseUrl ?? "http://localhost:11434";
-      return `Ollama (${baseUrl})`;
-    }
-    if (llmClient instanceof OpenRouterProvider) {
-      const baseUrl = config.providers.openrouter?.baseUrl ?? "https://openrouter.ai/api/v1";
-      return `OpenRouter (${baseUrl})`;
-    }
-    if (llmClient instanceof OpenCodeProvider) {
-      const baseUrl = config.providers.opencode?.baseUrl ?? "https://opencode.ai/zen/v1";
-      return `OpenCode (${baseUrl})`;
-    }
-    return "Unknown";
-  })();
-  console.log(`  Provider: ${providerName}\n`);
-
-  const capabilities: ModelCapabilities = await llmClient.getCapabilities(model);
-
-  console.log("Model Capabilities:");
-  const capabilityCheck = (_name: string, supported: boolean): string =>
-    supported ? "  ✓" : "  ✗";
-
-  console.log(`${capabilityCheck("Tools", capabilities.supportsTools)} Tools`);
-  console.log(`${capabilityCheck("Streaming", capabilities.supportsStreaming)} Streaming`);
-  console.log(
-    `${capabilityCheck("System Prompts", capabilities.supportsSystemPrompt)} System Prompts`,
-  );
-  console.log(
-    `${capabilityCheck("Tool Streaming", capabilities.supportsToolStreaming)} Tool Streaming`,
-  );
-  console.log(`${capabilityCheck("Thinking", capabilities.supportsThinking)} Thinking`);
-
-  if (capabilities.contextWindow) {
-    console.log(`  Context Window: ${(capabilities.contextWindow / 1000).toFixed(0)}k tokens`);
-  }
-  if (capabilities.maxOutputTokens) {
-    console.log(`  Max Output: ${capabilities.maxOutputTokens} tokens`);
-  }
-
-  console.log("\nTool Registry:");
-  const tools = toolRegistry.list();
-  console.log(`  ${tools.length} tools registered`);
-  if (tools.length > 0) {
-    const toolNames = tools.map((t) => t.name).sort();
-    console.log(`  ${toolNames.join(", ")}`);
-  }
-
-  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    console.log("\nMCP Servers:");
-    for (const [name] of Object.entries(config.mcpServers)) {
-      console.log(`  - ${name}`);
-    }
-  }
-
-  console.log();
-  process.exit(0);
-}
-
-function openEditor(): void {
-  const configPath = getConfigPath();
-
-  const editor = process.env.EDITOR || process.env.VISUAL || "code";
-  const editorArgs: string[] = [];
-
-  if (editor === "code") {
-    editorArgs.push("--wait");
-  }
-
-  editorArgs.push(configPath);
-
-  const proc = spawn(editor, editorArgs, {
-    stdio: "inherit",
-    shell: true,
-  });
-
-  proc.on("error", (err) => {
-    console.error(`Failed to open editor: ${err.message}`);
-    console.error(`Config file: ${configPath}`);
-    process.exit(1);
-  });
-
-  proc.on("close", (code) => {
-    process.exit(code);
-  });
-}
-
 async function handleInteractiveChat(
   config: ReturnType<typeof loadConfig>,
+  args: string[],
   options: CliOptions,
 ): Promise<void> {
-  const llmClient = await createLLMClient(config, options);
-  const toolRegistry = await setupTools(config);
   const initialModel = options.model || config.defaultModel;
+  const initialPrompt = args.join(" ").trim() || undefined;
 
   const enableMemory = !options.noMemory || config.memoryFile !== undefined;
   const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
@@ -629,35 +418,76 @@ async function handleInteractiveChat(
     options.agentsMd ??
     (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
 
-  const agent = new Agent(llmClient, toolRegistry, {
-    verbose: options.verbose,
-    systemPrompt: config.systemPrompt,
-    conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-    maxContextTokens,
-    memoryFile: enableMemory
-      ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
-      : undefined,
-    maxMemoryTokens: config.maxMemoryTokens,
-    trackContextUsage: !options.noTrackContext || config.trackContextUsage,
-    agentsMdPath,
-    thinking: config.thinking,
-    providerConfigs: config.providers,
-  });
+  const skillDirectories = options.skillsDir
+    ? [...(config.skillDirectories || []), ...options.skillsDir]
+    : config.skillDirectories;
+
+  // Initialize status line with model immediately
+  statusLineManager.setModel(initialModel.replace(/^opencode\//, ""));
+  const contextMax = maxContextTokens ?? 32000;
+  statusLineManager.setContext(0, contextMax);
 
   const { App: InkApp, renderApp } = await import("../ui/index.js");
 
-  const enabledProviders = {
-    openai: !!config.providers.openai,
-    anthropic: !!config.providers.anthropic,
-    ollama: !!config.providers.ollama,
-    ollamaCloud: !!config.providers.ollamaCloud,
-    openrouter: !!config.providers.openrouter,
-    opencode: !!config.providers.opencode,
+  const enabledProviders = getEnabledProviders(config.providers);
+
+  // Render UI immediately with agent=undefined (will show LoadingScreen)
+  const { rerender, waitUntilExit } = renderApp(
+    <InkApp
+      initialModel={initialModel}
+      initialPrompt={initialPrompt}
+      agent={undefined}
+      enabledProviders={enabledProviders}
+    />,
+  );
+
+  // Do full initialization in background
+  const initBackground = async () => {
+    try {
+      const llmClient = await createLLMClient(config, options);
+      const { registry: toolRegistry, mcpManager } = await setupTools(config);
+
+      const agent = new Agent(llmClient, toolRegistry, {
+        verbose: options.verbose,
+        systemPrompt: config.systemPrompt,
+        conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+        maxContextTokens,
+        memoryFile: enableMemory
+          ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`
+          : undefined,
+        maxMemoryTokens: config.maxMemoryTokens,
+        trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+        agentsMdPath,
+        thinking: config.thinking,
+        providerConfigs: config.providers,
+        skillDirectories,
+        mcpManager,
+      });
+
+      const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+        agent._setSkillRestriction(allowedTools);
+      });
+      toolRegistry.register(skillTool);
+
+      // Wait for skills to be initialized
+      await agent.waitForSkills();
+
+      // Re-render with the fully initialized agent
+      rerender(
+        <InkApp
+          initialModel={initialModel}
+          initialPrompt={initialPrompt}
+          agent={agent}
+          enabledProviders={enabledProviders}
+        />,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Background initialization error: ${message}`);
+    }
   };
 
-  const { waitUntilExit } = renderApp(
-    <InkApp initialModel={initialModel} agent={agent} enabledProviders={enabledProviders} />,
-  );
+  initBackground();
 
   await waitUntilExit();
 }
@@ -686,12 +516,16 @@ USAGE:
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
     tiny-agent memory [command]        Manage memories
+    tiny-agent skill [command]         Manage skills
 
 COMMANDS:
     memory list                        List all stored memories
     memory add <content>               Add a new memory
     memory clear                       Clear all memories
     memory stats                       Show memory statistics
+    skill list                         List all discovered skills
+    skill show <name>                  Show full skill content
+    skill init <name>                  Initialize a new skill
 
 OPTIONS:
     --model <model>                    Override default model
@@ -702,6 +536,7 @@ OPTIONS:
     --no-track-context                 Disable context tracking (enabled by default)
     --no-status                        Disable status line
     --agents-md <path>                 Path to AGENTS.md file (auto-detected in cwd)
+    --skills-dir <path>                Add a skill directory (can be used multiple times)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
     --help, -h                         Show this help message
@@ -729,123 +564,6 @@ For more information, visit: https://github.com/jellydn/tiny-coding-agent
   `);
 }
 
-async function handleConfig(config: ReturnType<typeof loadConfig>, args: string[]): Promise<void> {
-  const subCommand = args[0];
-
-  if (subCommand === "open") {
-    openEditor();
-    return;
-  }
-
-  console.log("Current Configuration:");
-  console.log(`  Default Model: ${config.defaultModel}`);
-
-  if (config.systemPrompt) {
-    console.log(`  System Prompt: ${config.systemPrompt}`);
-  }
-
-  if (config.conversationFile) {
-    console.log(`  Conversation File: ${config.conversationFile}`);
-  }
-
-  if (config.maxContextTokens) {
-    console.log(`  Max Context Tokens: ${config.maxContextTokens}`);
-  }
-
-  if (config.memoryFile) {
-    console.log(`  Memory File: ${config.memoryFile}`);
-  }
-
-  if (config.maxMemoryTokens) {
-    console.log(`  Max Memory Tokens: ${config.maxMemoryTokens}`);
-  }
-
-  if (config.trackContextUsage) {
-    console.log(`  Track Context Usage: true`);
-  }
-
-  console.log("\n  Providers:");
-  console.log(`    OpenAI: ${config.providers.openai ? "configured" : "not configured"}`);
-  console.log(`    Anthropic: ${config.providers.anthropic ? "configured" : "not configured"}`);
-  console.log(`    Ollama: ${config.providers.ollama ? "configured" : "not configured"}`);
-
-  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    console.log("\n  MCP Servers:");
-    for (const [name] of Object.entries(config.mcpServers)) {
-      console.log(`    - ${name}`);
-    }
-  }
-  process.exit(0);
-}
-
-async function handleMemory(
-  config: ReturnType<typeof loadConfig>,
-  args: string[],
-  options: CliOptions,
-): Promise<void> {
-  let memoryStore = createMemoryStore(config, options);
-  const subCommand = args[0] || "list";
-
-  if (!memoryStore) {
-    const memoryFile = config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json`;
-    memoryStore = new MemoryStore({ filePath: memoryFile });
-    console.log(`Using memory file: ${memoryFile}\n`);
-  }
-
-  if (subCommand === "list") {
-    const memories = memoryStore.list();
-    console.log("\nMemories");
-    console.log("========\n");
-
-    if (memories.length === 0) {
-      console.log("No memories stored.\n");
-    } else {
-      for (const memory of memories) {
-        const date = new Date(memory.createdAt).toLocaleDateString();
-        console.log(`[${memory.category}] ${date}`);
-        console.log(`  ${memory.content}`);
-        console.log(`  (accessed ${memory.accessCount} times)\n`);
-      }
-    }
-
-    const totalTokens = memoryStore.countTokens();
-    console.log(`Total: ${memories.length} memories, ~${totalTokens} tokens\n`);
-  } else if (subCommand === "add") {
-    const content = args.slice(1).join(" ");
-    if (!content) {
-      console.error('Error: Memory content required. Usage: tiny-agent memory add "your memory"');
-      process.exit(1);
-    }
-    const memory = memoryStore.add(content);
-    console.log(`Memory added: ${memory.id}\n`);
-  } else if (subCommand === "clear") {
-    const count = memoryStore.count();
-    memoryStore.clear();
-    console.log(`Cleared ${count} memories.\n`);
-  } else if (subCommand === "stats") {
-    const memories = memoryStore.list();
-    const totalTokens = memoryStore.countTokens();
-    console.log("\nMemory Statistics");
-    console.log("=================\n");
-    console.log(`  Total memories: ${memories.length}`);
-    console.log(`  Estimated tokens: ${totalTokens}`);
-    console.log(`  By category:`);
-
-    const categories = ["user", "project", "codebase"];
-    for (const cat of categories) {
-      const count = memories.filter((m) => m.category === cat).length;
-      console.log(`    ${cat}: ${count}`);
-    }
-    console.log();
-  } else {
-    console.error(`Unknown memory command: ${subCommand}`);
-    console.error("Available commands: list, add <content>, clear, stats");
-    process.exit(1);
-  }
-
-  process.exit(0);
-}
-
 export async function main(): Promise<void> {
   try {
     const { command, args, options } = parseArgs();
@@ -870,7 +588,7 @@ export async function main(): Promise<void> {
     const config = loadConfig();
 
     if (command === "chat") {
-      await handleInteractiveChat(config, options);
+      await handleInteractiveChat(config, args, options);
     } else if (command === "run") {
       await handleRun(config, args, options);
     } else if (command === "config") {
@@ -879,9 +597,13 @@ export async function main(): Promise<void> {
       await handleStatus(config, options);
     } else if (command === "memory") {
       await handleMemory(config, args, options);
+    } else if (command === "skill") {
+      await handleSkill(config, args, options);
+    } else if (command === "mcp") {
+      await handleMcp(args);
     } else {
       console.error(`Unknown command: ${command}`);
-      console.error("Available commands: chat, run <prompt>, config, status, memory");
+      console.error("Available commands: chat, run <prompt>, config, status, memory, skill, mcp");
       console.error(
         "Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help",
       );

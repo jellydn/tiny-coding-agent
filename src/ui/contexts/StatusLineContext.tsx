@@ -1,9 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import {
-  statusLineManager,
-  subscribeToStatusLine,
-  type StatusLineState,
-} from "../status-line-manager.js";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
+import { statusLineManager, type StatusLineState } from "../status-line-manager.js";
 import { StatusType } from "../types/enums.js";
 
 export type StatusLineStatus = StatusType;
@@ -14,6 +17,7 @@ interface StatusLineContextValue extends StatusLineState {
   setContext: (used?: number, max?: number) => void;
   setTool: (tool?: string) => void;
   clearTool: () => void;
+  setMcpServerCount: (count?: number) => void;
   showStatusLine: boolean;
 }
 
@@ -32,67 +36,27 @@ interface StatusLineProviderProps {
 }
 
 export function StatusLineProvider({ children }: StatusLineProviderProps): React.ReactElement {
-  const [status, setStatusState] = useState<StatusLineStatus | undefined>();
-  const [model, setModelState] = useState<string | undefined>();
-  const [tokensUsed, setTokensUsedState] = useState<number | undefined>();
-  const [tokensMax, setTokensMaxState] = useState<number | undefined>();
-  const [tool, setToolState] = useState<string | undefined>();
-  const [showStatusLine, setShowStatusLineState] = useState(true);
+  const [state, setState] = useState<StatusLineState>({});
 
   useEffect(() => {
-    return subscribeToStatusLine((newState: StatusLineState) => {
-      if ("status" in newState) setStatusState(newState.status);
-      if ("model" in newState) setModelState(newState.model);
-      if ("tokensUsed" in newState) setTokensUsedState(newState.tokensUsed);
-      if ("tokensMax" in newState) setTokensMaxState(newState.tokensMax);
-      if ("tool" in newState) setToolState(newState.tool);
-      setShowStatusLineState(statusLineManager.showStatusLine);
+    return statusLineManager.subscribe((newState) => {
+      setState((prevState) => ({ ...prevState, ...newState }));
     });
   }, []);
 
-  useEffect(() => {
-    return subscribeToStatusLine(() => {
-      setShowStatusLineState(statusLineManager.showStatusLine);
-    });
-  }, []);
-
-  const setStatus = (newStatus?: StatusLineStatus) => {
-    statusLineManager.setStatus(newStatus);
-  };
-
-  const setModel = (newModel?: string) => {
-    statusLineManager.setModel(newModel);
-  };
-
-  const setContext = (used?: number, max?: number) => {
-    statusLineManager.setContext(used, max);
-  };
-
-  const setTool = (newTool?: string) => {
-    statusLineManager.setTool(newTool);
-  };
-
-  const clearTool = () => {
-    statusLineManager.clearTool();
-  };
-
-  return (
-    <StatusLineContext.Provider
-      value={{
-        status,
-        model,
-        tokensUsed,
-        tokensMax,
-        tool,
-        setStatus,
-        setModel,
-        setContext,
-        setTool,
-        clearTool,
-        showStatusLine,
-      }}
-    >
-      {children}
-    </StatusLineContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      ...state,
+      setStatus: statusLineManager.setStatus.bind(statusLineManager),
+      setModel: statusLineManager.setModel.bind(statusLineManager),
+      setContext: statusLineManager.setContext.bind(statusLineManager),
+      setTool: statusLineManager.setTool.bind(statusLineManager),
+      clearTool: statusLineManager.clearTool.bind(statusLineManager),
+      setMcpServerCount: statusLineManager.setMcpServerCount.bind(statusLineManager),
+      showStatusLine: statusLineManager.showStatusLine,
+    }),
+    [state],
   );
+
+  return <StatusLineContext.Provider value={contextValue}>{children}</StatusLineContext.Provider>;
 }

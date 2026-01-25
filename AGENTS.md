@@ -5,14 +5,21 @@
 ```bash
 bun run dev              # Watch mode
 bun run build            # Compile to binary (outputs tiny-agent)
+bun run generate:skills  # Regenerate embedded skills
 bun run typecheck        # Type check (tsc --noEmit)
 bun run lint             # Lint (oxlint)
 bun run lint:fix         # Auto-fix lint issues
 bun run format           # Format code (oxfmt)
+bun run format:check     # Check formatting only
 bun test                 # Run all tests
-bun test <file>          # Run single test (e.g., src/core/memory.test.ts)
+bun test <file>          # Run single test file (e.g., "bun test tools/file.test.ts")
+bun test <pattern>       # Run tests matching pattern (e.g., "bun test memory")
 bun test:watch           # Watch mode for TDD
-bun run format && bun run typecheck && bun run lint  # After changes
+
+# Release workflow (runs test, typecheck, lint first)
+bun run release:patch    # Patch release
+bun run release:minor    # Minor release
+bun run release:major    # Major release
 ```
 
 ## Code Style
@@ -31,17 +38,39 @@ import type { Tool } from "./types.js"; // Internal: .js extension
 ### TypeScript
 
 - ES modules with TypeScript 5+, strict mode
-- Compiler: `verbatimModuleSyntax`, `noUncheckedIndexedAccess`, `noImplicitOverride`
-- Note: `noUnusedLocals: false`, `noUnusedParameters: false` (unused code allowed)
+- Compiler options in `tsconfig.json`:
+  - `verbatimModuleSyntax`: Requires explicit `import type` for types
+  - `noUncheckedIndexedAccess`: Accessing indexed types requires validation
+  - `noImplicitOverride`: Override methods must use `override` keyword
 - Paths: Use `@/*` alias (e.g., `import { Tool } from "@/tools/types.js"`)
 - Use `satisfies` for type narrowing with validation
+- Use `zod` for runtime validation of inputs and configs
 
 ### Strings & Variables
 
 ```typescript
 const message = "text"; // Double quotes
 let count = 0; // let only when reassigning
-const timeout = args.timeout ?? 60000; // ?? for defaults
+const timeout = args.timeout ?? 60000; // ?? for nullish coalescing defaults
+```
+
+### React & JSX
+
+- Project uses Ink (React for CLI) for UI components
+- Use function components with TypeScript interfaces for props
+- Avoid class components
+
+```typescript
+import React from "react";
+import { Box, Text } from "ink";
+
+interface Props {
+  message: string;
+}
+
+export const Message: React.FC<Props> = ({ message }) => (
+  <Box><Text>{message}</Text></Box>
+);
 ```
 
 ### Error Handling
@@ -62,62 +91,26 @@ try {
 
 Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 
+### Async Patterns
+
+```typescript
+async function fetchData(url: string): Promise<Result<Data>> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+    return { success: true, data: await response.json() };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+```
+
 ### Tidying Practices
 
 - **Guard Clauses**: Move preconditions to top, return early
 - **Helper Variables**: Extract complex expressions
 - **Dead Code**: Delete unused code
 - **Normalize Symmetries**: Use consistent patterns
-
-### Registry Pattern
-
-Use Map with CRUD: `register`, `unregister`, `get`, `list`, `clear`.
-
-### React Context Pattern
-
-```typescript
-// contexts/MyContext.tsx
-import React, { createContext, useContext, useState, type ReactNode } from "react";
-
-interface MyContextValue {
-  value: string;
-  setValue: (v: string) => void;
-}
-
-const MyContext = createContext<MyContextValue | null>(null);
-
-export function useMyContext(): MyContextValue {
-  const context = useContext(MyContext);
-  if (!context) {
-    throw new Error("useMyContext must be used within a MyProvider");
-  }
-  return context;
-}
-
-export function MyProvider({ children }: { children: ReactNode }) {
-  const [value, setValue] = useState("");
-  return (
-    <MyContext.Provider value={{ value, setValue }}>
-      {children}
-    </MyContext.Provider>
-  );
-}
-```
-
-- Throw error if hook used outside provider (catches usage errors early)
-- Export types alongside hooks for consumers
-- Use helper functions that combine multiple state setters for atomic updates
-
-### Tool Pattern
-
-```typescript
-export const tool: Tool = {
-  name: "name",
-  description: "Does X",
-  parameters: { type: "object", properties: {...}, required: ["arg"] },
-  async execute(args) { return { success: true, output: "..." }; },
-};
-```
 
 ## Testing
 
@@ -130,13 +123,6 @@ describe("MemoryStore", () => {
   const tempFile = "/tmp/test-memory.json";
 
   beforeEach(() => {
-    try {
-      unlinkSync(tempFile);
-    } catch {
-      /* ignore */
-    }
-  });
-  afterEach(() => {
     try {
       unlinkSync(tempFile);
     } catch {
@@ -163,30 +149,28 @@ describe("MemoryStore", () => {
 src/
   core/       # Agent loop, memory, tokens
   tools/      # Built-in tools (file, bash, grep, glob, web)
-  providers/  # LLM clients (OpenAI, Anthropic, Ollama)
+  providers/  # LLM clients (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode)
   mcp/        # MCP client integration
   cli/        # CLI interface
   config/     # Configuration loading
+  skills/     # Skill loading (agentskills.io + custom SKILL.md files)
+  ui/         # Ink React components for CLI output
+  utils/      # Shared utilities
 ```
 
-Key dependencies: `@anthropic-ai/sdk`, `openai`, `ollama`, `@modelcontextprotocol/sdk`, `zod`.
+## Agent Workflow
 
-## CLI Usage
+1. **Understand First**: Read relevant files before making changes
+2. **Plan First**: Propose a plan before editing, break into manageable steps
+3. **Test-Driven**: Run tests after changes to verify correctness
+4. **Typecheck & Lint**: Always run `bun run typecheck && bun run lint` after changes
 
-```bash
-tiny-agent                         # Interactive chat
-tiny-agent run "fix this bug"      # Run single prompt
-tiny-agent --model claude-3-5-sonnet "help"  # Specify model
-tiny-agent --provider ollama run "help"      # Specify provider
-tiny-agent memory list              # List memories
-tiny-agent config                   # Show config
-tiny-agent status                   # Show capabilities
-```
+## General Guidelines
 
-Options: `--model`, `--provider`, `--verbose`, `--save`, `--no-memory`, `--no-track-context`, `--agents-md <path>`, `--help`.
-
-## Core Principles
-
-- **Small, Safe Steps**: Make big changes through small, reversible steps
-- **Human Relationships**: Code is communication between humans
-- **Eliminate Problems**: Remove complexity rather than managing it
+- Keep responses concise and actionable
+- Never run destructive commands
+- Use our conventions for file names, tests, and commands
+- Keep code clean and organized; avoid over-engineering
+- Write clear, modular code with meaningful names
+- Prefer self-documenting code; add comments where necessary
+- Avoid tight coupling and excessive dependencies

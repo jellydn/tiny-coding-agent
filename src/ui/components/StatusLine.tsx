@@ -9,6 +9,7 @@ interface StatusLineProps {
   tokensUsed?: number;
   tokensMax?: number;
   tool?: string;
+  mcpServerCount?: number;
 }
 
 function formatCompactNumber(num: number): string {
@@ -29,6 +30,7 @@ export function StatusLine({
   tokensUsed,
   tokensMax,
   tool,
+  mcpServerCount,
 }: StatusLineProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns || 80;
@@ -55,23 +57,7 @@ export function StatusLine({
     setElapsed(0);
   }, [status, tool]);
 
-  if (status) {
-    if (elements.length > 0) {
-      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
-    }
-    const statusLabel = STATUS_CONFIG.LABELS[status] || status;
-    const statusColor = STATUS_CONFIG.COLORS[status];
-    elements.push(
-      <Text key="status" color={statusColor}>
-        {statusLabel}
-      </Text>,
-    );
-  }
-
   if (model) {
-    if (elements.length > 0) {
-      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
-    }
     const maxModelWidth = Math.max(
       LAYOUT.CONTEXT_MAX_MODEL_WIDTH,
       terminalWidth - LAYOUT.TERMINAL_WIDTH_BUFFER,
@@ -86,7 +72,7 @@ export function StatusLine({
 
   if (tokensUsed !== undefined && tokensMax !== undefined) {
     if (elements.length > 0) {
-      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
+      elements.push(<Text key={`sep-c-${elements.length}`}> | </Text>);
     }
     const usedDisplay = formatCompactNumber(tokensUsed);
     const maxDisplay = formatCompactNumber(tokensMax);
@@ -97,24 +83,42 @@ export function StatusLine({
     );
   }
 
-  if (tool) {
-    const timeStr = `${elapsed.toFixed(1)}s`;
+  if (mcpServerCount !== undefined && mcpServerCount > 0) {
     if (elements.length > 0) {
-      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
+      elements.push(<Text key={`sep-m-${elements.length}`}> | </Text>);
     }
     elements.push(
+      <Text key="mcp" color="magenta">
+        MCP: {mcpServerCount}
+      </Text>,
+    );
+  }
+
+  if (status) {
+    const statusLabel = STATUS_CONFIG.LABELS[status] || status;
+    const statusColor = STATUS_CONFIG.COLORS[status];
+    elements.push(<Text key={`sep-s-${elements.length}`}> | </Text>);
+    elements.push(
+      <Text key="status" color={statusColor}>
+        {statusLabel}
+      </Text>,
+    );
+  }
+
+  if (tool) {
+    const timeStr = `${elapsed.toFixed(1)}s`;
+    elements.push(<Text key={`sep-t-${elements.length}`}> | </Text>);
+    elements.push(
       <Text key="tool" color="cyan">
-        ⚙ {tool} {timeStr}
+        [{tool}] {timeStr}
       </Text>,
     );
   } else if (status === "thinking") {
     const timeStr = `${elapsed.toFixed(1)}s`;
-    if (elements.length > 0) {
-      elements.push(<Text key={`sep-${elements.length}`}> | </Text>);
-    }
+    elements.push(<Text key={`sep-th-${elements.length}`}> | </Text>);
     elements.push(
       <Text key="thinking" color="yellow">
-        ⏳ {timeStr}
+        Thinking {timeStr}
       </Text>,
     );
   }
@@ -122,7 +126,7 @@ export function StatusLine({
   if (elements.length === 0) {
     return (
       <Box flexDirection="row">
-        <Text color="green">✓ Ready</Text>
+        <Text color="green">Ready</Text>
         <Text> | </Text>
         <Text color="gray">Type a message to start</Text>
       </Box>

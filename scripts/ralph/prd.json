@@ -1,262 +1,262 @@
 {
-  "project": "Tiny Coding Agent",
-  "branchName": "ralph/cli-chat-interface",
-  "description": "Redesign the CLI interface with structured layout: header at top, streaming messages in middle, context status, and enhanced input with command/model selection.",
+  "project": "tiny-coding-agent",
+  "branchName": "ralph/agentskills-support",
+  "description": "Agent Skills Support - Add agentskills.io specification for dynamic skill loading",
   "userStories": [
     {
-      "id": "US-000A",
-      "title": "Fix Header to show provider and actual model from config",
-      "description": "As a user, I want to see the correct model and provider in the header.",
-      "acceptanceCriteria": [
-        "Header shows provider:model format (e.g., 'anthropic:claude-sonnet-4')",
-        "Model comes from config.defaultModel or --model flag, not hardcoded",
-        "App component accepts initialModel prop and passes to ChatProvider",
-        "handleInteractiveChat passes model to InkApp",
-        "Typecheck passes"
-      ],
-      "priority": 0,
-      "passes": true,
-      "notes": "Fixed: Header uses detectProvider(), App accepts initialModel prop"
-    },
-    {
-      "id": "US-000B",
-      "title": "Wire TextInput to agent for LLM calls",
-      "description": "As a user, I want my input to be sent to the LLM and see streaming responses.",
-      "acceptanceCriteria": [
-        "App component accepts agent prop",
-        "handleInteractiveChat passes agent to InkApp",
-        "handleInputSubmit calls agent.runStream with user message",
-        "Streaming response updates ChatContext streamingText",
-        "Final response added to messages via addMessage",
-        "isThinking set true during LLM call, false when done",
-        "Typecheck passes"
-      ],
-      "priority": 0,
-      "passes": true,
-      "notes": "Fixed: ChatContext.sendMessage calls agent.runStream, handles streaming"
-    },
-    {
       "id": "US-001",
-      "title": "Create Header component",
-      "description": "As a user, I want to see a header at the top of the CLI so I know which agent/session I'm in.",
+      "title": "Create skills types and directory structure",
+      "description": "As a developer, I need TypeScript types and constants for the skills system.",
       "acceptanceCriteria": [
-        "Create src/ui/components/Header.tsx component",
-        "Header displays agent name 'tiny-agent' with emoji",
-        "Shows current model name on the right side",
-        "Uses Ink Box with borderStyle for visual separation",
-        "Export from src/ui/components/index.ts",
+        "Create src/skills/types.ts with SkillMetadata, SkillFrontmatter, Skill interfaces",
+        "SkillMetadata: name (string), description (string), location (string)",
+        "SkillFrontmatter: name, description, optional license/compatibility/metadata/allowed-tools",
+        "Skill: extends SkillMetadata with body (string) and frontmatter fields",
+        "Create src/skills/index.ts exporting all types",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Implemented with round border, cyan color, model display"
+      "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Create MessageList component",
-      "description": "As a user, I want to see messages in a scrollable area so I can follow the conversation.",
+      "title": "Implement SKILL.md frontmatter parser",
+      "description": "As the system, I need to parse YAML frontmatter from SKILL.md files.",
       "acceptanceCriteria": [
-        "Create src/ui/components/MessageList.tsx component",
-        "Accepts messages array prop with role and content",
-        "User messages show 'You:' prefix in green",
-        "Assistant messages show 'Assistant:' prefix in cyan",
-        "Uses flexGrow=1 to fill available space",
+        "Create src/skills/parser.ts with parseSkillFrontmatter(content: string) function",
+        "Extract YAML between opening --- and closing --- delimiters",
+        "Validate name: 1-64 chars, lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens",
+        "Validate description: 1-1024 chars, non-empty",
+        "Return { frontmatter: SkillFrontmatter, body: string }",
+        "Throw descriptive error for invalid frontmatter",
+        "Unit tests in src/skills/parser.test.ts",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Uses Message component for rendering, flexGrow=1"
+      "notes": ""
     },
     {
       "id": "US-003",
-      "title": "Create StreamingText component",
-      "description": "As a user, I want to see AI responses stream in real-time so I can follow the agent's output.",
+      "title": "Implement skill discovery from directories",
+      "description": "As the system, I need to discover skills from configured directories at startup.",
       "acceptanceCriteria": [
-        "Create src/ui/components/StreamingText.tsx component",
-        "Accepts text prop that updates incrementally",
-        "Shows blinking cursor at end while streaming",
-        "Cursor disappears when streaming completes",
+        "Create src/skills/loader.ts with discoverSkills(directories: string[]) function",
+        "Scan each directory for subdirectories containing SKILL.md",
+        "Parse only frontmatter (not body) for each discovered skill",
+        "Return array of SkillMetadata with name, description, absolute path to SKILL.md",
+        "Skip missing directories gracefully (no error)",
+        "Skip invalid SKILL.md files with console warning",
+        "Unit tests in src/skills/loader.test.ts",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Blinking cyan cursor, 500ms interval"
+      "notes": ""
     },
     {
       "id": "US-004",
-      "title": "Create ThinkingIndicator component",
-      "description": "As a user, I want to see a thinking indicator before streaming starts.",
+      "title": "Generate available_skills XML for system prompt",
+      "description": "As the system, I need to inject available skills metadata into agent's system prompt.",
       "acceptanceCriteria": [
-        "Create src/ui/components/ThinkingIndicator.tsx component",
-        "Shows animated spinner with 'Thinking...' text",
-        "Uses existing Spinner component internally",
-        "Accepts visible prop to show/hide",
+        "Create src/skills/prompt.ts with generateSkillsPrompt(skills: SkillMetadata[]) function",
+        "Output XML: <available_skills><skill><name>X</name><description>Y</description><location>Z</location></skill>...</available_skills>",
+        "Return empty string if skills array is empty",
+        "Unit test in src/skills/prompt.test.ts",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Wraps Spinner with 'Thinking' label"
+      "notes": ""
     },
     {
       "id": "US-005",
-      "title": "Create ContextStatus component",
-      "description": "As a user, I want to see current context/token usage so I know when approaching limits.",
+      "title": "Implement skill activation tool",
+      "description": "As the agent, I need a skill tool to load full SKILL.md content on demand.",
       "acceptanceCriteria": [
-        "Create src/ui/components/ContextStatus.tsx component",
-        "Shows 'Ctx: used/max (percentage%)' format",
-        "Uses compact number formatting (k for thousands)",
-        "Shows warning color (yellow) when >80% used",
-        "Shows error color (red) when >95% used",
+        "Create src/tools/skill-tool.ts with tool named 'skill'",
+        "Parameters: name (required string)",
+        "Tool accepts skillRegistry: Map<string, SkillMetadata> via closure or factory",
+        "Read full SKILL.md from skill's location path",
+        "Return output wrapped in <loaded_skill name=\"...\">content</loaded_skill>",
+        "Include base directory path for relative file references",
+        "Return error if skill name not found in registry",
+        "Unit test in src/tools/skill-tool.test.ts",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Color thresholds at 80% (yellow) and 95% (red)"
+      "notes": ""
     },
     {
       "id": "US-006",
-      "title": "Create TextInput component",
-      "description": "As a user, I want a text input at the bottom to type my prompts.",
+      "title": "Add skills configuration to config schema",
+      "description": "As a user, I want to configure skill directories in my config file.",
       "acceptanceCriteria": [
-        "Create src/ui/components/TextInput.tsx component",
-        "Uses Ink's useInput hook for keyboard handling",
-        "Shows '>' prompt prefix",
-        "Calls onSubmit prop when Enter pressed",
-        "Clears input after submit",
-        "Accepts disabled prop to prevent input during AI response",
+        "Add skillDirectories: string[] to Config type in src/config/schema.ts",
+        "Add to validateConfig for optional array of strings",
+        "Default directories in getDefaultConfig: ['~/.tiny-agent/skills/', './.skills/']",
+        "Expand ~ to homedir() in loadConfig",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Full cursor support, backspace, arrow keys, escape"
+      "notes": ""
     },
     {
       "id": "US-007",
-      "title": "Create CommandMenu component",
-      "description": "As a user, I want to quickly access commands when typing '/'.",
+      "title": "Integrate skills into Agent class",
+      "description": "As a user, I want skills discovered and available when the agent starts.",
       "acceptanceCriteria": [
-        "Create src/ui/components/CommandMenu.tsx component",
-        "Shows list of commands: /help, /clear, /model, /memory, /exit",
-        "Accepts filter prop to filter commands by prefix",
-        "Highlights selected command with arrow keys",
-        "Calls onSelect prop when Enter pressed",
-        "Calls onClose prop when Escape pressed",
+        "Add skillDirectories option to AgentOptions in src/core/agent.ts",
+        "Call discoverSkills() in Agent constructor",
+        "Store skills in private _skills: Map<string, SkillMetadata>",
+        "Append generateSkillsPrompt() output to system prompt",
+        "Export getSkillRegistry() method for skill tool access",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "5 commands, arrow key navigation, filter support"
+      "notes": ""
     },
     {
       "id": "US-008",
-      "title": "Create ModelPicker component",
-      "description": "As a user, I want to switch models during a session.",
+      "title": "Register skill tool and wire CLI",
+      "description": "As a user, I want the skill tool available and skill directories passed from config.",
       "acceptanceCriteria": [
-        "Create src/ui/components/ModelPicker.tsx component",
-        "Shows list of available models from config",
-        "Indicates current active model with checkmark",
-        "Arrow keys navigate, Enter selects",
-        "Calls onSelect prop with selected model",
+        "Create createSkillTool(registry) factory in src/tools/skill-tool.ts",
+        "Register skill tool in src/tools/index.ts exports",
+        "Update main.tsx to pass config.skillDirectories to Agent",
+        "Update main.tsx to register skill tool with agent's skill registry",
+        "Add --skills-dir <path> CLI option to add custom directories",
         "Typecheck passes"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "10 default models, [active] indicator, provider detection"
+      "notes": "CLI option added in this iteration"
     },
     {
       "id": "US-009",
-      "title": "Create ChatLayout container component",
-      "description": "As a developer, I need a main layout component that orchestrates all sections.",
+      "title": "Add skill list CLI command",
+      "description": "As a user, I want tiny-agent skill list to show discovered skills.",
       "acceptanceCriteria": [
-        "Create src/ui/components/ChatLayout.tsx component",
-        "Uses Box with flexDirection='column' and height='100%'",
-        "Header at top with fixed height",
-        "MessageList in middle with flexGrow=1",
-        "ContextStatus above input",
-        "TextInput at bottom with fixed height",
+        "Add 'skill' command handling in main.tsx parseArgs and main()",
+        "tiny-agent skill list: shows table of name, description (truncated to 60 chars)",
+        "Support --json flag for JSON array output",
+        "Show 'No skills found' if none discovered",
         "Typecheck passes"
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Full layout orchestration implemented"
+      "notes": ""
     },
     {
       "id": "US-010",
-      "title": "Create ChatContext for state management",
-      "description": "As a developer, I need a React context to manage chat state across components.",
+      "title": "Add skill show CLI command",
+      "description": "As a user, I want tiny-agent skill show <name> to display full skill content.",
       "acceptanceCriteria": [
-        "Create src/ui/contexts/ChatContext.tsx",
-        "Provides: messages, addMessage, clearMessages",
-        "Provides: isThinking, setThinking",
-        "Provides: streamingText, setStreamingText",
-        "Provides: currentModel, setCurrentModel",
-        "useChatContext hook for consuming components",
+        "tiny-agent skill show <name>: prints full SKILL.md content",
+        "Show error if skill not found",
+        "Support --json flag for JSON output with name, description, body fields",
         "Typecheck passes"
       ],
       "priority": 10,
       "passes": true,
-      "notes": "ChatProvider with all required state"
+      "notes": ""
     },
     {
       "id": "US-011",
-      "title": "Integrate ChatLayout into App",
-      "description": "As a user, I want the new chat layout to appear in interactive mode.",
+      "title": "Add skill init CLI command",
+      "description": "As a user, I want tiny-agent skill init <name> to create a skill template.",
       "acceptanceCriteria": [
-        "Update src/ui/App.tsx to use ChatLayout",
-        "Wrap with ChatContext provider",
-        "Pass messages and callbacks to ChatLayout",
-        "Layout visible in interactive chat mode",
+        "tiny-agent skill init <name>: creates ~/.tiny-agent/skills/<name>/SKILL.md",
+        "Template includes frontmatter with name and placeholder description",
+        "Template body has example instructions structure",
+        "Error if skill directory already exists",
+        "Show success message with path to created file",
         "Typecheck passes"
       ],
       "priority": 11,
       "passes": true,
-      "notes": "ChatApp component uses ChatLayout, wrapped in providers"
+      "notes": ""
     },
     {
       "id": "US-012",
-      "title": "Wire command menu to TextInput",
-      "description": "As a user, I want the command menu to appear when I type '/'.",
+      "title": "Enforce allowed-tools restriction",
+      "description": "As a skill author, I want to restrict which tools a skill can use via allowed-tools frontmatter.",
       "acceptanceCriteria": [
-        "TextInput detects '/' prefix and shows CommandMenu",
-        "Typing filters command list",
-        "Selecting command executes it",
-        "Escape closes menu and clears '/'",
+        "Parse allowed-tools from skill frontmatter (space-delimited string)",
+        "Store activeSkillAllowedTools in Agent when skill is loaded",
+        "Filter tool definitions to only allowed tools when skill is active",
+        "Clear restriction when skill execution completes or new message starts",
+        "Unit test for tool filtering with allowed-tools",
         "Typecheck passes"
       ],
       "priority": 12,
       "passes": true,
-      "notes": "Integrated in TextInput, filter by prefix"
+      "notes": ""
     },
     {
       "id": "US-013",
-      "title": "Implement /model command with ModelPicker",
-      "description": "As a user, I want /model command to open model picker.",
+      "title": "Add built-in code-simplifier skill",
+      "description": "As a user, I want a built-in code-simplifier skill for refining code clarity and maintainability.",
       "acceptanceCriteria": [
-        "/model command shows ModelPicker overlay",
-        "Selecting model updates session model immediately",
-        "Shows confirmation message in chat",
-        "Model change reflected in Header",
+        "Create src/skills/builtin/code-simplifier/SKILL.md",
+        "Frontmatter: name=code-simplifier, description for code simplification",
+        "Body includes instructions for preserving functionality, applying project standards, enhancing clarity",
+        "Skill focuses on recently modified code unless instructed otherwise",
+        "Include guidance on avoiding over-simplification and nested ternaries",
         "Typecheck passes"
       ],
       "priority": 13,
       "passes": true,
-      "notes": "handleModelSelect in ChatApp, confirmation message added"
+      "notes": ""
     },
     {
       "id": "US-014",
-      "title": "Display tool usage inline in messages",
-      "description": "As a user, I want to see tool usage in the message stream.",
+      "title": "Load built-in skills from package",
+      "description": "As the system, I need to discover built-in skills bundled with the package.",
       "acceptanceCriteria": [
-        "Tool calls display inline with streaming content",
-        "Shows tool name with gear icon",
-        "Shows key parameters in dim text",
-        "Tool results appear when complete",
-        "Uses existing ToolOutput component styling",
+        "Add src/skills/builtin/ directory to skill discovery",
+        "Use __dirname or import.meta.url to resolve built-in skill path",
+        "Built-in skills appear in skill list alongside user skills",
+        "Mark built-in skills with [builtin] indicator in skill list output",
         "Typecheck passes"
       ],
       "priority": 14,
       "passes": true,
-      "notes": "InlineToolOutput component shows gear icon, args in dim color, results inline"
+      "notes": "Fixed: Always initialize skills (including built-ins) regardless of user skillDirectories config"
+    },
+    {
+      "id": "US-015",
+      "title": "Add /skill chat command for skill invocation",
+      "description": "As a user, I want to invoke skills via /skill <name> in chat.",
+      "acceptanceCriteria": [
+        "Add /skill command to CommandMenu in chat-commands.ts",
+        "/skill <name> loads the skill and shows confirmation message",
+        "/skill without name shows available skills list",
+        "Tab completion for skill names after /skill prefix",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add skill install CLI command",
+      "description": "As a user, I want tiny-agent skill install <path> to install a skill from a directory.",
+      "acceptanceCriteria": [
+        "tiny-agent skill install <path>: copies skill directory to ~/.tiny-agent/skills/",
+        "Validate SKILL.md exists and has valid frontmatter before copying",
+        "Error if skill with same name already exists (use --force to overwrite)",
+        "Show success message with installed skill name",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

@@ -1,5 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { countTokens } from "./tokens.js";
+import * as fs from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { countTokensSync } from "./tokens.js";
+
+const SAVE_DEBOUNCE_MS = 100;
 
 export type MemoryCategory = "user" | "project" | "codebase";
 
@@ -15,6 +18,12 @@ export interface Memory {
 export interface MemoryStoreOptions {
   filePath?: string;
   maxMemories?: number;
+  maxMemoryTokens?: number;
+  autoLoad?: boolean;
+}
+
+export interface ContextBudgetOptions {
+  memoryBudgetPercent?: number;
 }
 
 export interface ContextStats {
@@ -27,22 +36,47 @@ export interface ContextStats {
   memoryCount: number;
 }
 
+const CATEGORY_MULTIPLIERS: Record<MemoryCategory, number> = {
+  project: 1.5,
+  codebase: 1.2,
+  user: 1,
+};
+
+function getCategoryMultiplier(category: MemoryCategory): number {
+  return CATEGORY_MULTIPLIERS[category] ?? 1;
+}
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 export class MemoryStore {
   private _memories: Map<string, Memory> = new Map();
+  private _sortedIds: string[] = []; // Sorted by lastAccessedAt descending
   private _filePath?: string;
   private _maxMemories: number;
+  private _maxMemoryTokens?: number;
+  private _saveTimeout?: NodeJS.Timeout;
+  private _initPromise?: Promise<void>;
+  private _signalHandlersRegistered: boolean = false;
+  private _sigtermHandler?: () => Promise<void>;
+  private _sigintHandler?: () => Promise<void>;
 
   constructor(options: MemoryStoreOptions = {}) {
     this._filePath = options.filePath;
-    this._maxMemories = options.maxMemories ?? 100;
+    this._maxMemories = Math.max(1, options.maxMemories ?? 100);
+    this._maxMemoryTokens = options.maxMemoryTokens;
 
-    if (this._filePath && existsSync(this._filePath)) {
-      this._load();
+    if (options.autoLoad !== false && this._filePath && existsSync(this._filePath)) {
+      this._initPromise = this._load().catch((err) => {
+        console.error(`[MemoryStore] Failed to load memories: ${err}`);
+        console.error("[MemoryStore] Continuing with empty memory store");
+      });
     }
+  }
+
+  async init(): Promise<void> {
+    await this._initPromise;
   }
 
   add(content: string, category: MemoryCategory = "user"): Memory {
@@ -57,26 +91,80 @@ export class MemoryStore {
     };
 
     this._memories.set(memory.id, memory);
+    // Insert into sorted array (descending by lastAccessedAt)
+    const newTime = new Date(memory.lastAccessedAt).getTime();
+    let insertIndex = 0;
+    for (let i = 0; i < this._sortedIds.length; i++) {
+      const existingId = this._sortedIds[i];
+      if (!existingId) continue;
+      const existingTime = new Date(this._memories.get(existingId)!.lastAccessedAt).getTime();
+      if (existingTime >= newTime) {
+        insertIndex = i;
+        break;
+      }
+      insertIndex = i + 1;
+    }
+    this._sortedIds.splice(insertIndex, 0, memory.id);
     this._evictIfNeeded();
-    this._save();
+    this._scheduleSave();
 
     return memory;
   }
 
   get(id: string): Memory | undefined {
     const memory = this._memories.get(id);
-    if (memory) {
-      memory.lastAccessedAt = new Date().toISOString();
-      memory.accessCount++;
-      this._save();
-    }
+    if (!memory) return undefined;
+
+    memory.lastAccessedAt = new Date().toISOString();
+    memory.accessCount++;
+    this._updateSortedPosition(id);
+    this._scheduleSave();
+
     return memory;
   }
 
+  private _updateSortedPosition(id: string): void {
+    const memory = this._memories.get(id);
+    if (!memory) return;
+
+    const newTime = new Date(memory.lastAccessedAt).getTime();
+    const currentIndex = this._sortedIds.indexOf(id);
+    if (currentIndex <= 0) return;
+
+    const prevId = this._sortedIds[currentIndex - 1];
+    if (!prevId) return;
+
+    const prevTime = new Date(this._memories.get(prevId)!.lastAccessedAt).getTime();
+    if (newTime <= prevTime) return;
+
+    this._sortedIds.splice(currentIndex, 1);
+    let insertIndex = currentIndex - 1;
+    while (insertIndex > 0) {
+      const checkId = this._sortedIds[insertIndex - 1];
+      if (!checkId) break;
+      const checkTime = new Date(this._memories.get(checkId)!.lastAccessedAt).getTime();
+      if (checkTime < newTime) break;
+      insertIndex--;
+    }
+    this._sortedIds.splice(insertIndex, 0, id);
+  }
+
   list(): Memory[] {
-    return Array.from(this._memories.values()).sort((a, b) => {
-      return new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime();
-    });
+    return this._sortedIds.map((id) => this._memories.get(id)!).filter(Boolean);
+  }
+
+  /**
+   * Mark all memories as accessed (updates lastAccessedAt and increments accessCount)
+   */
+  touchAll(): void {
+    const now = new Date().toISOString();
+    for (const memory of this._memories.values()) {
+      memory.lastAccessedAt = now;
+      memory.accessCount++;
+    }
+    // Rebuild sorted array - all have same timestamp, maintain relative order
+    this._sortedIds = Array.from(this._memories.keys());
+    this._scheduleSave();
   }
 
   listByCategory(category: MemoryCategory): Memory[] {
@@ -86,14 +174,19 @@ export class MemoryStore {
   remove(id: string): boolean {
     const removed = this._memories.delete(id);
     if (removed) {
-      this._save();
+      const index = this._sortedIds.indexOf(id);
+      if (index >= 0) {
+        this._sortedIds.splice(index, 1);
+      }
+      this._scheduleSave();
     }
     return removed;
   }
 
   clear(): void {
     this._memories.clear();
-    this._save();
+    this._sortedIds = [];
+    this._scheduleSave();
   }
 
   count(): number {
@@ -108,20 +201,18 @@ export class MemoryStore {
       const content = memory.content.toLowerCase();
       const category = memory.category;
 
+      // Calculate base score from word matches
       let score = 0;
-
       for (const word of queryWords) {
         if (content.includes(word)) {
           score += 10;
         }
       }
 
-      if (category === "project") {
-        score *= 1.5;
-      } else if (category === "codebase") {
-        score *= 1.2;
-      }
+      // Apply category multiplier
+      score *= getCategoryMultiplier(category);
 
+      // Add frequency bonus
       score += Math.log(memory.accessCount + 1) * 2;
 
       if (score > 0) {
@@ -138,7 +229,7 @@ export class MemoryStore {
     });
 
     if (results.length > 0) {
-      this._save();
+      this._scheduleSave();
     }
 
     return results;
@@ -158,71 +249,175 @@ export class MemoryStore {
   }
 
   countTokens(): number {
-    let total = 0;
-    for (const memory of this._memories.values()) {
-      total += countTokens(memory.content);
-      total += countTokens(memory.category);
-    }
-    return total;
+    return Array.from(this._memories.values()).reduce(
+      (total, m) => total + countTokensSync(m.content) + countTokensSync(m.category),
+      0,
+    );
   }
 
-  private _load(): void {
-    if (!this._filePath || !existsSync(this._filePath)) {
+  async flush(): Promise<void> {
+    if (this._saveTimeout) {
+      clearTimeout(this._saveTimeout);
+      this._saveTimeout = undefined;
+    }
+    await this._save();
+  }
+
+  async close(): Promise<void> {
+    this.removeSignalHandlers();
+    await this.flush();
+  }
+
+  registerSignalHandlers(): void {
+    if (this._signalHandlersRegistered || typeof process === "undefined") return;
+
+    this._signalHandlersRegistered = true;
+
+    this._sigtermHandler = async () => {
+      await this.flush();
+      process.exit(1);
+    };
+    this._sigintHandler = async () => {
+      await this.flush();
+      process.exit(1);
+    };
+
+    process.on("SIGTERM", this._sigtermHandler);
+    process.on("SIGINT", this._sigintHandler);
+  }
+
+  /**
+   * Remove registered signal handlers to prevent handler accumulation.
+   * Should be called when MemoryStore is no longer needed.
+   */
+  removeSignalHandlers(): void {
+    if (this._signalHandlersRegistered && typeof process !== "undefined") {
+      if (this._sigtermHandler) {
+        process.removeListener("SIGTERM", this._sigtermHandler);
+      }
+      if (this._sigintHandler) {
+        process.removeListener("SIGINT", this._sigintHandler);
+      }
+      this._signalHandlersRegistered = false;
+    }
+  }
+
+  private _scheduleSave(): void {
+    if (this._saveTimeout) return;
+    this._saveTimeout = setTimeout(() => {
+      this._saveTimeout = undefined;
+      void this._save();
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  private async _load(): Promise<void> {
+    if (!this._filePath) return;
+
+    try {
+      await fs.access(this._filePath);
+    } catch {
       return;
     }
 
     try {
-      const content = readFileSync(this._filePath, "utf-8");
+      const content = await fs.readFile(this._filePath, "utf-8");
       const data = JSON.parse(content);
-      const memories: Array<Omit<Memory, "lastAccessedAt" | "accessCount">> | undefined =
-        data.memories;
+      const memories:
+        | Array<{
+            id: string;
+            content: string;
+            category: string;
+            createdAt: string;
+            lastAccessedAt?: string;
+            accessCount?: number;
+          }>
+        | undefined = data.memories;
 
       if (memories && Array.isArray(memories)) {
         for (const m of memories) {
-          this._memories.set(m.id, {
-            ...m,
-            lastAccessedAt: m.createdAt,
-            accessCount: 0,
-          });
+          const memory: Memory = {
+            id: m.id,
+            content: m.content,
+            category: m.category as MemoryCategory,
+            createdAt: m.createdAt,
+            lastAccessedAt: m.lastAccessedAt ?? m.createdAt,
+            accessCount: m.accessCount ?? 0,
+          };
+          this._memories.set(m.id, memory);
+          this._sortedIds.push(m.id);
         }
+        // Sort once after loading all memories
+        this._sortedIds.sort((a, b) => {
+          const timeA = new Date(this._memories.get(a)!.lastAccessedAt).getTime();
+          const timeB = new Date(this._memories.get(b)!.lastAccessedAt).getTime();
+          return timeB - timeA; // Descending
+        });
       }
     } catch (err) {
-      console.error(`Warning: Failed to load memories from ${this._filePath}: ${err}`);
+      console.error(`[MemoryStore] Failed to load memories from ${this._filePath}: ${err}`);
+      console.warn(
+        "[MemoryStore] Continuing with empty memory store. Your memory file may be corrupted.",
+      );
     }
   }
 
-  private _save(): void {
+  private async _save(): Promise<void> {
     if (!this._filePath) {
       return;
     }
 
     try {
+      const memoriesData = Array.from(this._memories.values()).map((m) => ({
+        id: m.id,
+        content: m.content,
+        category: m.category,
+        createdAt: m.createdAt,
+        lastAccessedAt: m.lastAccessedAt,
+        accessCount: m.accessCount,
+      }));
+
       const data = {
         version: 1,
         updatedAt: new Date().toISOString(),
-        memories: Array.from(this._memories.values()).map((m) => ({
-          id: m.id,
-          content: m.content,
-          category: m.category,
-          createdAt: m.createdAt,
-        })),
+        memories: memoriesData,
       };
-      writeFileSync(this._filePath, JSON.stringify(data, null, 2), "utf-8");
+      await fs.writeFile(this._filePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (err) {
-      console.error(`Warning: Failed to save memories to ${this._filePath}: ${err}`);
+      console.error(`[MemoryStore] Failed to save memories to ${this._filePath}: ${err}`);
     }
   }
 
   private _evictIfNeeded(): void {
-    while (this._memories.size > this._maxMemories) {
-      const oldestId = Array.from(this._memories.entries()).sort(
-        ([, a], [, b]) =>
-          new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
-      )[0]?.[0];
-      if (oldestId) {
-        this._memories.delete(oldestId);
+    // Token-based eviction first (if configured)
+    if (this._maxMemoryTokens !== undefined) {
+      while (this._countMemoryTokens() > this._maxMemoryTokens && this._memories.size > 1) {
+        this._evictOldest();
       }
     }
+
+    // Count-based eviction as fallback
+    while (this._memories.size > this._maxMemories) {
+      this._evictOldest();
+    }
+  }
+
+  /**
+   * Calculate total tokens used by all memories
+   */
+  private _countMemoryTokens(): number {
+    return Array.from(this._memories.values()).reduce(
+      (total, m) => total + countTokensSync(m.content) + countTokensSync(m.category),
+      0,
+    );
+  }
+
+  private _evictOldest(): void {
+    if (this._sortedIds.length === 0) return;
+    const lastIndex = this._sortedIds.length - 1;
+    const oldestId = this._sortedIds[lastIndex];
+    if (!oldestId) return;
+    this._memories.delete(oldestId);
+    this._sortedIds.splice(lastIndex, 1);
   }
 }
 
@@ -230,7 +425,9 @@ export function calculateContextBudget(
   maxContextTokens: number,
   systemPromptTokens: number,
   maxMemoryTokens?: number,
+  options?: ContextBudgetOptions,
 ): { memoryBudget: number; conversationBudget: number } {
+  const memoryPercent = options?.memoryBudgetPercent ?? 0.2;
   const availableForContent = maxContextTokens - systemPromptTokens - 1000;
 
   if (availableForContent <= 0) {
@@ -238,14 +435,14 @@ export function calculateContextBudget(
   }
 
   if (maxMemoryTokens !== undefined) {
-    const memoryBudget = Math.min(maxMemoryTokens, Math.floor(availableForContent * 0.2));
+    const memoryBudget = Math.min(maxMemoryTokens, Math.floor(availableForContent * memoryPercent));
     return {
       memoryBudget,
       conversationBudget: availableForContent - memoryBudget,
     };
   }
 
-  const memoryBudget = Math.floor(availableForContent * 0.2);
+  const memoryBudget = Math.floor(availableForContent * memoryPercent);
   return {
     memoryBudget,
     conversationBudget: availableForContent - memoryBudget,
@@ -259,13 +456,13 @@ export function buildContextWithMemory(
   memoryBudget: number,
   conversationBudget: number,
 ): { context: Array<{ role: string; content: string }>; stats: ContextStats } {
-  const systemTokens = countTokens(systemPrompt);
+  const systemTokens = countTokensSync(systemPrompt);
 
   let memoryTokens = 0;
   const includedMemories: string[] = [];
 
   for (const memory of memories) {
-    const tokens = countTokens(memory.content);
+    const tokens = countTokensSync(memory.content);
     if (memoryTokens + tokens <= memoryBudget) {
       memoryTokens += tokens;
       includedMemories.push(`[${memory.category}] ${memory.content}`);
@@ -288,7 +485,7 @@ export function buildContextWithMemory(
 
   for (let i = 0; i < conversationMessages.length; i++) {
     const msg = conversationMessages[i] as { role: string; content: string };
-    const tokens = countTokens(msg.content);
+    const tokens = countTokensSync(msg.content);
     if (conversationTokens + tokens <= conversationBudget) {
       conversationTokens += tokens;
       includedMessages.push(msg);

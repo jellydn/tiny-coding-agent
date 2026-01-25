@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { ToolRegistry } from "./registry.js";
-import { setConfirmationHandler } from "./confirmation.js";
-import type { Tool, ToolResult } from "./types.js";
+import { ToolRegistry } from "../../src/tools/registry.js";
+import { setConfirmationHandler } from "../../src/tools/confirmation.js";
+import type { Tool, ToolResult } from "../../src/tools/types.js";
 
 // Mock tools for testing
 const mockSafeTool: Tool = {

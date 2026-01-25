@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isDestructiveCommand } from "./bash-tool.js";
+import { isDestructiveCommand } from "../../src/tools/bash-tool.js";
 
 describe("isDestructiveCommand()", () => {
   describe("read-only commands (safe)", () => {
@@ -192,7 +192,7 @@ describe("isDestructiveCommand()", () => {
 
   describe("other commands (safe - no match in either list)", () => {
     it("should return false for unknown safe commands", () => {
-      expect(isDestructiveCommand("node script.js")).toBe(false);
+      expect(isDestructiveCommand("node script.ts")).toBe(false);
       expect(isDestructiveCommand("python app.py")).toBe(false);
       expect(isDestructiveCommand("cargo build")).toBe(false);
       expect(isDestructiveCommand("go run main.go")).toBe(false);

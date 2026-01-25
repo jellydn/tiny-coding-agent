@@ -1,13 +1,35 @@
 import type { Tool, ToolResult } from "./types.js";
 import { z } from "zod";
-
-interface SearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
+import type { SearchProvider } from "./search-providers/index.js";
+import { DuckDuckGoProvider } from "./search-providers/index.js";
 
 const DEFAULT_MAX_RESULTS = 5;
+
+/**
+ * Global search provider instance
+ * Can be replaced with a different provider via setGlobalSearchProvider()
+ */
+let _globalSearchProvider: SearchProvider = new DuckDuckGoProvider();
+
+/**
+ * Set the global search provider for web_search tool
+ *
+ * @example
+ * ```typescript
+ * import { TavilyProvider } from './search-providers/index.js';
+ * setGlobalSearchProvider(new TavilyProvider({ apiKey: process.env.TAVILY_API_KEY }));
+ * ```
+ */
+export function setGlobalSearchProvider(provider: SearchProvider): void {
+  _globalSearchProvider = provider;
+}
+
+/**
+ * Get the current global search provider
+ */
+export function getGlobalSearchProvider(): SearchProvider {
+  return _globalSearchProvider;
+}
 
 const webSearchArgsSchema = z.object({
   query: z.string(),
@@ -45,10 +67,11 @@ export const webSearchTool: Tool = {
       return { success: false, error: "Search query cannot be empty" };
     }
 
+    // Special case: latest npm package version
     const versionMatch = query.match(/latest\s+(?:npm\s+)?version\s+of\s+(\w+)/i);
     if (versionMatch && versionMatch[1]) {
-      const packageName = versionMatch[1];
       try {
+        const packageName = versionMatch[1];
         const version = await getNpmVersion(packageName);
         return {
           success: true,
@@ -60,7 +83,7 @@ export const webSearchTool: Tool = {
     }
 
     try {
-      const results = await searchDuckDuckGo(query, maxResults);
+      const results = await _globalSearchProvider.search(query, maxResults);
 
       if (results.length === 0) {
         return { success: true, output: "No search results found." };
@@ -85,103 +108,6 @@ async function getNpmVersion(packageName: string): Promise<string> {
   }
   const data = (await response.json()) as { version: string };
   return data.version;
-}
-
-async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
-  const encodedQuery = encodeURIComponent(query);
-  const url = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
-
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.5",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const html = await response.text();
-  const results = parseSearchResults(html, maxResults);
-
-  return prioritizeAuthoritativeSources(results);
-}
-
-const AUTHORITATIVE_DOMAINS = [
-  "npmjs.com",
-  "github.com",
-  "zod.dev",
-  "typescriptlang.org",
-  "developer.mozilla.org",
-  "stackoverflow.com",
-];
-
-function prioritizeAuthoritativeSources(results: SearchResult[]): SearchResult[] {
-  const sorted = [...results].sort((a, b) => {
-    const aAuthoritative = AUTHORITATIVE_DOMAINS.some((d) => a.url.includes(d));
-    const bAuthoritative = AUTHORITATIVE_DOMAINS.some((d) => b.url.includes(d));
-
-    if (aAuthoritative && !bAuthoritative) return -1;
-    if (!aAuthoritative && bAuthoritative) return 1;
-    return 0;
-  });
-
-  return sorted;
-}
-
-function parseSearchResults(html: string, maxResults: number): SearchResult[] {
-  const results: SearchResult[] = [];
-
-  const resultPattern =
-    /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/a>/gi;
-
-  let match: RegExpExecArray | null = resultPattern.exec(html);
-  while (match !== null && results.length < maxResults) {
-    const url = decodeURIComponent((match[1] ?? "").replace(/.*uddg=([^&]+).*/, "$1"));
-    const title = stripHtmlTags(match[2] ?? "").trim();
-    const snippet = stripHtmlTags(match[3] ?? "").trim();
-
-    if (url && title && !url.includes("duckduckgo.com")) {
-      results.push({ title, url, snippet });
-    }
-
-    match = resultPattern.exec(html);
-  }
-
-  if (results.length === 0) {
-    const altPattern =
-      /<div[^>]+class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]*)"[^>]*>([^<]+)<\/a>[\s\S]*?<div[^>]+class="[^"]*snippet[^"]*"[^>]*>([^<]*(?:<[^>]+>[^<]*)*?)<\/div>/gi;
-
-    match = altPattern.exec(html);
-    while (match !== null && results.length < maxResults) {
-      const url = match[1] ?? "";
-      const title = stripHtmlTags(match[2] ?? "").trim();
-      const snippet = stripHtmlTags(match[3] ?? "").trim();
-
-      if (url && title && !url.includes("duckduckgo.com")) {
-        results.push({ title, url, snippet });
-      }
-
-      match = altPattern.exec(html);
-    }
-  }
-
-  return results;
-}
-
-function stripHtmlTags(text: string): string {
-  return text
-    .replace(/<[^>]+>/g, "")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ");
 }
 
 export const webSearchTools: Tool[] = [webSearchTool];

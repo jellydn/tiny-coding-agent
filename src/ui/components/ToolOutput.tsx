@@ -32,9 +32,9 @@ export function ToolOutput({
   args,
   maxVisibleLines,
 }: ToolOutputProps): React.ReactElement {
-  const statusIcon = success ? "✓" : "✗";
+  const statusIcon = success ? "[✓]" : "[✗]";
   const statusColor = success ? "green" : "red";
-  const content = success ? output : error;
+  const content = output || error;
   const { stdout } = useStdout();
 
   const terminalHeight = stdout?.rows ?? 24;

@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "types": ["@types/bun"],
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "NodeNext",
@@ -24,6 +25,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "index.ts"],
+  "include": ["src/**/*", "test/**/*", "index.ts"],
   "exclude": ["node_modules"]
 }

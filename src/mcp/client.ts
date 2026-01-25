@@ -32,21 +32,60 @@ export class McpClient {
     return this._tools;
   }
 
-  async connect(): Promise<void> {
-    if (this._connected) {
-      return;
+  private _filterSafeEnvVars(env?: Record<string, string>): Record<string, string> {
+    const safeKeys = new Set([
+      "PATH",
+      "HOME",
+      "USER",
+      "LOGNAME",
+      "SHELL",
+      "LANG",
+      "LANGUAGE",
+      "LC_ALL",
+      "LC_CTYPE",
+      "TERM",
+      "NODE_ENV",
+      "TZ",
+      "PWD",
+      "EDITOR",
+      "VISUAL",
+      "PAGER",
+      "BROWSER",
+      "TMPDIR",
+      "TEMP",
+      "TMP",
+    ]);
+
+    const filtered: Record<string, string> = {};
+    if (!env) return filtered;
+
+    for (const [key, value] of Object.entries(env)) {
+      if (safeKeys.has(key) && value) {
+        filtered[key] = value;
+      }
     }
+
+    return filtered;
+  }
+
+  async connect(): Promise<void> {
+    if (this._connected) return;
 
     try {
       this._transport = new StdioClientTransport({
         command: this._config.command,
         args: this._config.args,
-        env: this._config.env,
+        env: {
+          ...this._filterSafeEnvVars(this._config.env),
+          DEBUG: "",
+          RUST_LOG: "error",
+          LOG_LEVEL: "error",
+        },
+        stderr: "ignore",
       });
 
       await this._client.connect(this._transport);
       this._connected = true;
-
       await this._discoverTools();
     } catch (error) {
       this._connected = false;
@@ -76,17 +115,18 @@ export class McpClient {
 
   private async _discoverTools(): Promise<void> {
     const response = await this._client.listTools();
-    this._tools = response.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description ?? "",
-      inputSchema: {
-        type: "object" as const,
-        properties: (tool.inputSchema as Record<string, unknown>)?.properties as
-          | Record<string, unknown>
-          | undefined,
-        required: (tool.inputSchema as Record<string, unknown>)?.required as string[] | undefined,
-      },
-    }));
+    this._tools = response.tools.map((tool) => {
+      const schema = tool.inputSchema as Record<string, unknown> | undefined;
+      return {
+        name: tool.name,
+        description: tool.description ?? "",
+        inputSchema: {
+          type: "object" as const,
+          properties: schema?.properties as Record<string, unknown> | undefined,
+          required: schema?.required as string[] | undefined,
+        },
+      };
+    });
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<McpToolCallResult> {

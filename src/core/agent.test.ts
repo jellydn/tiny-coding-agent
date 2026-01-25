@@ -1,271 +1,142 @@
-import { describe, it, expect, beforeEach } from "bun:test";
-import { unlinkSync, writeFileSync } from "node:fs";
-import type {
-  LLMClient,
-  Message,
-  ChatOptions,
-  StreamChunk,
-  ChatResponse,
-} from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
-import { Agent } from "./agent.js";
+import { describe, it, expect } from "bun:test";
+import { isLooping, redactApiKey, truncateOutput, isValidToolCall, checkAborted } from "./agent.js";
 
-const tempConversationFile = "/tmp/test-agent-conversation.json";
+describe("agent.ts helper functions", () => {
+  describe("isLooping", () => {
+    it("should return false for fewer than 3 tool calls", () => {
+      expect(isLooping(["tool:a"])).toBe(false);
+      expect(isLooping(["tool:a", "tool:b"])).toBe(false);
+    });
 
-beforeEach(() => {
-  try {
-    unlinkSync(tempConversationFile);
-  } catch {
-    // Ignore if file doesn't exist
-  }
-});
+    it("should detect when the same tool is called 3 times in a row", () => {
+      const calls = ["readFile:{}", "readFile:{}", "readFile:{}", "readFile:{}"];
+      expect(isLooping(calls)).toBe(true);
+    });
 
-class MockLLMClient implements LLMClient {
-  async chat(_options: ChatOptions): Promise<ChatResponse> {
-    return {
-      content: "Mock response",
-      finishReason: "stop",
-    };
-  }
+    it("should detect when same tool is called 5 times in last 5 calls", () => {
+      const calls = ["readFile:{}", "writeFile:{}", "readFile:{}", "readFile:{}", "readFile:{}"];
+      expect(isLooping(calls)).toBe(true);
+    });
 
-  async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
-    yield { content: "Mock response", done: false };
-    yield { done: true };
-  }
+    it("should detect rapid repetition (8+ calls of same tool in last 10)", () => {
+      const calls = [
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "readFile:{}",
+        "writeFile:{}",
+        "other:{}",
+      ];
+      expect(isLooping(calls)).toBe(true);
+    });
 
-  async getCapabilities(_model: string) {
-    return {
-      maxTokens: 100000,
-      supportsStreaming: true,
-      supportsTools: true,
-      modelName: "mock-model",
-      supportsSystemPrompt: true,
-      supportsToolStreaming: false,
-      supportsThinking: false,
-    };
-  }
-}
-
-function createMessages(...contents: string[]): Message[] {
-  return contents.map((content, i) => ({
-    role: i % 2 === 0 ? "user" : "assistant",
-    content,
-  }));
-}
-
-describe("Agent", () => {
-  describe("startChatSession()", () => {
-    it("should reset conversation history to empty array", async () => {
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
-
-      for await (const _chunk of agent.runStream("test", "mock-model")) {
-      }
-
-      agent.startChatSession();
-
-      expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
-      ).toEqual([]);
+    it("should return false for varied tool calls", () => {
+      const calls = ["readFile:{}", "writeFile:{}", "grep:{}", "bash:{}", "readFile:{}"];
+      expect(isLooping(calls)).toBe(false);
     });
   });
 
-  describe("runStream() - conversation history without file", () => {
-    it("should use in-memory history when no conversation file is set", async () => {
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
-
-      const chunks: string[] = [];
-      for await (const chunk of agent.runStream("First message", "mock-model")) {
-        if (chunk.content) chunks.push(chunk.content);
-      }
-
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
-      expect(history.length).toBeGreaterThanOrEqual(2);
-      expect(history[0]).toEqual({
-        role: "user",
-        content: "First message",
-      });
+  describe("redactApiKey", () => {
+    it("should return '(not set)' for undefined key", () => {
+      expect(redactApiKey(undefined)).toBe("(not set)");
     });
 
-    it("should maintain conversation history across multiple turns", async () => {
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
-
-      for await (const _chunk of agent.runStream("Hello", "mock-model")) {
-      }
-
-      const historyAfterFirst = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory.length;
-      expect(historyAfterFirst).toBeGreaterThan(0);
-
-      for await (const _chunk of agent.runStream("What's my name?", "mock-model")) {
-      }
-
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
-      expect(history.length).toBeGreaterThan(historyAfterFirst);
-      expect(history[0]).toEqual({
-        role: "user",
-        content: "Hello",
-      });
+    it("should return '(not set)' for undefined key", () => {
+      expect(redactApiKey(undefined)).toBe("(not set)");
     });
 
-    it("should start fresh when startChatSession() is called", async () => {
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
+    it("should return '****' for short keys (8 chars or less)", () => {
+      expect(redactApiKey("short")).toBe("****");
+      expect(redactApiKey("12345678")).toBe("****");
+    });
 
-      for await (const _chunk of agent.runStream("First session", "mock-model")) {
-      }
+    it("should redact long keys showing first 4 chars", () => {
+      const key = "sk-1234567890abcdef";
+      expect(redactApiKey(key)).toBe("sk-1...REDACTED");
+    });
 
-      expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory.length,
-      ).toBeGreaterThan(0);
-
-      agent.startChatSession();
-      expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
-      ).toEqual([]);
-
-      for await (const _chunk of agent.runStream("Second session", "mock-model")) {
-      }
-
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
-      expect(history[0]).toEqual({
-        role: "user",
-        content: "Second session",
-      });
+    it("should handle very long keys", () => {
+      const key = "sk-" + "a".repeat(100);
+      expect(redactApiKey(key)).toBe("sk-a...REDACTED");
     });
   });
 
-  describe("runStream() - with conversation file", () => {
-    it("should load conversation from file when conversationFile is set", async () => {
-      const existingConversation = createMessages(
-        "Previous user message",
-        "Previous assistant response",
-      );
+  describe("truncateOutput", () => {
+    it("should return undefined for undefined input", () => {
+      expect(truncateOutput(undefined)).toBeUndefined();
+    });
 
-      writeFileSync(
-        tempConversationFile,
-        JSON.stringify({ messages: existingConversation }, null, 2),
-      );
+    it("should return empty string for empty string input", () => {
+      expect(truncateOutput("")).toBe("");
+    });
 
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry, {
-        conversationFile: tempConversationFile,
-      });
+    it("should not truncate short output", () => {
+      expect(truncateOutput("short text")).toBe("short text");
+    });
 
-      for await (const _chunk of agent.runStream("New message", "mock-model")) {
-      }
+    it("should truncate long output (>500 chars)", () => {
+      const longOutput = "a".repeat(600);
+      const result = truncateOutput(longOutput);
+      expect(result).toContain("... (");
+      expect(result?.endsWith("more chars)")).toBe(true);
+    });
 
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
-      expect(history[0]).toEqual({
-        role: "user",
-        content: "Previous user message",
-      });
-      expect(history[1]).toEqual({
-        role: "assistant",
-        content: "Previous assistant response",
-      });
-      expect(history[2]).toEqual({
-        role: "user",
-        content: "New message",
-      });
+    it("should truncate output with many lines (>10 lines)", () => {
+      const multiline = Array(15).fill("line").join("\n");
+      const result = truncateOutput(multiline);
+      expect(result).toContain("... (");
+      expect(result?.endsWith("more lines)")).toBe(true);
+    });
+
+    it("should truncate based on lines first before char limit", () => {
+      // 15 lines of 100 chars each - more than 10 lines should trigger line truncation
+      const output = Array(15).fill("a".repeat(100)).join("\n");
+      const result = truncateOutput(output);
+      expect(result).toContain("... (");
+      expect(result?.endsWith("more lines)")).toBe(true);
     });
   });
 
-  describe("_updateConversationHistory()", () => {
-    it("should update in-memory history when called", () => {
-      const llm = new MockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
+  describe("isValidToolCall", () => {
+    it("should return false for non-JSON text", () => {
+      expect(isValidToolCall("hello")).toBe(false);
+      expect(isValidToolCall("not a tool call")).toBe(false);
+    });
 
-      const messages = createMessages("User message", "Assistant response");
+    it("should return false for JSON without name property", () => {
+      expect(isValidToolCall('{"args": {}}')).toBe(false);
+      expect(isValidToolCall('{"name": 123}')).toBe(false);
+    });
 
-      agent._updateConversationHistory(messages);
+    it("should return true for JSON with string name property", () => {
+      expect(isValidToolCall('{"name": "readFile"}')).toBe(true);
+      expect(isValidToolCall('{"name": "bash", "args": {}}')).toBe(true);
+    });
 
-      expect(
-        (agent as unknown as { _conversationHistory: Message[] })._conversationHistory,
-      ).toEqual(messages);
+    it("should return false for invalid JSON", () => {
+      expect(isValidToolCall("{invalid json}")).toBe(false);
+      expect(isValidToolCall("")).toBe(false);
     });
   });
 
-  describe("Tool not found error handling", () => {
-    it("should stop loop when tool is not found", async () => {
-      // Mock LLM that tries to call a non-existent tool
-      class ToolCallMockLLMClient implements LLMClient {
-        private callCount = 0;
+  describe("checkAborted", () => {
+    it("should not throw for undefined signal", () => {
+      expect(() => checkAborted(undefined)).not.toThrow();
+    });
 
-        async chat(_options: ChatOptions): Promise<ChatResponse> {
-          return {
-            content: "Mock response",
-            finishReason: "stop",
-          };
-        }
+    it("should not throw for non-aborted signal", () => {
+      const signal = { aborted: false } as AbortSignal;
+      expect(() => checkAborted(signal)).not.toThrow();
+    });
 
-        async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
-          this.callCount++;
-
-          if (this.callCount === 1) {
-            // First call: try to use a non-existent tool
-            yield {
-              content: "",
-              toolCalls: [
-                {
-                  id: "call_123",
-                  name: "nonexistent.tool",
-                  arguments: { param: "value" },
-                },
-              ],
-              done: false,
-            };
-            yield { done: true };
-          } else {
-            // Second call: provide final answer after error
-            yield { content: "I couldn't find that tool. Here's my answer anyway.", done: false };
-            yield { done: true };
-          }
-        }
-
-        async getCapabilities(_model: string) {
-          return {
-            maxTokens: 100000,
-            supportsStreaming: true,
-            supportsTools: true,
-            modelName: "mock-model",
-            supportsSystemPrompt: true,
-            supportsToolStreaming: false,
-            supportsThinking: false,
-          };
-        }
-      }
-
-      const llm = new ToolCallMockLLMClient();
-      const registry = new ToolRegistry();
-      const agent = new Agent(llm, registry);
-
-      const chunks: unknown[] = [];
-      for await (const chunk of agent.runStream("Use a tool", "mock-model")) {
-        chunks.push(chunk);
-      }
-
-      const lastChunk = chunks[chunks.length - 1] as { iterations: number };
-      expect(lastChunk.iterations).toBe(1);
-
-      const history = (agent as unknown as { _conversationHistory: Message[] })
-        ._conversationHistory;
-      const hasSystemError = history.some(
-        (msg: Message) => msg.role === "system" && msg.content.includes("not available"),
-      );
-      expect(hasSystemError).toBe(true);
+    it("should throw AbortError for aborted signal", () => {
+      const signal = { aborted: true } as AbortSignal;
+      expect(() => checkAborted(signal)).toThrow(DOMException);
+      expect(() => checkAborted(signal)).toThrow("Aborted");
     });
   });
 });

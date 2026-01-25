@@ -19,4 +19,7 @@ export type { AnthropicProviderConfig } from "./anthropic.js";
 export { OllamaProvider } from "./ollama.js";
 export type { OllamaProviderConfig } from "./ollama.js";
 
+export { ZaiProvider } from "./zai.js";
+export type { ZaiProviderConfig } from "./zai.js";
+
 export { createProvider, type CreateProviderOptions } from "./factory.js";

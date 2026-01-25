@@ -34,3 +34,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 tiny-agent
 .claude/settings.local.json
+.serena
+
+.opencode
+.claude/handoffs

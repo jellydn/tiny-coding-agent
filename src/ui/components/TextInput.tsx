@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useState, useCallback, useRef } from "react";
+import { Box, Text, useInput, useStdout } from "ink";
 
 interface TextInputProps {
-  value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
   placeholder?: string;
@@ -10,84 +9,94 @@ interface TextInputProps {
 }
 
 export function TextInput({
-  value,
   onChange,
   onSubmit,
   placeholder = "Type a message...",
   disabled = false,
 }: TextInputProps): React.ReactElement {
-  const [cursorPosition, setCursorPosition] = useState(value.length);
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns || 80;
+  const [value, setValue] = useState("");
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
-  useEffect(() => {
-    setCursorPosition(value.length);
-  }, [value.length]);
-
-  useInput(
-    (input, key) => {
+  const handleInput = useCallback(
+    (
+      input: string,
+      key: {
+        backspace?: boolean;
+        return?: boolean;
+        escape?: boolean;
+        ctrl?: boolean;
+        meta?: boolean;
+        shift?: boolean;
+        delete?: boolean;
+      },
+    ) => {
       if (disabled) return;
 
-      if (key.return) {
-        if (value.trim()) {
-          onSubmit(value);
-        }
-        return;
-      }
+      queueMicrotask(() => {
+        const currentValue = valueRef.current;
 
-      if (key.escape) {
-        onChange("");
-        setCursorPosition(0);
-        return;
-      }
-
-      if (key.leftArrow) {
-        setCursorPosition((prev) => Math.max(0, prev - 1));
-        return;
-      }
-
-      if (key.rightArrow) {
-        setCursorPosition((prev) => Math.min(value.length, prev + 1));
-        return;
-      }
-
-      if (key.backspace || key.delete) {
-        if (cursorPosition > 0) {
-          const newValue = value.slice(0, cursorPosition - 1) + value.slice(cursorPosition);
+        if (
+          key.backspace ||
+          key.delete ||
+          input === "\x7F" ||
+          input === "\b" ||
+          input === "\x1b[3~"
+        ) {
+          const newValue = currentValue.slice(0, -1);
+          setValue(newValue);
           onChange(newValue);
-          setCursorPosition((prev) => Math.max(0, prev - 1));
+          return;
         }
-        return;
-      }
 
-      if (key.ctrl || key.meta) {
-        return;
-      }
+        if (key.return) {
+          if (currentValue.trim()) {
+            onSubmit(currentValue);
+          }
+          setValue("");
+          return;
+        }
 
-      if (input && !key.ctrl && !key.meta) {
-        const newValue = value.slice(0, cursorPosition) + input + value.slice(cursorPosition);
-        onChange(newValue);
-        setCursorPosition((prev) => prev + input.length);
-      }
+        if (key.escape) {
+          setValue("");
+          onChange("");
+          return;
+        }
+
+        if (input === "\t") {
+          const newValue = currentValue + "\t";
+          setValue(newValue);
+          onChange(newValue);
+          return;
+        }
+
+        if (input === " ") {
+          const newValue = currentValue + " ";
+          setValue(newValue);
+          onChange(newValue);
+          return;
+        }
+
+        if (input && input.length === 1 && !key.ctrl && !key.meta) {
+          const newValue = currentValue + input;
+          setValue(newValue);
+          onChange(newValue);
+        }
+      });
     },
-    { isActive: !disabled },
+    [disabled, onChange, onSubmit],
   );
 
-  const displayValue = value || placeholder;
-  const isPlaceholder = !value;
+  useInput(handleInput, { isActive: !disabled });
 
   return (
-    <Box>
+    <Box width={terminalWidth}>
       <Text color="green" bold>
-        {"❯ "}
+        {"> "}
       </Text>
-      {isPlaceholder ? (
-        <Text color="gray">{placeholder}</Text>
-      ) : (
-        <>
-          <Text>{displayValue.slice(0, cursorPosition)}</Text>
-          <Text inverse>{displayValue[cursorPosition] ?? " "}</Text>
-          <Text>{displayValue.slice(cursorPosition + 1)}</Text>
-        </>
-      )}
+      {value ? <Text>{value}</Text> : <Text color="gray">{placeholder}</Text>}
     </Box>
   );
 }

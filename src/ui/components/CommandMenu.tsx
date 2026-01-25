@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
+import type { SkillMetadata } from "../../skills/types.js";
 
 export interface Command {
   name: string;
@@ -10,27 +11,47 @@ interface CommandMenuProps {
   filter?: string;
   onSelect: (command: Command) => void;
   onClose: () => void;
+  skillItems?: SkillMetadata[];
 }
 
-const COMMANDS: Command[] = [
+const STATIC_COMMANDS: Command[] = [
   { name: "/help", description: "Show available commands" },
   { name: "/clear", description: "Clear the conversation" },
   { name: "/model", description: "Switch the model" },
-  { name: "/memory", description: "Manage memories" },
+  { name: "/tools", description: "View tool executions" },
+  { name: "/mcp", description: "Show MCP server status" },
+  { name: "/memory", description: "List memories" },
   { name: "/exit", description: "Exit the session" },
+  {
+    name: "/skill",
+    description: "List skills",
+  },
 ];
 
 export function CommandMenu({
   filter = "",
   onSelect,
   onClose,
+  skillItems = [],
 }: CommandMenuProps): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const prevFilterRef = useRef(filter);
 
-  const filteredCommands = COMMANDS.filter((cmd) =>
-    cmd.name.toLowerCase().startsWith(filter.toLowerCase()),
-  );
+  const isSkillFilter = filter.toLowerCase().startsWith("skill");
+
+  const skillNameFilter = isSkillFilter ? filter.slice(5).toLowerCase() : "";
+
+  const filteredCommands = useMemo(() => {
+    if (isSkillFilter && skillItems.length > 0) {
+      return skillItems
+        .filter((skill) => skill.name.toLowerCase().includes(skillNameFilter))
+        .map((skill) => ({
+          name: `/skill ${skill.name}`,
+          description: skill.description,
+        }));
+    }
+    return STATIC_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(filter.toLowerCase()));
+  }, [filter, skillItems, isSkillFilter, skillNameFilter]);
 
   useEffect(() => {
     if (filter !== prevFilterRef.current) {
@@ -40,7 +61,7 @@ export function CommandMenu({
   }, [filter]);
 
   useInput(
-    (input, key) => {
+    (_input, key) => {
       if (key.downArrow) {
         setSelectedIndex((prev) => Math.min(prev + 1, filteredCommands.length - 1));
       } else if (key.upArrow) {
