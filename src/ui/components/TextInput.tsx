@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 
 interface TextInputProps {
-  value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
   placeholder?: string;
@@ -10,100 +9,103 @@ interface TextInputProps {
 }
 
 export function TextInput({
-  value,
   onChange,
   onSubmit,
   placeholder = "Type a message...",
   disabled = false,
 }: TextInputProps): React.ReactElement {
-  const [cursorPosition, setCursorPosition] = useState(value.length);
-  const valueRef = useRef(value);
-  const cursorRef = useRef(cursorPosition);
+  const [value, setValue] = useState("");
 
-  // Keep refs synced with state
-  useEffect(() => {
-    valueRef.current = value;
-    cursorRef.current = cursorPosition;
-  }, [value, cursorPosition]);
-
-  useInput(
-    (input, key) => {
+  // Use functional state update to avoid closure issues
+  const handleInput = useCallback(
+    (
+      input: string,
+      key: {
+        backspace?: boolean;
+        return?: boolean;
+        escape?: boolean;
+        ctrl?: boolean;
+        meta?: boolean;
+        shift?: boolean;
+        delete?: boolean;
+      },
+    ) => {
       if (disabled) return;
 
-      const currentValue = valueRef.current;
-      const currentCursor = cursorRef.current;
-
-      if (key.return) {
-        if (currentValue.trim()) {
-          onSubmit(currentValue);
-        }
-        return;
-      }
-
-      if (key.escape) {
-        onChange("");
-        setCursorPosition(0);
-        cursorRef.current = 0;
-        return;
-      }
-
-      if (key.leftArrow) {
-        const newPos = Math.max(0, currentCursor - 1);
-        setCursorPosition(newPos);
-        cursorRef.current = newPos;
-        return;
-      }
-
-      if (key.rightArrow) {
-        const newPos = Math.min(currentValue.length, currentCursor + 1);
-        setCursorPosition(newPos);
-        cursorRef.current = newPos;
-        return;
-      }
-
-      if (key.backspace || key.delete) {
-        if (currentCursor > 0) {
-          const newValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
+      // Handle backspace and delete keys
+      if (
+        key.backspace ||
+        key.delete ||
+        input === "\x7F" ||
+        input === "\b" ||
+        input === "\x1b[3~"
+      ) {
+        setValue((prev) => {
+          const newValue = prev.slice(0, -1);
           onChange(newValue);
-          const newPos = Math.max(0, currentCursor - 1);
-          setCursorPosition(newPos);
-          cursorRef.current = newPos;
-        }
+          return newValue;
+        });
         return;
       }
 
-      if (key.ctrl || key.meta) {
+      // Handle return/submit
+      if (key.return) {
+        setValue((prev) => {
+          if (prev.trim()) {
+            onSubmit(prev);
+          }
+          return "";
+        });
         return;
       }
 
-      if (input && !key.ctrl && !key.meta) {
-        const newValue = currentValue.slice(0, currentCursor) + input + currentValue.slice(currentCursor);
-        onChange(newValue);
-        const newPos = currentCursor + input.length;
-        setCursorPosition(newPos);
-        cursorRef.current = newPos;
+      // Handle escape - clear input
+      if (key.escape) {
+        setValue("");
+        onChange("");
+        return;
+      }
+
+      // Handle tab - insert tab character
+      if (input === "\t") {
+        setValue((prev) => {
+          const newValue = prev + "\t";
+          onChange(newValue);
+          return newValue;
+        });
+        return;
+      }
+
+      // Handle space
+      if (input === " ") {
+        setValue((prev) => {
+          const newValue = prev + " ";
+          onChange(newValue);
+          return newValue;
+        });
+        return;
+      }
+
+      // Handle regular character input (ignore ctrl/meta key combinations)
+      if (input && input.length === 1 && !key.ctrl && !key.meta) {
+        setValue((prev) => {
+          const newValue = prev + input;
+          onChange(newValue);
+          return newValue;
+        });
       }
     },
-    { isActive: !disabled },
+    [disabled, onChange, onSubmit],
   );
 
-  const displayValue = value || placeholder;
-  const isPlaceholder = !value;
+  useInput(handleInput, { isActive: !disabled });
 
   return (
     <Box>
       <Text color="green" bold>
         {"❯ "}
       </Text>
-      {isPlaceholder ? (
-        <Text color="gray">{placeholder}</Text>
-      ) : (
-        <>
-          <Text>{displayValue.slice(0, cursorPosition)}</Text>
-          <Text inverse>{displayValue[cursorPosition] ?? " "}</Text>
-          <Text>{displayValue.slice(cursorPosition + 1)}</Text>
-        </>
-      )}
+      {value ? <Text>{value}</Text> : <Text color="gray">{placeholder}</Text>}
     </Box>
   );
 }
