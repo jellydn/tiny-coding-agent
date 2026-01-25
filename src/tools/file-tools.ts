@@ -89,7 +89,7 @@ function isSensitiveHomePath(resolved: string): string | undefined {
 	return undefined;
 }
 
-function validatePath(filePath: string): PathValidationResult {
+async function validatePath(filePath: string, checkSymlink: boolean = false): Promise<PathValidationResult> {
 	const normalized = path.normalize(filePath);
 	if (normalized.includes("..")) {
 		return { valid: false, error: 'Path cannot contain ".." for security reasons' };
@@ -110,10 +110,35 @@ function validatePath(filePath: string): PathValidationResult {
 		};
 	}
 
+	if (checkSymlink) {
+		try {
+			const stats = await fs.lstat(resolved);
+			if (stats.isSymbolicLink()) {
+				const linkTarget = await fs.readlink(resolved);
+				const target = path.resolve(path.dirname(resolved), linkTarget);
+				const targetSystem = isSensitiveSystemPath(target);
+				const targetHome = isSensitiveHomePath(target);
+				if (targetSystem || targetHome || target.includes("..")) {
+					return { valid: false, error: "Symlink points to restricted location" };
+				}
+			}
+		} catch {
+			// File doesn't exist yet, skip symlink check
+		}
+	}
+
 	return { valid: true };
 }
 
-export { isSensitiveFile, validatePath };
+function validateEditString(str: string): PathValidationResult {
+	const pathTraversalPattern = /\.\.[\\/]/;
+	if (pathTraversalPattern.test(str)) {
+		return { valid: false, error: "Edit strings must not contain path traversal sequences" };
+	}
+	return { valid: true };
+}
+
+export { isSensitiveFile, validateEditString, validatePath };
 
 export const readFileTool: Tool = {
 	name: "read_file",
@@ -211,7 +236,7 @@ export const writeFileTool: Tool = {
 
 		const { path: filePath, content } = parsed.data;
 
-		const pathValidation = validatePath(filePath);
+		const pathValidation = await validatePath(filePath, true);
 		if (!pathValidation.valid) {
 			return { success: false, error: pathValidation.error };
 		}
@@ -265,9 +290,14 @@ export const editFileTool: Tool = {
 
 		const { path: filePath, old_str, new_str, replace_all } = parsed.data;
 
-		const pathTraversalPattern = /\.\.[\\/]/;
-		if (pathTraversalPattern.test(old_str) || pathTraversalPattern.test(new_str)) {
-			return { success: false, error: "Edit strings must not contain path traversal sequences" };
+		const oldStrValidation = validateEditString(old_str);
+		if (!oldStrValidation.valid) {
+			return { success: false, error: oldStrValidation.error };
+		}
+
+		const newStrValidation = validateEditString(new_str);
+		if (!newStrValidation.valid) {
+			return { success: false, error: newStrValidation.error };
 		}
 
 		try {

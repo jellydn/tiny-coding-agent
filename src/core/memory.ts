@@ -4,6 +4,28 @@ import { countTokensSync } from "./tokens.js";
 
 const SAVE_DEBOUNCE_MS = 100;
 
+const signalHandlerManager = {
+	registeredStores: new Set<MemoryStore>(),
+	globalHandlerRegistered: false,
+
+	register(store: MemoryStore): void {
+		this.registeredStores.add(store);
+		if (!this.globalHandlerRegistered && typeof process !== "undefined") {
+			this.globalHandlerRegistered = true;
+			const handler = async () => {
+				await Promise.all(Array.from(this.registeredStores).map((s) => s.flush().catch(() => {})));
+				process.exit(1);
+			};
+			process.on("SIGTERM", handler);
+			process.on("SIGINT", handler);
+		}
+	},
+
+	unregister(store: MemoryStore): void {
+		this.registeredStores.delete(store);
+	},
+};
+
 export type MemoryCategory = "user" | "project" | "codebase";
 
 export interface Memory {
@@ -58,12 +80,9 @@ export class MemoryStore {
 	private _maxMemoryTokens?: number;
 	private _saveTimeout?: NodeJS.Timeout;
 	private _initPromise?: Promise<void>;
-	private _signalHandlersRegistered: boolean = false;
-	private _sigtermHandler?: () => Promise<void>;
-	private _sigintHandler?: () => Promise<void>;
 
 	get signalHandlersRegistered(): boolean {
-		return this._signalHandlersRegistered;
+		return signalHandlerManager.registeredStores.has(this);
 	}
 
 	constructor(options: MemoryStoreOptions = {}) {
@@ -95,7 +114,6 @@ export class MemoryStore {
 		};
 
 		this._memories.set(memory.id, memory);
-		// Insert into sorted array (descending by lastAccessedAt)
 		const newTime = new Date(memory.lastAccessedAt).getTime();
 		let insertIndex = 0;
 		for (let i = 0; i < this._sortedIds.length; i++) {
@@ -154,19 +172,32 @@ export class MemoryStore {
 	}
 
 	list(): Memory[] {
-		return this._sortedIds.map((id) => this._memories.get(id)!).filter(Boolean);
+		const result: Memory[] = [];
+		const missingIds: string[] = [];
+
+		for (const id of this._sortedIds) {
+			const memory = this._memories.get(id);
+			if (memory) {
+				result.push(memory);
+			} else {
+				missingIds.push(id);
+			}
+		}
+
+		if (missingIds.length > 0) {
+			console.warn(`[MemoryStore] Found ${missingIds.length} corrupted memory entry(s) in sorted index. Cleaning up.`);
+			this._sortedIds = this._sortedIds.filter((id) => this._memories.has(id));
+		}
+
+		return result;
 	}
 
-	/**
-	 * Mark all memories as accessed (updates lastAccessedAt and increments accessCount)
-	 */
 	touchAll(): void {
 		const now = new Date().toISOString();
 		for (const memory of this._memories.values()) {
 			memory.lastAccessedAt = now;
 			memory.accessCount++;
 		}
-		// Rebuild sorted array - all have same timestamp, maintain relative order
 		this._sortedIds = Array.from(this._memories.keys());
 		this._scheduleSave();
 	}
@@ -273,37 +304,12 @@ export class MemoryStore {
 	}
 
 	registerSignalHandlers(): void {
-		if (this._signalHandlersRegistered || typeof process === "undefined") return;
-
-		this._signalHandlersRegistered = true;
-
-		this._sigtermHandler = async () => {
-			await this.flush();
-			process.exit(1);
-		};
-		this._sigintHandler = async () => {
-			await this.flush();
-			process.exit(1);
-		};
-
-		process.on("SIGTERM", this._sigtermHandler);
-		process.on("SIGINT", this._sigintHandler);
+		if (typeof process === "undefined") return;
+		signalHandlerManager.register(this);
 	}
 
-	/**
-	 * Remove registered signal handlers to prevent handler accumulation.
-	 * Should be called when MemoryStore is no longer needed.
-	 */
 	removeSignalHandlers(): void {
-		if (this._signalHandlersRegistered && typeof process !== "undefined") {
-			if (this._sigtermHandler) {
-				process.removeListener("SIGTERM", this._sigtermHandler);
-			}
-			if (this._sigintHandler) {
-				process.removeListener("SIGINT", this._sigintHandler);
-			}
-			this._signalHandlersRegistered = false;
-		}
+		signalHandlerManager.unregister(this);
 	}
 
 	private _scheduleSave(): void {
@@ -390,22 +396,19 @@ export class MemoryStore {
 	}
 
 	private _evictIfNeeded(): void {
-		// Token-based eviction first (if configured)
-		if (this._maxMemoryTokens !== undefined) {
-			while (this._countMemoryTokens() > this._maxMemoryTokens && this._memories.size > 1) {
-				this._evictOldest();
-			}
-		}
+		while (this._memories.size > 1) {
+			const tokenCount = this._countMemoryTokens();
+			const countLimitExceeded = this._memories.size > this._maxMemories;
+			const tokenLimitExceeded = this._maxMemoryTokens !== undefined && tokenCount > this._maxMemoryTokens;
 
-		// Count-based eviction as fallback
-		while (this._memories.size > this._maxMemories) {
+			if (!countLimitExceeded && !tokenLimitExceeded) {
+				break;
+			}
+
 			this._evictOldest();
 		}
 	}
 
-	/**
-	 * Calculate total tokens used by all memories
-	 */
 	private _countMemoryTokens(): number {
 		return Array.from(this._memories.values()).reduce(
 			(total, m) => total + countTokensSync(m.content) + countTokensSync(m.category),

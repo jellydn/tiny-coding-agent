@@ -54,54 +54,60 @@ describe("file-tools.ts helper functions", () => {
 	});
 
 	describe("validatePath", () => {
-		it("should return valid for regular file paths", () => {
-			const result = validatePath("/home/user/project/file.txt");
+		it("should return valid for regular file paths", async () => {
+			const result = await validatePath("/home/user/project/file.txt");
 			expect(result.valid).toBe(true);
 		});
 
-		it("should return valid for relative paths", () => {
-			const result = validatePath("./src/file.ts");
+		it("should return valid for relative paths", async () => {
+			const result = await validatePath("./src/file.ts");
 			expect(result.valid).toBe(true);
 		});
 
-		it("should reject paths with directory traversal", () => {
-			const result = validatePath("../etc/passwd");
+		it("should reject paths with directory traversal", async () => {
+			const result = await validatePath("../etc/passwd");
 			expect(result.valid).toBe(false);
 			expect(result.error).toContain('".."');
 		});
 
-		it("should reject absolute paths to system directories", () => {
-			const result1 = validatePath("/etc/passwd");
+		it("should reject absolute paths to system directories", async () => {
+			const result1 = await validatePath("/etc/passwd");
 			expect(result1.valid).toBe(false);
 			expect(result1.error).toContain("system path");
 
-			const result2 = validatePath("/usr/bin/ls");
+			const result2 = await validatePath("/usr/bin/ls");
 			expect(result2.valid).toBe(false);
 
-			const result3 = validatePath("/sys/kernel");
+			const result3 = await validatePath("/sys/kernel");
 			expect(result3.valid).toBe(false);
 
-			const result4 = validatePath("/proc/1234");
+			const result4 = await validatePath("/proc/1234");
 			expect(result4.valid).toBe(false);
 
-			const result5 = validatePath("/dev/null");
+			const result5 = await validatePath("/dev/null");
 			expect(result5.valid).toBe(false);
 
-			const result6 = validatePath("/root/.ssh");
+			const result6 = await validatePath("/root/.ssh");
 			expect(result6.valid).toBe(false);
 		});
 
-		it("should reject paths resolving to sensitive home directories", () => {
-			// Note: This test assumes HOME is set. If HOME is not set, the check is skipped.
+		it("should reject paths resolving to sensitive home directories", async () => {
 			const homeDir = process.env.HOME ?? "";
 			if (homeDir) {
-				const result = validatePath(`${homeDir}/.ssh/id_rsa`);
+				const result = await validatePath(`${homeDir}/.ssh/id_rsa`);
 				expect(result.valid).toBe(false);
 				expect(result.error).toContain("sensitive directory");
 			} else {
-				// If HOME is not set, the check is skipped and path is valid
-				const result = validatePath("/home/user/.ssh/id_rsa");
+				const result = await validatePath("/home/user/.ssh/id_rsa");
 				expect(result.valid).toBe(true);
+			}
+		});
+
+		it("should reject paths with symlinks pointing to restricted locations", async () => {
+			const homeDir = process.env.HOME ?? "";
+			if (homeDir) {
+				const result = await validatePath(`${homeDir}/.ssh/id_rsa`, true);
+				expect(result.valid).toBe(false);
 			}
 		});
 	});

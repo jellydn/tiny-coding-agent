@@ -190,7 +190,7 @@ function buildStats({
 export class Agent {
 	private _defaultLlmClient: LLMClient;
 	private _providerConfigs?: ProviderConfigs;
-	private _providerCache: Map<string, { client: LLMClient; timestamp: number }> = new Map();
+	private _providerCache: Map<string, { client: LLMClient; timestamp: number; healthy: boolean }> = new Map();
 	private static readonly DEFAULT_PROVIDER_CACHE_SIZE = 10;
 	private _providerCacheMaxSize: number;
 	private _toolRegistry: ToolRegistry;
@@ -250,17 +250,25 @@ export class Agent {
 	}
 
 	private async _initializeSkills(skillDirectories: string[], builtinDir: string, systemPrompt: string): Promise<void> {
-		if (this._skillsInitialized) return;
+		if (this._skillsInitPromise) {
+			return this._skillsInitPromise;
+		}
 
-		const discoveredSkills = await discoverSkills(skillDirectories, builtinDir);
-		for (const skill of discoveredSkills) {
-			this._skills.set(skill.name, skill);
-		}
-		const skillsPrompt = generateSkillsPrompt(discoveredSkills);
-		if (skillsPrompt) {
-			this._systemPrompt = `${systemPrompt}\n\n${skillsPrompt}`;
-		}
-		this._skillsInitialized = true;
+		this._skillsInitPromise = (async () => {
+			if (this._skillsInitialized) return;
+
+			const discoveredSkills = await discoverSkills(skillDirectories, builtinDir);
+			for (const skill of discoveredSkills) {
+				this._skills.set(skill.name, skill);
+			}
+			const skillsPrompt = generateSkillsPrompt(discoveredSkills);
+			if (skillsPrompt) {
+				this._systemPrompt = `${systemPrompt}\n\n${skillsPrompt}`;
+			}
+			this._skillsInitialized = true;
+		})();
+
+		return this._skillsInitPromise;
 	}
 
 	private _evictOldestCacheEntry(): void {
@@ -282,9 +290,14 @@ export class Agent {
 
 		const providerType = detectProvider(model);
 		const cached = this._providerCache.get(providerType);
-		if (cached) {
+
+		if (cached?.healthy) {
 			cached.timestamp = Date.now();
 			return cached.client;
+		}
+
+		if (cached && !cached.healthy) {
+			this._providerCache.delete(providerType);
 		}
 
 		try {
@@ -298,9 +311,15 @@ export class Agent {
 				this._evictOldestCacheEntry();
 			}
 
-			this._providerCache.set(providerType, { client, timestamp: Date.now() });
+			// Cache the new client as healthy
+			this._providerCache.set(providerType, { client, timestamp: Date.now(), healthy: true });
 			return client;
 		} catch (err) {
+			// Mark existing cache entry as unhealthy if it exists
+			const existing = this._providerCache.get(providerType);
+			if (existing) {
+				existing.healthy = false;
+			}
 			console.warn(`[Agent] Failed to create provider for ${providerType}, falling back to default: ${err}`);
 			return this._defaultLlmClient;
 		}
