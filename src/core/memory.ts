@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { countTokensSync } from "./tokens.js";
 
 const SAVE_DEBOUNCE_MS = 100;
-const PERIODIC_FLUSH_INTERVAL_MS = 5000; // Safety net: flush every 5 seconds
 
 export type MemoryCategory = "user" | "project" | "codebase";
 
@@ -33,6 +32,16 @@ export interface ContextStats {
   memoryCount: number;
 }
 
+const CATEGORY_MULTIPLIERS: Record<MemoryCategory, number> = {
+  project: 1.5,
+  codebase: 1.2,
+  user: 1,
+};
+
+function getCategoryMultiplier(category: MemoryCategory): number {
+  return CATEGORY_MULTIPLIERS[category] ?? 1;
+}
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
@@ -43,8 +52,6 @@ export class MemoryStore {
   private _maxMemories: number;
   private _maxMemoryTokens?: number;
   private _saveTimeout?: NodeJS.Timeout;
-  private _periodicFlushInterval?: NodeJS.Timeout;
-  private _dirty = false;
   private _initPromise?: Promise<void>;
 
   constructor(options: MemoryStoreOptions = {}) {
@@ -52,13 +59,7 @@ export class MemoryStore {
     this._maxMemories = options.maxMemories ?? 100;
     this._maxMemoryTokens = options.maxMemoryTokens;
 
-    // Start periodic flush for safety net against sudden termination
-    this._periodicFlushInterval = setInterval(() => {
-      void this.flush();
-    }, PERIODIC_FLUSH_INTERVAL_MS);
-
     if (options.autoLoad !== false && this._filePath && existsSync(this._filePath)) {
-      // Start async loading in background
       this._initPromise = this._load().catch((err) => {
         console.error(`Warning: Failed to load memories: ${err}`);
       });
@@ -66,10 +67,7 @@ export class MemoryStore {
   }
 
   async init(): Promise<void> {
-    if (this._initPromise) {
-      await this._initPromise;
-      this._initPromise = undefined;
-    }
+    await this._initPromise;
   }
 
   add(content: string, category: MemoryCategory = "user"): Memory {
@@ -156,8 +154,7 @@ export class MemoryStore {
       }
 
       // Apply category multiplier
-      const categoryMultiplier = category === "project" ? 1.5 : category === "codebase" ? 1.2 : 1;
-      score *= categoryMultiplier;
+      score *= getCategoryMultiplier(category);
 
       // Add frequency bonus
       score += Math.log(memory.accessCount + 1) * 2;
@@ -207,30 +204,18 @@ export class MemoryStore {
       clearTimeout(this._saveTimeout);
       this._saveTimeout = undefined;
     }
-    if (this._dirty) {
-      this._dirty = false;
-      await this._save();
-    }
+    await this._save();
   }
 
   async close(): Promise<void> {
-    if (this._periodicFlushInterval) {
-      clearInterval(this._periodicFlushInterval);
-      this._periodicFlushInterval = undefined;
-    }
     await this.flush();
   }
 
   private _scheduleSave(): void {
-    this._dirty = true;
     if (this._saveTimeout) return;
-
     this._saveTimeout = setTimeout(() => {
       this._saveTimeout = undefined;
-      if (this._dirty) {
-        this._dirty = false;
-        void this._save();
-      }
+      void this._save();
     }, SAVE_DEBOUNCE_MS);
   }
 
@@ -326,18 +311,10 @@ export class MemoryStore {
    * Evict the least recently accessed memory
    */
   private _evictOldest(): void {
-    let oldestId: string | undefined;
-    let oldestTime = Infinity;
-
-    for (const [id, memory] of this._memories.entries()) {
-      const accessTime = new Date(memory.lastAccessedAt).getTime();
-      if (accessTime < oldestTime) {
-        oldestTime = accessTime;
-        oldestId = id;
-      }
-    }
-
-    if (oldestId) this._memories.delete(oldestId);
+    const oldest = Array.from(this._memories.values()).sort(
+      (a, b) => new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime(),
+    )[0];
+    if (oldest) this._memories.delete(oldest.id);
   }
 }
 

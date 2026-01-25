@@ -88,21 +88,15 @@ export class ToolRegistry {
   ): Promise<
     Array<{ name: string; result: { success: boolean; output?: string; error?: string } }>
   > {
-    // Build lookup map for O(1) access instead of repeated .find() calls
-    const callMap = new Map(calls.map((c) => [c.name, c]));
-
-    const executeAll = (): Promise<
-      Array<{ name: string; result: { success: boolean; output?: string; error?: string } }>
-    > =>
-      Promise.all(
-        calls.map(async (c) => ({ name: c.name, result: await this.execute(c.name, c.args) })),
-      );
-
-    const dangerousCalls = calls.filter((c) => this.isDangerous(c.name, c.args));
-    if (dangerousCalls.length === 0) return executeAll();
+    const results = await Promise.all(
+      calls.map(async (c) => ({ name: c.name, result: await this.execute(c.name, c.args) })),
+    );
 
     const handler = getConfirmationHandler();
-    if (!handler) return executeAll();
+    if (!handler) return results;
+
+    const dangerousCalls = calls.filter((c) => this.isDangerous(c.name, c.args));
+    if (dangerousCalls.length === 0) return results;
 
     const approved = await handler({
       actions: dangerousCalls.map((c) => ({
@@ -112,35 +106,30 @@ export class ToolRegistry {
       })),
     });
 
-    // All declined - execute only safe tools
+    // All declined or partial approval - filter out unapproved dangerous calls
     if (approved === false) {
-      return executeAll().then((results) =>
-        results.map((r) => {
-          const call = callMap.get(r.name);
-          const isDangerous = call && this.isDangerous(call.name, call.args);
-          return isDangerous
-            ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
-            : r;
-        }),
-      );
+      return results.map((r) => {
+        const call = calls.find((c) => c.name === r.name);
+        const isDangerous = call && this.isDangerous(call.name, call.args);
+        return isDangerous
+          ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
+          : r;
+      });
     }
 
-    // Partial approval
     if (typeof approved === "object" && approved.type === "partial") {
       const selectedToolName = dangerousCalls[approved.selectedIndex]?.name;
-      return executeAll().then((results) =>
-        results.map((r) => {
-          const call = callMap.get(r.name);
-          const isDangerous =
-            call && this.isDangerous(call.name, call.args) && call.name !== selectedToolName;
-          return isDangerous
-            ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
-            : r;
-        }),
-      );
+      return results.map((r) => {
+        const call = calls.find((c) => c.name === r.name);
+        const isDangerous =
+          call && this.isDangerous(call.name, call.args) && call.name !== selectedToolName;
+        return isDangerous
+          ? { name: r.name, result: { success: false, error: "User declined confirmation" } }
+          : r;
+      });
     }
 
-    return executeAll();
+    return results;
   }
 
   async execute(

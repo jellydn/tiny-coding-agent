@@ -391,6 +391,16 @@ export class Agent {
     const recentToolCalls: string[] = [];
     let loopDetected = false;
 
+    // Helper to rebuild context stats with current messages
+    const updateStats = (): ContextStats =>
+      buildStats({
+        systemTokens,
+        memoryTokens: memoryTokensUsed,
+        convTokens: calculateMessageTokens(messages),
+        truncationApplied,
+        maxContextTokens,
+      });
+
     for (iteration = 0; iteration < this._maxIterations; iteration++) {
       checkAborted(options?.signal);
 
@@ -574,13 +584,7 @@ export class Agent {
             `\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`,
           );
         }
-        contextStats = buildStats({
-          systemTokens,
-          memoryTokens: memoryTokensUsed,
-          convTokens: calculateMessageTokens(messages),
-          truncationApplied,
-          maxContextTokens,
-        });
+        contextStats = updateStats();
         continue;
       }
 
@@ -598,13 +602,7 @@ export class Agent {
         break;
       }
 
-      contextStats = buildStats({
-        systemTokens,
-        memoryTokens: memoryTokensUsed,
-        convTokens: calculateMessageTokens(messages),
-        truncationApplied,
-        maxContextTokens,
-      });
+      contextStats = updateStats();
     }
 
     if (loopDetected) {
@@ -632,13 +630,7 @@ export class Agent {
             content: chunk.content,
             iterations: iteration + 1,
             done: false,
-            contextStats: buildStats({
-              systemTokens,
-              memoryTokens: memoryTokensUsed,
-              convTokens: calculateMessageTokens(messages),
-              truncationApplied,
-              maxContextTokens,
-            }),
+            contextStats: updateStats(),
           };
         }
       }
@@ -648,13 +640,7 @@ export class Agent {
         content: "",
         iterations: iteration + 1,
         done: true,
-        contextStats: buildStats({
-          systemTokens,
-          memoryTokens: memoryTokensUsed,
-          convTokens: calculateMessageTokens(messages),
-          truncationApplied,
-          maxContextTokens,
-        }),
+        contextStats: updateStats(),
       };
       return;
     }
@@ -670,13 +656,7 @@ export class Agent {
       iterations: iteration,
       done: true,
       maxIterationsReached: true,
-      contextStats: buildStats({
-        systemTokens,
-        memoryTokens: memoryTokensUsed,
-        convTokens: calculateMessageTokens(messages),
-        truncationApplied,
-        maxContextTokens,
-      }),
+      contextStats: updateStats(),
     };
   }
 
@@ -825,7 +805,7 @@ export class Agent {
       parameters: tool.parameters as unknown as Record<string, unknown>,
     }));
 
-    if (!this._activeSkillAllowedTools || this._activeSkillAllowedTools.length === 0) {
+    if (!this._activeSkillAllowedTools?.length) {
       return allTools;
     }
 

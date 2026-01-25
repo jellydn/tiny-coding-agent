@@ -8,6 +8,12 @@ export interface ConversationManagerOptions {
   maxTokens?: number;
 }
 
+function isValidConversationFile(content: unknown): content is { messages: Message[] } {
+  if (!content || typeof content !== "object") return false;
+  if (!Array.isArray((content as { messages?: unknown }).messages)) return false;
+  return true;
+}
+
 export class ConversationManager {
   private _conversationHistory: Message[] = [];
   private readonly _maxMessages: number;
@@ -34,8 +40,8 @@ export class ConversationManager {
 
   private _truncateHistory(messages: Message[]): Message[] {
     // Apply max messages limit (keep most recent messages)
-    if (this._maxMessages > 0 && messages.length > this._maxMessages) {
-      messages = messages.slice(-this._maxMessages);
+    if (this._maxMessages > 0) {
+      return messages.slice(-this._maxMessages);
     }
     return messages;
   }
@@ -48,7 +54,7 @@ export class ConversationManager {
       const parsed = JSON.parse(content);
 
       // Guard: validate structure
-      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.messages)) {
+      if (!isValidConversationFile(parsed)) {
         console.warn(`Warning: Invalid conversation file format in ${this.conversationFile}`);
         return [];
       }
