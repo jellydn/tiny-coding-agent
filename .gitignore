@@ -36,7 +36,5 @@ tiny-agent
 .claude/settings.local.json
 .serena
 
-# generated skill content
-src/skills/embedded-content.ts
 .opencode
 .claude/handoffs
