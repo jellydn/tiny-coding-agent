@@ -2,502 +2,216 @@
 
 **Analysis Date:** 2026-01-25
 
-## Tech Debt
+## Large Files (Complexity Concerns)
 
-### Inaccurate Token Counting Fallback
+**Large files indicate high complexity and should be refactored:**
 
-**Issue:** The token counting system falls back to a character-based heuristic (`text.length / 4`) when `tiktoken` is unavailable, which produces inaccurate token counts.
+### `src/cli/main.tsx` (1365 lines)
 
-**Files:** `src/core/tokens.ts:21-23`
+- **Issue**: Very large CLI entry point with multiple responsibilities
+- **Files**: `src/cli/main.tsx`
+- **Impact**: Difficult to test, maintain, and understand
+- **Fix approach**: Split into smaller components by feature (chat handling, command parsing, rendering logic)
 
-**Impact:** Context budget calculations may be significantly off when tiktoken fails to load, leading to either truncated conversations or exceeding model token limits.
+### `src/core/agent.ts` (848 lines)
 
-**Fix approach:** Ensure tiktoken loads reliably, or implement a more accurate fallback using word-based counting with language-specific adjustments.
+- **Issue**: Agent class has too many responsibilities (provider management, tool execution, conversation handling, memory, skills)
+- **Files**: `src/core/agent.ts`
+- **Impact**: Violates Single Responsibility Principle; hard to extend or modify
+- **Fix approach**: Extract provider management to separate class, move skill loading to dedicated service
 
----
+### `src/core/memory.ts` (409 lines)
 
-### Synchronous File I/O in Memory and Conversation Stores
+- **Issue**: Memory store handles persistence, token counting, eviction, and context building
+- **Files**: `src/core/memory.ts`
+- **Impact**: Tight coupling between storage logic and context building
+- **Fix approach**: Separate persistence layer from memory management logic
 
-**Issue:** Both `MemoryStore` and `ConversationManager` use synchronous file operations (`readFileSync`, `writeFileSync`) for persistence.
+### `src/tools/file-tools.ts` (375 lines)
 
-**Files:**
+- **Issue**: Large file with many file operation tools
+- **Files**: `src/tools/file-tools.ts`
+- **Impact**: Hard to locate specific tool implementations
+- **Fix approach**: Split into dedicated files by operation type (read, write, glob, grep)
 
-- `src/core/memory.ts:184-228`
-- `src/core/conversation.ts:59-72`
+## Deprecated Global Patterns
 
-**Impact:** File writes block the main thread during agent operation, potentially causing UI freezing or timeout issues with large files.
+**MCP Manager uses deprecated global singleton pattern:**
 
-**Fix approach:** Convert to async file operations using `fs/promises` and add proper error handling with async/await patterns.
+### Global MCP Manager
 
----
-
-### Global Singleton Pattern for MCP Manager
-
-**Issue:** The MCP manager uses a global singleton pattern (`_globalMcpManager`) which makes testing difficult and creates implicit dependencies.
-
-**Files:** `src/mcp/manager.ts:8-16`
-
-**Impact:** Tests may pollute each other through shared state; component isolation is compromised.
-
-**Fix approach:** Pass MCP manager as a dependency through constructor/injection rather than relying on global state.
-
----
-
-### Missing Graceful Shutdown Handler
-
-**Issue:** The `Agent` class and `ConversationManager` lack proper shutdown/cleanup methods to handle process termination signals.
-
-**Files:**
-
-- `src/core/agent.ts`
-- `src/core/conversation.ts:74-77`
-
-**Impact:** Unsaved conversation history or memory data may be lost on unexpected process termination.
-
-**Fix approach:** Implement `shutdown()` or `close()` methods that flush pending writes and disconnect MCP clients.
-
----
-
-### Empty Promise Return in ConversationManager.close()
-
-**Issue:** `ConversationManager.close()` is a no-op with a comment indicating simplified implementation without locks.
-
-**File:** `src/core/conversation.ts:74-77`
-
-```typescript
-async close(): Promise<void> {
-  // No-op: simplified implementation without locks
-}
-```
-
-**Impact:** No cleanup or file synchronization occurs when closing conversation manager.
-
-**Fix approach:** Implement proper resource cleanup or remove the method if truly unused.
-
----
+- **Issue**: `src/mcp/manager.ts` exports deprecated global manager functions
+- **Files**: `src/mcp/manager.ts`
+- **Impact**: Creates implicit dependencies; makes testing harder; will be removed in future version
+- **Current usage**: `src/core/agent.ts` imports and uses `getGlobalMcpManager()`
+- **Fix approach**: Inject `McpManager` instance via constructor or method parameters
 
 ## Security Considerations
 
-### Dynamic Module Import in Plugin Loader
-
-**Issue:** The plugin loader uses `import()` with `file://` protocol to load plugins, which can execute arbitrary JavaScript code.
-
-**Files:** `src/tools/plugin-loader.ts:19`
-
-```typescript
-const module = (await import(`file://${filePath}`)) as PluginModule;
-```
-
-**Impact:** Users who install malicious plugins could have arbitrary code executed with the agent's permissions.
-
-**Current mitigation:** Plugins are loaded from user config directory (`~/.tiny-agent/plugins/`), but there's no code signing or verification.
-
-**Recommendations:**
-
-- Add plugin signature verification
-- Provide opt-in confirmation before loading plugins
-- Document security implications for users
-
----
-
-### Bash Tool Environment Variable Filtering
-
-**Issue:** The bash tool filters sensitive environment variables using a pattern-based approach, but patterns may miss new or unusual secret naming conventions.
-
-**Files:** `src/tools/bash-tool.ts:74-102`
-
-**Impact:** Sensitive credentials could leak through environment variables with non-standard names.
-
-**Fix approach:** Use an explicit allowlist approach rather than blocklist for environment variables.
-
----
-
-### Regex-Based HTML Parsing in Web Search
-
-**Issue:** The web search tool parses DuckDuckGo HTML results using complex regex patterns, which are fragile and may break with site changes.
-
-**Files:** `src/tools/web-search-tool.ts:135-172`
-
-**Impact:** Web search tool may stop working if DuckDuckGo changes their HTML structure.
-
-**Fix approach:** Use a proper HTML parser library like `cheerio` or `jsdom` for more robust parsing.
-
----
-
-### No Input Sanitization for File Paths in Edit Tool
-
-**Issue:** The `edit_file` tool does not validate that `old_str` and `new_str` don't contain path traversal patterns.
-
-**Files:** `src/tools/file-tools.ts:234-297`
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- Added path traversal validation in `src/tools/file-tools.ts:270-274`
-- Rejects strings containing `../` or `..\` patterns
-- Prevents malicious edit strings from modifying unexpected files
-
----
-
-## Performance Bottlenecks
-
-### Deep Recursion in File Search Tools
-
-**Issue:** Both `grep` and `glob` tools use recursive directory traversal without tail-call optimization, which could cause stack overflow on deeply nested directory structures.
-
-**Files:**
-
-- `src/tools/search-tools.ts:84-134` (searchFiles)
-- `src/tools/search-tools.ts:231-276` (globFiles)
-
-**Impact:** Process crash when traversing directories with extremely deep nesting (thousands of levels).
-
-**Fix approach:** Convert recursive functions to iterative implementations using explicit stacks.
-
----
-
-### No Backpressure Handling in LLM Streaming
-
-**Issue:** The streaming implementations in providers don't implement backpressure handling, potentially causing memory issues with high-throughput streams.
-
-**Files:**
-
-- `src/providers/anthropic.ts:176-248`
-- `src/providers/ollama.ts:121-238`
-
-**Impact:** Memory exhaustion when receiving very large streaming responses.
-
-**Fix approach:** Implement pull-based streaming where consumers control the rate of consumption.
-
----
-
-### No Caching for Expensive Operations
-
-**Issue:** Several operations that could benefit from caching are computed repeatedly:
-
-- Model capabilities (`getCapabilities` is called frequently)
-- Gitignore patterns (parsed on every file access)
-- Token encoding (encoder is loaded per-call in some paths)
-
-**Files:**
-
-- `src/providers/anthropic.ts:250-272`
-- `src/tools/file-tools.ts:156`
-- `src/core/tokens.ts:7-18`
-
-**Impact:** Unnecessary CPU usage and slower response times.
-
-**Fix approach:** Add memoization/caching for:
-
-- Model capabilities (cache by model name)
-- Gitignore patterns (cache by directory path)
-- Ensure single encoder instance is reused
-
----
-
-### Memory Store Debounce Limits
-
-**Issue:** The memory store uses a 100ms debounce for saves, which may not be aggressive enough for frequent updates or may cause data loss on crash.
-
-**Files:** `src/core/memory.ts:4`
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- Added `PERIODIC_FLUSH_INTERVAL_MS` (5000ms) as safety net
-- Added `close()` method to cleanup interval and flush pending writes
-- Data loss on sudden termination now limited to 5 seconds max
-
----
-
-## Fragile Areas
-
-### Hardcoded Model Context Windows
-
-**Issue:** Model context windows are hardcoded for Anthropic models, and will become outdated as new models are released.
-
-**Files:** `src/providers/anthropic.ts:251-257`
-
-**Status:** ✅ PARTIALLY RESOLVED (2026-01-25)
-
-- Added newer model context windows (claude-4 series)
-- Added warning for unknown models when `getCapabilities()` is called
-- Users are notified when context window may be inaccurate
-- Full solution requires API integration or external registry
-
----
-
-### MCP Server Silent Failures
-
-**Issue:** When MCP servers fail to connect, errors are silently logged with verbose warnings only.
-
-**Files:** `src/mcp/manager.ts:62-66`
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- MCP connection status now surfaced through `getServerStatus()` method
-- `healthCheck()` in Agent includes MCP server status
-- Disconnected MCP servers appear as health issues
-- Users can now see which MCP servers are unavailable
-
----
-
-### Silent Error Swallowing in Skill Parsing
-
-**Issue:** Errors in skill frontmatter parsing are caught and logged as warnings, but parsing failures may go unnoticed.
-
-**Files:**
-
-- `src/skills/loader.ts:47-50`
-- `src/core/agent.ts:661-663`
-
-```typescript
-} catch {
-  console.warn(`[WARN] Could not parse frontmatter for skill: ${skillName}`);
-}
-```
-
-**Impact:** Skills with invalid frontmatter may be loaded with default permissions (all tools), creating security implications.
-
-**Fix approach:** Fail fast on parse errors or mark skills as invalid with restricted permissions.
-
----
-
-### DuckDuckGo HTML Structure Dependency
-
-**Issue:** The web search tool relies on specific CSS class names from DuckDuckGo's HTML output.
-
-**Files:** `src/tools/web-search-tool.ts:138-139`
-
-```typescript
-const resultPattern =
-  /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>...
-```
-
-**Impact:** Any change to DuckDuckGo's HTML structure will break web search functionality.
-
-**Fix approach:** Consider using an official search API (e.g., DuckDuckGo Instant Answer API) or fallback to alternative search providers.
-
----
-
-## Scaling Limits
-
-### Conversation History Memory Growth
-
-**Issue:** Conversation history is stored in memory without limit (only token-based truncation).
-
-**Files:** `src/core/conversation.ts`
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- Added `maxMessages` option to `ConversationManagerOptions`
-- Added `_truncateHistory()` for LRU-style eviction
-- Added `getHistoryCount()` for monitoring memory growth
-- Token-based truncation remains available via `maxTokens` option
-
----
-
-### Memory Store Fixed Max Count
-
-**Issue:** Memory store uses fixed max count (default 100 memories) rather than token-based limit.
-
-**Files:** `src/core/memory.ts:45`
-
-```typescript
-this._maxMemories = options.maxMemories ?? 100;
-```
-
-**Impact:** Large memories may exceed token budgets while small memories leave unused capacity.
-
-**Fix approach:** Support token-based limits similar to conversation truncation.
-
----
-
-## Dependencies at Risk
-
-### tiktoken Optional Dependency
-
-**Issue:** `tiktoken` is a required dependency for accurate token counting but may fail to load in some environments (missing native modules).
-
-**Files:** `src/core/tokens.ts:10-17`
-
-**Impact:** Falls back to inaccurate character-based counting when tiktoken unavailable.
-
-**Mitigation:** Fallback exists, but users should be warned when using inaccurate counting.
-
----
-
-### DuckDuckGo Web Scraping
-
-**Issue:** Web search tool scrapes DuckDuckGo HTML instead of using an official API.
-
-**Impact:** Could break at any time due to:
-
-- CSS class name changes
-- Anti-bot measures
-- HTML structure changes
-- Rate limiting
-
-**Fix approach:** Migrate to official search APIs (Bing Search API, Google Custom Search, etc.).
-
----
-
-### Anthropic SDK Version Pinning
-
-**Issue:** Uses `@anthropic-ai/sdk` which may have breaking changes in minor versions.
-
-**Files:** `package.json:24`
-
-**Current pinning:** `^0.71.2`
-
-**Impact:** Upgrades may break compatibility without warning.
-
-**Fix approach:** Pin to exact version and review changes before upgrading.
-
----
+### Shell Command Execution
+
+- **Risk**: `bash-tool.ts` uses `shell: true` in `spawn()` for command execution
+- **Files**: `src/tools/bash-tool.ts`
+- **Current mitigation**:
+  - Destructive command detection with regex patterns
+  - Read-only command allowlist
+  - Safe environment variable filtering (only allowlisted env vars passed)
+- **Remaining risk**: Shell injection via crafted input is possible if validation is bypassed
+- **Recommendations**: Consider using array-based spawn without shell when possible
+
+### Environment Variable Interpolation
+
+- **Risk**: Config loader interpolates `${VAR}` patterns from config files
+- **Files**: `src/config/loader.ts`
+- **Current mitigation**: Throws error if referenced env var is not set
+- **Concern**: API keys in config could be logged or exposed in error messages
+- **Fix approach**: Avoid putting sensitive values in config files; use env vars only at runtime
+
+### Memory File Persistence
+
+- **Risk**: Memory store writes to file without encryption
+- **Files**: `src/core/memory.ts`
+- **Concern**: Stored memories may contain sensitive information
+- **Current mitigation**: Memory file is in user home directory with default permissions
+- **Fix approach**: Add option for encrypted memory storage for sensitive workloads
+
+## Error Handling Gaps
+
+### Silent Error Catching in Memory Store
+
+- **Issue**: Memory loading failures are logged but continue execution
+- **Files**: `src/core/memory.ts` (lines 63-66, 257-259)
+- **Impact**: Agent continues without memory, may produce unexpected results
+- **Current behavior**: Console error logged, agent proceeds
+- **Fix approach**: Consider making memory failures more visible or provide fallback
+
+### Provider Creation Failures
+
+- **Issue**: Provider creation failures fall back to default client silently
+- **Files**: `src/core/agent.ts` (lines 296-299)
+- **Impact**: Wrong provider may be used without clear indication
+- **Current behavior**: Verbose mode logs error, falls back to default
+- **Fix approach**: Add warning or make fallback behavior configurable
+
+### Tool Result Parsing
+
+- **Issue**: JSON parse failures in tool arguments result in empty object
+- **Files**: `src/providers/openai.ts` (lines 80-87, 182-194)
+- **Impact**: Invalid JSON in tool arguments silently becomes `{}`
+- **Fix approach**: Log parsing failures or return error result
+
+## Performance Concerns
+
+### Memory Store Debouncing
+
+- **Issue**: Memory saves are debounced with 100ms delay
+- **Files**: `src/core/memory.ts`
+- **Risk**: Unsaved memories may be lost on abrupt termination
+- **Current behavior**: `flush()` called on `shutdown()` but not on unhandled errors
+- **Fix approach**: Consider synchronous write for critical data or add signal handlers
+
+### Provider Cache Size
+
+- **Issue**: Provider cache limited to 10 entries
+- **Files**: `src/core/agent.ts` (line 193)
+- **Impact**: Cache eviction may cause unnecessary provider recreation
+- **Fix approach**: Increase cache size or use LRU eviction
+
+### Large Conversation History
+
+- **Issue**: Full conversation history is kept in memory
+- **Files**: `src/core/conversation.ts`
+- **Impact**: Long-running sessions may consume significant memory
+- **Current behavior**: History truncated only when context limit reached
+- **Fix approach**: Consider periodic persistence of conversation history
+
+## Dependency Risks
+
+### API Version Pinning
+
+- **Risk**: Multiple packages pinned to specific minor versions
+- **Files**: `package.json`
+- **Packages**:
+  - `@anthropic-ai/sdk: ^0.71.2`
+  - `@modelcontextprotocol/sdk: ^1.25.2`
+  - `openai: ^6.16.0`
+- **Impact**: Security patches may require version bumps; breaking changes possible on minor updates
+- **Fix approach**: Keep dependencies updated regularly; monitor changelogs
+
+### Outdated React Version
+
+- **Risk**: Using React 19.2.3 which is very new
+- **Files**: `package.json`
+- **Impact**: May have compatibility issues with ink or other React-based tools
+- **Current status**: Appears to work, but less battle-tested
+- **Fix approach**: Test thoroughly; consider pinning to stable minor version
 
 ## Test Coverage Gaps
 
-### No Integration Tests for Provider Layer
+### CLI Integration Tests
 
-**Issue:** Provider tests use mocked responses; no live API tests.
+- **What's not tested**: Full CLI workflow with real LLM providers
+- **Files**: `src/cli/main.tsx`
+- **Risk**: CLI regressions may not be caught
+- **Priority**: Medium
 
-**Files:**
+### MCP Server Error Scenarios
 
-- `test/providers/anthropic.test.ts`
-- `test/providers/ollama.test.ts`
+- **What's not tested**: MCP server disconnects, timeouts, malformed responses
+- **Files**: `src/mcp/manager.ts`, `src/mcp/client.ts`
+- **Risk**: MCP failures may cause unexpected agent behavior
+- **Priority**: Low (graceful degradation tested)
 
-**Impact:** Real API issues may not be caught until production.
+### Provider Fallback Behavior
 
-**Priority:** Medium
+- **What's not tested**: Automatic fallback when provider fails
+- **Files**: `src/core/agent.ts`
+- **Risk**: Fallback may not work as expected in production
+- **Priority**: Medium
 
----
+## Fragile Areas
 
-### No E2E Tests
+### Conversation Manager File I/O
 
-**Issue:** No end-to-end tests that verify the full agent loop with real LLM calls.
+- **Why fragile**: Multiple async operations on same file without locking
+- **Files**: `src/core/conversation.ts`
+- **Safe modification**: Ensure operations are sequential; add file locking if needed
 
-**Files:** Missing `test/e2e/` directory
+### Tool Registry Batch Execution
 
-**Impact:** Integration issues between components may go undetected.
+- **Why fragile**: Batch execution assumes all tools complete successfully
+- **Files**: `src/tools/registry.ts`
+- **Safe modification**: Add individual tool error handling
 
-**Priority:** High
+### Provider Factory
 
----
+- **Why fragile**: Complex logic for provider detection and creation
+- **Files**: `src/providers/factory.ts`
+- **Safe modification**: Add integration tests for each provider type
 
-### Limited MCP Testing
+## Known Limitations
 
-**Issue:** MCP manager tests don't test server failures, reconnection logic, or tool conflicts.
+### Context Window Handling
 
-**Files:** `test/mcp/manager.test.ts`
+- **Problem**: Context budget allocation is hardcoded (20% for memory)
+- **Files**: `src/core/memory.ts`
+- **Blocks**: Users who want different memory/conversation balance
+- **Fix approach**: Make memory budget percentage configurable
 
-**Status:** ✅ RESOLVED (2026-01-25)
+### Token Counting Accuracy
 
-- Added server failure handling tests
-- Added reconnection logic tests
-- Added tool conflicts tests
-- Added verbose mode logging tests
-- Added disabled patterns tests
+- **Problem**: `tiktoken` may not perfectly count all token types
+- **Files**: `src/core/tokens.ts`
+- **Impact**: Context limits may be exceeded or underutilized
+- **Fix approach**: Consider using model's native token counting when available
 
----
+### Multi-Provider Conversation
 
-### Missing Security Tests
-
-**Issue:** No tests for:
-
-- Path traversal attacks
-- Command injection prevention
-- Environment variable filtering
-- Sensitive file access
-
-**Files:** `test/security/` exists but limited scope
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- Created `test/security/security-suite.test.ts` with comprehensive tests
-- Path traversal validation tests
-- Environment variable allowlist tests
-- Sensitive file access tests
-
----
-
-### No Performance Tests
-
-**Issue:** No benchmarks or performance tests for:
-
-- Token counting accuracy
-- Search tool performance
-- Memory store operations
-- Provider streaming
-
-**Status:** ✅ RESOLVED (2026-01-25)
-
-- Created `test/performance/benchmarks.test.ts`
-- Token counting performance tests
-- Memory store operation tests
-- Search tool performance tests
-- File I/O performance tests
-
----
-
-## Missing Critical Features
-
-### Conversation Persistence Without Filename Conflict Resolution
-
-**Issue:** If two agents write to the same conversation file simultaneously, data corruption may occur.
-
-**Files:** `src/core/conversation.ts:59-72`
-
-**Impact:** Concurrent agent runs sharing conversation file lose data.
-
-**Fix approach:** Add file locking or use unique filenames per session.
-
----
-
-### No Health Check / Readiness Probes
-
-**Issue:** No way to determine if the agent is ready to accept requests (providers connected, config loaded, etc.).
-
-**Impact:** Orchestrators can't determine agent health.
-
-**Fix approach:** Add health check endpoint or method.
-
----
-
-### Missing Rate Limit Handling
-
-**Issue:** LLM providers don't implement rate limit handling or retry with backoff.
-
-**Files:**
-
-- `src/providers/anthropic.ts`
-- `src/providers/ollama.ts`
-- `src/providers/openai.ts`
-
-**Impact:** API rate limits cause immediate failures rather than graceful retries.
-
-**Fix approach:** Implement retry logic with exponential backoff for rate limit errors.
-
----
-
-## Summary
-
-| Category    | Resolved                            | Remaining                            |
-| ----------- | ----------------------------------- | ------------------------------------ |
-| Tech Debt   | Path traversal validation           | Token fallback (low priority)        |
-| Security    | Env var allowlist                   | HTML parsing (low priority)          |
-| Performance | Periodic flush, conversation limits | No backpressure (low priority)       |
-| Fragile     | MCP status, model context windows   | DuckDuckGo dependency (low priority) |
-| Testing     | Security, performance, MCP          | E2E tests (high priority)            |
-
-### Still Pending
-
-| Concern               | Priority | Notes                                         |
-| --------------------- | -------- | --------------------------------------------- |
-| E2E Tests             | High     | Full agent loop tests with real LLM calls     |
-| Backpressure          | Low      | Streaming memory exhaustion prevention        |
-| DuckDuckGo dependency | Low      | Consider official search API                  |
-| Token fallback        | Low      | Inaccurate counting when tiktoken unavailable |
+- **Problem**: Switching providers mid-conversation not well tested
+- **Files**: `src/core/agent.ts`
+- **Impact**: Provider switching may lose context or produce inconsistent results
+- **Fix approach**: Document limitation or add provider affinity options
 
 ---
 
 _Concerns audit: 2026-01-25_
-_Updated: 2026-01-25 (Phase 6 - Additional improvements)_

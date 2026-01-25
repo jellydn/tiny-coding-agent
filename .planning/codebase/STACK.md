@@ -6,91 +6,135 @@
 
 **Primary:**
 
-- TypeScript 5.9.3 - All application code, configuration, and tests
+- TypeScript 5.9.3 - All source code written in TypeScript
+- ES Modules with `type: "module"` in package.json
 
 **Secondary:**
 
-- JavaScript (ESNext) - Generated runtime code via Bun compiler
+- JavaScript (JSX) - React components for CLI UI
+- JSON - Configuration files and data interchange
 
 ## Runtime
 
 **Environment:**
 
-- Bun 1.x (latest) - JavaScript runtime and package manager
-- Node.js compatible - Uses `node:fs/promises`, `node:path`, `node:os`, `node:url` modules
+- Bun 1.x - Runtime and package manager
+  - Installation: `bun install`, `bun run`, `bun test`
+  - Executable: `tiny-agent` (compiled binary via `bun build --compile`)
 
 **Package Manager:**
 
-- Bun (bundled with runtime)
-- Lockfile: `bun.lock` (present)
+- Bun with `bun.lock` lockfile
+- Lockfile version: 1
 
 ## Frameworks
 
 **Core:**
 
-- None - Minimal framework, uses vanilla TypeScript
-- React 19.2.3 - For CLI UI (ink components)
+- React 19.2.3 - UI component library for CLI
+- Ink 6.6.0 - React-based CLI rendering framework
+  - Location: `src/ui/` - All CLI UI components
 
 **Testing:**
 
-- bun:test - Built-in test runner for Bun
-- No assertion library (uses built-in `expect`)
+- bun:test - Built-in test framework
+  - Config: No separate config, uses `bun test` directly
+  - Assertions: `expect()` from bun:test
+  - Fixtures: Co-located with tests in `test/` directory
 
 **Build/Dev:**
 
-- Bun build --compile - Compiles TypeScript to standalone binary (`tiny-agent`)
-- TypeScript 5.9.3 - Type checking (`tsc --noEmit`)
-- oxlint 1.39.0 - Linting
-- oxfmt 0.26.0 - Code formatting
-- husky 9.1.7 - Git hooks
-- bumpp 10.4.0 - Version bumping for releases
+- TypeScript 5.9.3 - Type checking and compilation
+  - Config: `tsconfig.json` with strict mode
+- oxfmt 0.26.0 - Code formatter
+  - Config: `.oxfmtrc.json`
+- oxlint 1.39.0 - Code linter
+  - Config: `.oxlintrc.json` with TypeScript, unicorn, and oxc plugins
 
 ## Key Dependencies
 
-**Critical (LLM Providers):**
+**Critical:**
 
-- `@anthropic-ai/sdk` 0.71.2 - Anthropic Claude API client
-- `openai` 6.16.0 - OpenAI API client (also used by OpenRouter, OpenCode)
-- `ollama` 0.6.3 - Ollama local/remote LLM client
-- `tiktoken` 1.0.15 - Token counting for context management
+| Package             | Version | Purpose                                |
+| ------------------- | ------- | -------------------------------------- |
+| `openai`            | ^6.16.0 | OpenAI API client for GPT models       |
+| `@anthropic-ai/sdk` | ^0.71.2 | Anthropic API client for Claude models |
+| `ollama`            | ^0.6.3  | Ollama client for local LLM inference  |
+| `zod`               | ^4.0.0  | Runtime validation for tool parameters |
+| `tiktoken`          | ^1.0.15 | Token counting for context management  |
 
 **Infrastructure:**
 
-- `@modelcontextprotocol/sdk` 1.25.2 - MCP client for extending tool capabilities
-- `zod` 4.0.0 - Schema validation for tool arguments
-- `yaml` 2.8.2 - YAML configuration file parsing
-- `react` 19.2.3 - React for ink CLI components
-- `ink` 6.6.0 - React-based CLI rendering
-- `ink-box` 2.0.0 - Box styling for ink
-- `ink-spinner` 5.0.0 - Spinner component for ink
+| Package                     | Version | Purpose                             |
+| --------------------------- | ------- | ----------------------------------- |
+| `@modelcontextprotocol/sdk` | ^1.25.2 | MCP client for server communication |
+| `ink`                       | ^6.6.0  | React CLI rendering                 |
+| `ink-box`                   | ^2.0.0  | Box styling for Ink                 |
+| `ink-spinner`               | ^5.0.0  | Spinner component for Ink           |
+| `yaml`                      | ^2.8.2  | YAML config file parsing            |
+
+**Dev Dependencies:**
+
+| Package        | Version | Purpose                      |
+| -------------- | ------- | ---------------------------- |
+| `@types/bun`   | latest  | Bun type definitions         |
+| `@types/react` | ^19.2.8 | React type definitions       |
+| `typescript`   | ^5.9.3  | TypeScript compiler          |
+| `oxlint`       | ^1.39.0 | Linting                      |
+| `oxfmt`        | ^0.26.0 | Formatting                   |
+| `bumpp`        | ^10.4.0 | Version bumping for releases |
+| `husky`        | ^9.1.7  | Git hooks                    |
 
 ## Configuration
 
+**TypeScript:**
+
+- File: `tsconfig.json`
+- Key settings:
+  - `target`: ESNext
+  - `module`: NodeNext
+  - `verbatimModuleSyntax`: true (explicit type imports)
+  - `noUncheckedIndexedAccess`: true
+  - `noImplicitOverride`: true
+  - `jsx`: react-jsx
+  - Path aliases: `@/*` maps to `src/*`
+
+**Linting:**
+
+- File: `.oxlintrc.json`
+- Plugins: unicorn, typescript, oxc
+- Key rules: TypeScript strict rules, best practices from oxc
+
+**Formatting:**
+
+- File: `.oxfmtrc.json`
+- Tool: oxfmt (Oxc formatter)
+
 **Environment:**
 
-- Config file location: `~/.tiny-agent/config.yaml` or `~/.tiny-agent/config.json`
-- Env var overrides: `TINY_AGENT_MODEL`, `TINY_AGENT_SYSTEM_PROMPT`, `TINY_AGENT_CONVERSATION_FILE`, `TINY_AGENT_MEMORY_FILE`, `TINY_AGENT_MAX_CONTEXT_TOKENS`, `TINY_AGENT_MAX_MEMORY_TOKENS`
-- Env var interpolation: `${VAR_NAME}` syntax supported in config
-
-**Build:**
-
-- `tsconfig.json` - TypeScript configuration with strict mode, paths alias `@/*`
-- `tsconfig.json` settings: `verbatimModuleSyntax`, `noUncheckedIndexedAccess`, `noImplicitOverride`
+- Config location: `~/.tiny-agent/config.yaml` (default)
+- Override with: `TINY_AGENT_CONFIG_YAML` or `TINY_AGENT_CONFIG_JSON`
+- Env var overrides:
+  - `TINY_AGENT_MODEL` - Override default model
+  - `TINY_AGENT_SYSTEM_PROMPT` - Override system prompt
+  - `TINY_AGENT_CONVERSATION_FILE` - Conversation history file
+  - `TINY_AGENT_MEMORY_FILE` - Memory file location
+  - `TINY_AGENT_MAX_CONTEXT_TOKENS` - Max context tokens
+  - `TINY_AGENT_MAX_MEMORY_TOKENS` - Max memory tokens
 
 ## Platform Requirements
 
 **Development:**
 
-- Bun 1.x
-- TypeScript 5.x
-- Git
-- npmjs.com account (for publishing)
+- macOS (primary) - Platform-specific binaries in lockfile
+- Node.js compatibility - TypeScript targets NodeNext
+- Git - For version control operations
 
 **Production:**
 
-- Linux/macOS (compiled binary `tiny-agent`)
-- No external runtime dependencies when compiled
-- For source: Bun runtime
+- Binary deployment: `tiny-agent` compiled executable
+- No runtime dependencies (self-contained via Bun compilation)
+- Supports all platforms Bun supports (macOS, Linux, Windows)
 
 ---
 

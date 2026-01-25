@@ -4,228 +4,277 @@
 
 ## Pattern Overview
 
-**Overall:** Event-driven streaming agent architecture with provider abstraction layer
+**Overall:** Event-Driven Tool-Augmented Agent Pattern
+
+The tiny-agent codebase implements an agent architecture where a central `Agent` class orchestrates interactions between:
+
+1. An LLM provider (for text generation and tool calling)
+2. A tool registry (for executing filesystem, shell, and search operations)
+3. Optional memory stores (for persistent context across sessions)
+4. Optional MCP servers (for extended capabilities)
 
 **Key Characteristics:**
 
-- **Async streaming first**: Agent uses `AsyncGenerator` pattern for streaming responses and tool executions
-- **Provider abstraction**: Multiple LLM providers (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode) via factory pattern
-- **Tool registry pattern**: Centralized tool registration and execution with confirmation handling
-- **Modular plugin system**: MCP servers, custom plugins, and skill loading as extensibility points
-- **Context management**: MemoryStore for persistent context, token budgeting, and message truncation
+- **Async Generator Streaming:** The agent uses async generators (`runStream`) to yield chunks progressively, enabling real-time output streaming
+- **Tool Registry Pattern:** All tools are registered via `ToolRegistry` class, which handles execution, dangerous command confirmation, and format conversion (OpenAI/Anthropic)
+- **Provider Factory Pattern:** LLM clients are created via factory function based on model name detection
+- **Memory-Enhanced Context:** Optional long-term memory with token budgeting and relevance-based retrieval
+- **MCP Integration:** MCP servers are dynamically discovered and their tools wrapped with prefix naming (`mcp_servername_toolname`)
 
 ## Layers
 
-**CLI Layer:**
+**CLI/Entry Layer:**
 
-- Purpose: Entry point, command routing, and user interface
-- Location: `src/cli/`
-- Contains: Command handlers, argument parsing, output formatting (Ink/React or plain text)
-- Depends on: Config loader, ToolRegistry, Agent
-- Used by: End users via CLI commands
+- Purpose: Parse command-line arguments, route to appropriate handlers
+- Location: `src/cli/main.tsx`
+- Contains: `main()` function, handlers for commands (`run`, `chat`, `status`, `config`, `memory`, `skill`, `mcp`)
+- Used by: Direct execution via `index.ts`
 
-**Agent Layer:**
+**Core Agent Layer:**
 
-- Purpose: Orchestrate LLM interactions, tool execution, and context management
-- Location: `src/core/`
-- Contains: `Agent.ts` (main orchestrator), `MemoryStore.ts` (persistent context), `ConversationManager.ts` (session history), `tokens.ts` (token counting)
-- Depends on: LLMClient, ToolRegistry, Config, Skills
-- Used by: CLI layer for all agent operations
+- Purpose: Orchestrate the agent loop, manage context, handle tool execution
+- Location: `src/core/agent.ts`
+- Contains: `Agent` class with `runStream()` async generator, memory integration, skill loading
+- Depends on: `LLMClient`, `ToolRegistry`, `MemoryStore`, `ConversationManager`
+- Used by: CLI handlers, tests
 
 **Tool Layer:**
 
-- Purpose: Provide capabilities to the agent via a registry
+- Purpose: Execute operations (filesystem, shell, search, web)
 - Location: `src/tools/`
-- Contains: `ToolRegistry.ts`, built-in tools (file, bash, grep, glob, web search), plugin loader
-- Depends on: Tool interface definition
-- Used by: Agent layer for tool execution
+- Contains: `ToolRegistry`, `Tool` interface, individual tools (`file-tools.ts`, `bash-tool.ts`, `search-tools.ts`, etc.)
+- Depends on: Node.js `fs/promises`, external APIs for web search
+- Used by: `Agent` via `ToolRegistry.executeBatch()`
 
 **Provider Layer:**
 
-- Purpose: Abstract LLM API differences behind a common interface
+- Purpose: Abstract LLM API differences behind unified `LLMClient` interface
 - Location: `src/providers/`
-- Contains: Factory, provider implementations (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode), type definitions
-- Depends on: External SDKs (@anthropic-ai/sdk, openai, ollama)
-- Used by: Agent layer for LLM communication
+- Contains: Provider implementations (`openai.ts`, `anthropic.ts`, `ollama.ts`, `openrouter.ts`, `opencode.ts`), factory (`factory.ts`)
+- Depends on: External SDKs (`openai`, `@anthropic-ai/sdk`, `ollama`)
+- Used by: `Agent` and CLI handlers
+
+**Memory Layer:**
+
+- Purpose: Persistent long-term memory across sessions with token budgeting
+- Location: `src/core/memory.ts`
+- Contains: `MemoryStore` class with file persistence, relevance scoring, LRU eviction
+- Used by: `Agent` for context enhancement
 
 **MCP Integration Layer:**
 
-- Purpose: Integrate with Model Context Protocol servers for extended capabilities
+- Purpose: Connect to Model Context Protocol servers for extended tool sets
 - Location: `src/mcp/`
-- Contains: `McpManager.ts` (server lifecycle), `McpClient.ts` (transport), type definitions
-- Depends on: `@modelcontextprotocol/sdk`
-- Used by: CLI layer to register MCP tools into ToolRegistry
+- Contains: `McpManager` class, `McpClient` class, types
+- Used by: CLI setup in `main.tsx`
 
 **Skills Layer:**
 
-- Purpose: Load and manage agent skills (prompt templates with metadata)
+- Purpose: Discover and load agent skills (reusable prompt templates)
 - Location: `src/skills/`
-- Contains: Skill discovery, parsing, loading, and prompt generation
-- Used by: Agent layer to inject skill prompts into system message
+- Contains: `Skill` types, discovery, parsing, loading, embedded registry
+- Used by: `Agent` during initialization, `skill-tool.ts` for runtime loading
 
-**Config Layer:**
+**Configuration Layer:**
 
-- Purpose: Load and validate configuration
+- Purpose: Load and validate configuration from YAML/JSON files
 - Location: `src/config/`
-- Contains: `Config` schema, YAML loader, validation
-- Depends on: yaml package
-- Used by: All layers for configuration
+- Contains: `loadConfig()`, schema validation, env var interpolation
+- Used by: All layers that need configuration
 
 **UI Layer:**
 
-- Purpose: Interactive chat interface using Ink (React for CLI)
+- Purpose: Render interactive CLI with React/Ink
 - Location: `src/ui/`
-- Contains: React components, contexts, state management
-- Used by: CLI interactive chat mode
+- Contains: `App` component, status line manager, tool output components
+- Used by: Interactive chat mode in `main.tsx`
 
 ## Data Flow
 
-**Agent Execution Flow:**
+**Single Prompt Flow:**
 
-1. CLI receives user input and options (`src/cli/main.tsx`)
-2. Config is loaded (`src/config/loader.ts`)
-3. ToolRegistry is populated with built-in tools, plugins, and MCP tools
-4. Agent is instantiated with LLM client and registry
-5. `Agent.runStream()` is called with user prompt
-6. Agent prepares context:
-   - Loads conversation history
-   - Retrieves relevant memories (if memory enabled)
-   - Calculates token budgets
-   - Truncates if needed
-7. Agent sends request to LLM client (`src/providers/factory.ts`)
-8. LLM responds with streaming chunks containing:
-   - Content fragments (filtered for `<thinking>` tags)
-   - Tool calls
-9. For each tool call:
-   - Agent yields execution status to consumer
-   - ToolRegistry executes tool with confirmation handling
-   - Results are sent back to LLM
-10. Loop continues until LLM responds without tool calls
-11. Agent yields final response and updates conversation history
-12. Memory is saved (if enabled)
+1. **CLI parses args** → `src/cli/main.tsx:handleRun()`
+2. **Load config** → `src/config/loader.ts:loadConfig()`
+3. **Create LLM client** → `src/providers/factory.ts:createProvider()`
+4. **Setup tool registry** → `src/cli/main.tsx:setupTools()`
+   - Registers built-in tools (file, bash, grep, glob, web search)
+   - Loads plugins from `~/.tiny-agent/plugins/`
+   - Connects MCP servers and registers their tools
+5. **Create Agent** → `src/core/agent.ts:Agent` constructor
+   - Initializes memory store if configured
+   - Discovers skills from configured directories
+   - Builds system prompt with skills prompt
+6. **Stream execution** → `agent.runStream(userPrompt, model)`
+   - Builds context (memory + conversation + system)
+   - Streams to LLM client
+   - Yields content chunks + tool execution updates
+   - Executes tools via registry
+   - Loops until LLM returns no tool calls
+7. **Output** → CLI renders to stdout (plain or Ink UI)
+
+**Interactive Chat Flow:**
+
+1. Same steps 1-5 as Single Prompt
+2. **Render React app** → `src/ui/index.ts:renderApp()`
+3. **User types message** → React state updates
+4. **Agent runs** → Same step 6 as Single Prompt
+5. **Update UI** → Status line, tool output, assistant response
+6. **Loop** → Back to step 3
+
+**Memory Retrieval Flow:**
+
+1. `Agent` receives user prompt
+2. `MemoryStore.findRelevant(query, maxResults)` called
+3. Scores memories by keyword match × category multiplier × access frequency
+4. Returns top N memories sorted by score
+5. Memories inserted into system prompt as `## Relevant Memories` section
+6. Token budget enforced: memory context limited to 20% of available content tokens
 
 **State Management:**
 
-- **Conversation**: Managed by `ConversationManager` with optional file persistence
-- **Memory**: `MemoryStore` with JSON file persistence, category-based (user/project/codebase)
-- **Context Budgeting**: Token-based budgeting with system prompt priority, memory budget (20%), conversation budget (80%)
-- **Tool Restrictions**: Skills can restrict which tools are available via `_setSkillRestriction()`
+- **Conversation State:** Managed by `ConversationManager`, persists to JSON file if configured
+- **Memory State:** `MemoryStore` persists to JSON with debounced writes (100ms)
+- **Agent State:** In-memory only during execution, no persistence between runs
+- **MCP State:** Maintained by `McpManager`, connections persist for session lifetime
 
 ## Key Abstractions
 
-**LLMClient Interface:**
-
-- Purpose: Abstract provider-specific API differences
-- Location: `src/providers/types.ts`
-- Interface:
-  ```typescript
-  interface LLMClient {
-    chat(options: ChatOptions): Promise<ChatResponse>;
-    stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>;
-    getCapabilities(model: string): Promise<ModelCapabilities>;
-  }
-  ```
-- Implementations: `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OllamaCloudProvider`, `OpenRouterProvider`, `OpenCodeProvider`
-
 **Tool Interface:**
 
-- Purpose: Define tool contract for the agent
-- Location: `src/tools/types.ts`
-- Interface:
-  ```typescript
-  interface Tool {
-    name: string;
-    description: string;
-    parameters: ToolParameters;
-    dangerous?: ToolDangerLevel;
-    execute(args: Record<string, unknown>): Promise<ToolResult>;
-  }
-  ```
+```typescript
+// src/tools/types.ts
+interface Tool {
+  name: string;
+  description: string;
+  parameters: ToolParameters;
+  dangerous?: ToolDangerLevel;
+  execute(args: Record<string, unknown>): Promise<ToolResult>;
+}
+```
 
-**ToolRegistry:**
+- Purpose: Unified interface for all tool operations
+- Examples: `readFileTool` (`src/tools/file-tools.ts`), `bashTool` (`src/tools/bash-tool.ts`), `grepTool` (`src/tools/search-tools.ts`)
 
-- Purpose: Central registry for tool management and batch execution with confirmation
-- Location: `src/tools/registry.ts`
-- Key methods: `register()`, `executeBatch()`, `toOpenAIFormat()`, `toAnthropicFormat()`
+**LLMClient Interface:**
 
-**McpManager:**
+```typescript
+// src/providers/types.ts
+interface LLMClient {
+  chat(options: ChatOptions): Promise<ChatResponse>;
+  stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown>;
+  getCapabilities(model: string): Promise<ModelCapabilities>;
+}
+```
 
-- Purpose: Manage MCP server lifecycle and tool registration
-- Location: `src/mcp/manager.ts`
-- Key methods: `addServer()`, `getAllTools()`, `createToolFromMcp()`, `getServerStatus()`
+- Purpose: Abstract different LLM APIs behind unified streaming interface
+- Examples: `OpenAIProvider` (`src/providers/openai.ts`), `AnthropicProvider` (`src/providers/anthropic.ts`), `OllamaProvider` (`src/providers/ollama.ts`)
+
+**ToolRegistry Class:**
+
+```typescript
+// src/tools/registry.ts
+class ToolRegistry {
+  register(tool: Tool): void;
+  get(name: string): Tool | undefined;
+  list(): Tool[];
+  execute(name: string, args: Record<string, unknown>): Promise<ToolResult>;
+  executeBatch(calls: Array<{name: string; args: Record<string, unknown>}>): Promise<...>;
+  toOpenAIFormat(): OpenAIFunctionDef[];
+  toAnthropicFormat(): AnthropicToolDef[];
+}
+```
+
+- Purpose: Central registry for all available tools, handles batch execution and format conversion
+- Used by: `Agent` to get tool definitions and execute tools
+
+**MemoryStore Class:**
+
+```typescript
+// src/core/memory.ts
+class MemoryStore {
+  add(content: string, category?: MemoryCategory): Memory;
+  findRelevant(query: string, maxResults?: number): Memory[];
+  list(): Memory[];
+  countTokens(): number;
+  flush(): Promise<void>;
+}
+```
+
+- Purpose: Persistent memory with relevance scoring, token budgeting, and LRU eviction
+- Used by: `Agent` for context enhancement
 
 ## Entry Points
 
 **Primary Entry Point:**
 
 - Location: `index.ts`
-- Triggers: `bun run dev`, `bun run start`, or direct execution
-- Responsibilities: Import and call `main()` from CLI, handle fatal errors
+- Triggers: `bun run dev` or direct execution of compiled binary
+- Responsibilities: Import and invoke `main()` from CLI, handle fatal errors with exit code 1
 
-**CLI Entry Point:**
+**CLI Main:**
 
 - Location: `src/cli/main.tsx`
-- Triggers: CLI command execution
-- Responsibilities: Parse arguments, route to handlers, handle errors
+- Triggers: Called from `index.ts`
+- Responsibilities: Parse args, route to subcommands, setup Agent and run
+- Key handlers:
+  - `handleRun()` - Single prompt execution
+  - `handleInteractiveChat()` - Interactive REPL mode
+  - `handleStatus()` - Show provider/capabilities
+  - `handleMemory()` - Memory management
+  - `handleSkill()` - Skill management
+  - `handleMcp()` - MCP server management
 
-**Command Handlers:**
+**Agent Stream:**
 
-- `handleInteractiveChat()`: Interactive REPL mode with Ink UI
-- `handleRun()`: Single prompt execution with streaming output
-- `handleConfig()`: Display/edit configuration
-- `handleStatus()`: Show provider and model capabilities
-- `handleMemory()`: Manage persistent memories
-- `handleSkill()`: Manage agent skills
-- `handleMcp()`: Manage MCP servers
-
-**Agent Entry Point:**
-
-- Location: `src/core/agent.ts` - `Agent.runStream()`
-- Triggers: CLI handlers
-- Responsibilities: Execute agent loop with LLM and tools
+- Location: `src/core/agent.ts:Agent.runStream()`
+- Triggers: Called by CLI handlers or tests
+- Responsibilities: Main agent loop, context management, tool execution orchestration
+- Returns: `AsyncGenerator<AgentStreamChunk>` for streaming output
 
 ## Error Handling
 
-**Strategy:** Structured result objects, not exceptions for expected failures
+**Strategy:** Return-value based errors (not exceptions) for expected failures
 
 **Patterns:**
 
-- Tool execution returns `{ success: boolean; output?: string; error?: string }`
-- Agent responses use `AgentStreamChunk` with `done` flag
-- Config validation returns array of `ConfigValidationError`
-- Specific error codes: `ENOENT` (file not found), `EACCES` (permission denied)
+- Tools return `{ success: boolean; output?: string; error?: string }` structure
+- Provider methods return typed responses with `finishReason` field
+- Configuration validation returns array of `ConfigValidationError` objects
+- File operations catch Node.js errors and return structured tool results with `code` property (`ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`)
 
-**Confirmation Flow:**
+**Loop Detection:**
 
-- Dangerous tools require user confirmation via callback
-- `ToolRegistry.executeBatch()` filters dangerous calls
-- Confirmation handler returns: `true` (all approved), `false` (all declined), or `{ type: "partial", selectedIndex }`
+- `isLooping()` function in `src/core/agent.ts` detects:
+  - Same tool called 3+ times identically
+  - Same tool family called 5+ times
+  - Any tool called 8+ times in last 10 calls
 
 ## Cross-Cutting Concerns
 
 **Logging:**
 
-- Verbose mode controlled by `--verbose` flag
-- Uses `console.log()` for output
-- Conditional logging throughout agent loop
+- Verbose mode controlled via `verbose` option
+- Console.log for debugging output (wrapped in `if (this._verbose)` checks)
+- No centralized logging framework
 
 **Validation:**
 
-- Config schema in `src/config/schema.ts`
-- Zod for type validation (not actively used in current code)
-- Tool parameters defined as JSON Schema objects
+- Zod for argument validation in tools (e.g., `src/tools/file-tools.ts`)
+- Config schema validation in `src/config/schema.ts`
+- Path validation in `src/tools/file-tools.ts` for security
 
 **Authentication:**
 
-- API keys from environment variables or config file
-- Provider factory validates required credentials
-- Key redaction in verbose output (`key.slice(0,4)...key.slice(-4)`)
+- Environment variable interpolation in config (`${VAR_NAME}` syntax)
+- API keys passed via provider config objects
+- No credential persistence in code
 
-**Streaming:**
+**Security:**
 
-- All LLM responses streamed via `AsyncGenerator`
-- Thinking tags filtered from output
-- Token counting sync (`countTokensSync`) for budgeting decisions
+- `.env` files blocked from reading by file tools
+- Path traversal prevention in file operations
+- Dangerous tool confirmation prompts via `getConfirmationHandler()`
+- MCP tool prefixing (`mcp_servername_toolname`) to avoid conflicts
 
 ---
 

@@ -6,55 +6,53 @@
 
 **Runner:**
 
-- bun:test (built into Bun runtime)
-- Config: No separate config file, uses defaults
-- Version: Bundled with Bun
+- `bun:test` - Built-in test runner in Bun
+- Version: Bundled with Bun runtime
 
 **Assertion Library:**
 
-- bun:test assertions (`expect`, `toBe`, `toEqual`, `toBeDefined`, etc.)
+- `bun:test` built-in assertions
+- Matchers: `expect()`, `toBe()`, `toEqual()`, `toContain()`, `toBeDefined()`, etc.
 
 **Run Commands:**
 
 ```bash
-bun test                    # Run all tests
-bun test <file>             # Run single test file
-bun test <pattern>          # Run tests matching pattern
-bun test:watch              # Watch mode for TDD
+bun test                   # Run all tests
+bun test <file>            # Run single test file
+bun test <pattern>         # Run tests matching pattern
+bun test:watch             # Watch mode for TDD
 ```
 
 ## Test File Organization
 
 **Location:**
 
-- `test/` directory at project root (parallel to `src/`)
-- Mirror `src/` directory structure:
-  - `test/core/` for core module tests
-  - `test/tools/` for tool tests
-  - `test/providers/` for provider tests
-  - `test/skills/` for skills tests
-  - `test/cli/` for CLI tests
-  - `test/ui/` for UI tests
+- Separate `test/` directory at project root
+- Parallel structure to `src/` directory
 
 **Naming:**
 
-- `{module}.test.ts` pattern: `memory.test.ts`, `agent.test.ts`, `file-tools.test.ts`
+- `*.test.ts` - All test files
+- Example: `agent.test.ts`, `file-tools.test.ts`, `memory.test.ts`
 
 **Structure:**
 
 ```
 test/
-  core/
-    agent.test.ts
-    memory.test.ts
-    conversation.test.ts
-  tools/
-    file-tools.test.ts
-    bash-tool.test.ts
-  providers/
-    anthropic.test.ts
-    ollama.test.ts
-  ...
+├── core/
+│   ├── agent.test.ts
+│   ├── conversation.test.ts
+│   └── memory.test.ts
+├── tools/
+│   ├── bash-tool.test.ts
+│   ├── file-tools.test.ts
+│   ├── gitignore.test.ts
+│   └── search-tools.test.ts
+├── security/
+│   ├── command-injection.test.ts
+│   └── file-validation.test.ts
+└── providers/
+    └── anthropic-provider.test.ts
 ```
 
 ## Test Structure
@@ -64,20 +62,14 @@ test/
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-describe("ModuleName", () => {
+describe("Component/Module", () => {
   describe("methodName()", () => {
-    it("should do something", () => {
+    it("should do expected behavior", () => {
       // Test implementation
     });
 
     it("should handle edge case", () => {
-      // Test implementation
-    });
-  });
-
-  describe("anotherMethod()", () => {
-    it("should return expected value", () => {
-      // Test implementation
+      // Edge case test
     });
   });
 });
@@ -85,12 +77,33 @@ describe("ModuleName", () => {
 
 **Patterns:**
 
-- Nested `describe` blocks for methods/features
-- `beforeEach` for setup
-- `afterEach` for cleanup
-- One expectation per test for clarity (not required but preferred)
+**Setup with beforeEach:**
 
-**Example from `test/core/memory.test.ts`:**
+```typescript
+const tempFile = "/tmp/test-file.json";
+
+beforeEach(() => {
+  try {
+    unlinkSync(tempFile);
+  } catch {
+    // Ignore if file doesn't exist
+  }
+});
+```
+
+**Teardown with afterEach:**
+
+```typescript
+afterEach(() => {
+  try {
+    unlinkSync(tempFile);
+  } catch {
+    // Ignore if file doesn't exist
+  }
+});
+```
+
+**Nested Describe Blocks:**
 
 ```typescript
 describe("MemoryStore", () => {
@@ -108,7 +121,7 @@ describe("MemoryStore", () => {
   describe("findRelevant()", () => {
     it("should return memories that match the query", () => {
       const store = new MemoryStore({ filePath: tempFile, maxMemories: 10 });
-      store.add("TypeScript is great", "project");
+      store.add("TypeScript is great");
       const results = store.findRelevant("TypeScript", 2);
       expect(results.length).toBe(2);
     });
@@ -118,10 +131,14 @@ describe("MemoryStore", () => {
 
 ## Mocking
 
-**Framework:** Bun test utilities + manual mock classes
+**Framework:**
 
-**Mock Classes:**
-Implement interfaces or extend base classes:
+- Manual mocks (no external mocking library)
+- Class-based mock implementations
+
+**MockLLMClient Pattern:**
+
+For testing components that depend on `LLMClient`:
 
 ```typescript
 class MockLLMClient implements LLMClient {
@@ -151,10 +168,10 @@ class MockLLMClient implements LLMClient {
 }
 ```
 
-**Tool Mocks:**
-Register mock tools in `ToolRegistry` for testing:
+**Mock Tool Registrations:**
 
 ```typescript
+const registry = new ToolRegistry();
 registry.register({
   name: "read",
   description: "Read a file",
@@ -167,25 +184,52 @@ registry.register({
 });
 ```
 
-**Private Member Access:**
-Use type assertion to access private members for testing:
+**Stream Mocking with State:**
 
 ```typescript
+class ToolCallMockLLMClient implements LLMClient {
+  private callCount = 0;
+
+  async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
+    this.callCount++;
+
+    if (this.callCount === 1) {
+      // First call: try to use a non-existent tool
+      yield {
+        content: "",
+        toolCalls: [
+          {
+            id: "call_123",
+            name: "nonexistent.tool",
+            arguments: { param: "value" },
+          },
+        ],
+        done: false,
+      };
+      yield { done: true };
+    } else {
+      // Second call: provide final answer
+      yield { content: "Final answer", done: false };
+      yield { done: true };
+    }
+  }
+}
+```
+
+**Private Member Access in Tests:**
+
+```typescript
+// Use type assertion to access private members for testing
 const agentPrivate = agent as unknown as {
   _activeSkillAllowedTools: string[] | undefined;
-  _conversationManager: ConversationManager;
-  _getToolDefinitions(): ReturnType<
-    typeof import("./agent.ts").Agent.prototype._getToolDefinitions
-  >;
+  _getToolDefinitions(): ToolDefinition[];
 };
+expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
 ```
 
 ## Fixtures and Factories
 
-**Test Data:**
-
-- Manual creation in tests
-- Helper functions for common setups:
+**Test Data Factories:**
 
 ```typescript
 function createMessages(...contents: string[]): Message[] {
@@ -196,76 +240,33 @@ function createMessages(...contents: string[]): Message[] {
 }
 ```
 
-**Temporary Files:**
+**Location:**
 
-- Use `/tmp/` for temp file tests
-- Clean up in `beforeEach` and `afterEach`:
+- Inline in test files for test-specific helpers
+- Exported from source modules for shared utilities
+
+**Temporary Files:**
 
 ```typescript
 const tempFile = "/tmp/test-memory-store.json";
-
-beforeEach(() => {
-  try {
-    unlinkSync(tempFile);
-  } catch {
-    // Ignore if file doesn't exist
-  }
-});
-
-afterEach(() => {
-  try {
-    unlinkSync(tempFile);
-  } catch {
-    // Ignore if file doesn't exist
-  }
-});
+const tempConversationFile = "/tmp/test-agent-conversation.json";
 ```
-
-## Coverage
-
-**Requirements:** None explicitly enforced
-
-**View Coverage:**
-
-```bash
-bun test --coverage  # Note: Check if supported by bun version
-```
-
-**Note:** No coverage threshold is currently enforced in the project.
-
-## Test Types
-
-**Unit Tests:**
-
-- Test individual classes and functions in isolation
-- Mock external dependencies (LLM clients, file system)
-- Example: `test/core/memory.test.ts` tests `MemoryStore` class
-
-**Integration Tests:**
-
-- Test tool registry and tool execution
-- Example: `test/tools/file-tools.test.ts` tests file tool validation
-
-**No E2E Tests:**
-
-- Project does not use Playwright, Cypress, or other E2E frameworks
-- Agent behavior tested via unit/mock tests
 
 ## Common Patterns
 
-**Async Testing:**
+**Async Testing with Generators:**
 
 ```typescript
-it("should load conversation from file when conversationFile is set", async () => {
-  writeFileSync(tempConversationFile, JSON.stringify({ messages: existingConversation }, null, 2));
+it("should maintain conversation history across multiple turns", async () => {
   const llm = new MockLLMClient();
-  const registry = new ToolRegistry();
-  const agent = new Agent(llm, registry, { conversationFile: tempConversationFile });
+  const agent = new Agent(llm, registry);
 
-  for await (const _chunk of agent.runStream("New message", "mock-model")) {
+  for await (const _chunk of agent.runStream("Hello", "mock-model")) {
+    // Consume stream
   }
 
-  expect(history[0]).toEqual({ role: "user", content: "Previous user message" });
+  const history = agent._conversationManager.getHistory();
+  expect(history.length).toBeGreaterThan(0);
 });
 ```
 
@@ -280,39 +281,100 @@ it("should return file not found error for ENOENT", () => {
 });
 ```
 
-**Stream Testing:**
+**Edge Case Testing:**
 
 ```typescript
-async *stream(_options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
-  yield { content: "Mock response", done: false };
-  yield { done: true };
-}
+it("should handle empty input", () => {
+  const store = new MemoryStore({ filePath: tempFile, maxMemories: 10 });
+  store.add("");
+  expect(store.count()).toBe(1);
+});
 ```
 
-## What to Mock
+**Private Member Testing:**
 
-**Mock These:**
+```typescript
+it("should update in-memory history when called", () => {
+  const agent = new Agent(llm, registry);
+  const messages = createMessages("User message", "Assistant response");
 
-- LLM clients (`LLMClient` interface)
-- File system operations (via error injection)
-- External services (APIs, databases)
-- Time-dependent behavior (use controlled mocks)
+  agent._updateConversationHistory(messages);
 
-**Don't Mock:**
+  expect(
+    (
+      agent as unknown as { _conversationManager: ConversationManager }
+    )._conversationManager.getHistory(),
+  ).toEqual(messages);
+});
+```
 
-- Built-in Node.js modules (test directly)
-- Simple utility functions
-- Internal class logic (test the behavior, not implementation)
+## Test Categories
 
-## Key Test Files
+**Unit Tests:**
 
-| File                               | Purpose                            |
-| ---------------------------------- | ---------------------------------- |
-| `test/core/memory.test.ts`         | MemoryStore class tests            |
-| `test/core/agent.test.ts`          | Agent class with mock LLM          |
-| `test/tools/file-tools.test.ts`    | File validation and error handling |
-| `test/providers/anthropic.test.ts` | Anthropic provider tests           |
-| `test/config/loader.test.ts`       | Config loading tests               |
+- Test individual functions and classes in isolation
+- Mock all external dependencies
+- Example: `memory.test.ts`, `file-tools.test.ts`
+
+**Integration Tests:**
+
+- Test multiple components working together
+- Use real file system operations with temp files
+- Example: `agent.test.ts`, `bash-tool.test.ts`
+
+**Security Tests:**
+
+- Test security boundaries and validation
+- Example: `command-injection.test.ts`, `file-validation.test.ts`
+
+## Test Utilities
+
+**File System Helpers:**
+
+```typescript
+import { unlinkSync, writeFileSync } from "node:fs";
+
+beforeEach(() => {
+  try {
+    unlinkSync(tempFile);
+  } catch {
+    // Ignore if file doesn't exist
+  }
+});
+```
+
+**Assertion Patterns:**
+
+- `toBe()` - Strict equality
+- `toEqual()` - Deep equality (objects, arrays)
+- `toContain()` - Array/string contains value
+- `toBeDefined()` - Value is not undefined
+- `toBeGreaterThan()` - Numeric comparison
+- `toBeTruthy()` - Truthy check
+- `toBeInstanceOf()` - Class instance check
+
+## Coverage
+
+**Requirements:**
+
+- Not explicitly enforced in configuration
+- Manual coverage awareness during development
+
+**View Coverage:**
+
+```bash
+bun test --coverage  # Not currently configured
+```
+
+## Best Practices Observed
+
+1. **Test file location**: Parallel structure to `src/` in `test/` directory
+2. **Cleanup**: Always clean up temp files in `beforeEach`/`afterEach`
+3. **Descriptive names**: Test names describe behavior, not implementation
+4. **Isolated tests**: Each test should be independent
+5. **Mock patterns**: Manual mocks for clean, type-safe testing
+6. **Edge cases**: Test boundary conditions and error paths
+7. **Private access**: Use type assertions for testing private members when needed
 
 ---
 
