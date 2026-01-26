@@ -57,3 +57,27 @@ Started: Mon Jan 26 08:10:48 +08 2026
   - Patterns discovered: ToolRegistry.execute() should be used instead of calling tool.execute() directly to avoid TypeScript type issues with ToolParameters schema
   - Gotchas encountered: The Tool interface's execute function takes Record<string, unknown> but the parameters schema causes type inference issues; using ToolRegistry bypasses this
   - Useful context: The glob tool requires a ToolRegistry wrapper for proper type handling in agent code
+
+## Mon Jan 26 11:30:00 +08 2026 - US-005
+- Created src/agents/build-agent.ts with buildAgent(plan, options) function
+- Implemented parsePlanToSteps() to parse plan markdown and extract build steps
+- Added interactive confirmation for dangerous operations (file creation, deletion, large refactors)
+- Implemented executeBuildAction() with support for create, modify, delete, and execute operations
+- Added checkGitignore() to respect .gitignore when creating artifacts
+- Implemented dry-run mode to preview changes without executing
+- Added error handling with retry/skip/abort options
+- Created unit tests in src/agents/build-agent.test.ts (14 tests)
+- Updated src/cli/handlers/agent.ts to use build agent
+- Updated src/cli/handlers/agent.test.ts with new tests for build command
+- All tests pass (811 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: Regex match results need explicit null checks (match[1], match[2] can be undefined)
+  - Gotchas encountered: Switch case variable declarations can leak to other cases - wrap switch in block `{}` or use explicit types
+  - Gotchas encountered: Use existing `findGitignorePatterns` from gitignore.ts instead of implementing custom logic
+  - Useful context: The confirmAction function uses readline interface for user input - tests need mocking for interactive operations
+  - Useful context: Build steps are stored in state.results.build.steps array with status field
+
+---

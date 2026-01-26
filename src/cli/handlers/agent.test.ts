@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import * as buildModule from "../../agents/build-agent.js";
 import * as agentModule from "../../agents/plan-agent.js";
+import * as stateModule from "../../agents/state.js";
 import { handleAgent } from "./agent.js";
 
 describe("handleAgent", () => {
@@ -66,14 +68,90 @@ describe("handleAgent", () => {
 		consoleLogSpy.mockRestore();
 	});
 
-	it("should handle build command", async () => {
+	it("should handle build command with existing state file", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(stateModule, "readStateFile").mockResolvedValue({
+			success: true,
+			data: {
+				metadata: {
+					agentName: "tiny-agent",
+					agentVersion: "1.0.0",
+					invocationTimestamp: new Date().toISOString(),
+					parameters: {},
+				},
+				phase: "plan",
+				taskDescription: "Test task",
+				status: "completed",
+				results: {
+					plan: { plan: "# Test Plan\n\n## Phase 1: Test\n1. Test step" },
+				},
+				errors: [],
+				artifacts: [],
+			},
+		});
+		vi.spyOn(buildModule, "buildAgent").mockResolvedValue({
+			success: true,
+			steps: [],
+		});
+
 		await handleAgent("build", [], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Build command received"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("placeholder"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("State file"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Build completed successfully"));
 
 		consoleLogSpy.mockRestore();
+		consoleErrorSpy.mockRestore();
+	});
+
+	it("should exit with error when build command has no state file", async () => {
+		const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit");
+		});
+		vi.spyOn(stateModule, "readStateFile").mockResolvedValue({
+			success: false,
+			error: "State file not found: /tmp/test-state.json",
+		});
+
+		await expect(handleAgent("build", [], { stateFile: "/tmp/test-state.json" })).rejects.toThrow("exit");
+		expect(processExitSpy).toHaveBeenCalledWith(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Could not read state file"));
+
+		consoleErrorSpy.mockRestore();
+		processExitSpy.mockRestore();
+	});
+
+	it("should exit with error when build command has no plan", async () => {
+		const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit");
+		});
+		vi.spyOn(stateModule, "readStateFile").mockResolvedValue({
+			success: true,
+			data: {
+				metadata: {
+					agentName: "tiny-agent",
+					agentVersion: "1.0.0",
+					invocationTimestamp: new Date().toISOString(),
+					parameters: {},
+				},
+				phase: "plan",
+				taskDescription: "Test task",
+				status: "completed",
+				results: {},
+				errors: [],
+				artifacts: [],
+			},
+		});
+
+		await expect(handleAgent("build", [], { stateFile: "/tmp/test-state.json" })).rejects.toThrow("exit");
+		expect(processExitSpy).toHaveBeenCalledWith(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("No plan found"));
+
+		consoleErrorSpy.mockRestore();
+		processExitSpy.mockRestore();
 	});
 
 	it("should handle explore command with task", async () => {
@@ -98,12 +176,22 @@ describe("handleAgent", () => {
 
 	it("should handle run-plan-build command", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(agentModule, "planAgent").mockResolvedValue({
+			success: true,
+			plan: "# Test Plan\n\n## Phase 1: Test\n1. Test step",
+		});
+		vi.spyOn(buildModule, "buildAgent").mockResolvedValue({
+			success: true,
+			steps: [],
+		});
+
 		await handleAgent("run-plan-build", ["Add user authentication"], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Run plan-build command received"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Add user authentication"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Running plan agent"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Running build agent"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Phase 1/2"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Phase 2/2"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("run-plan-build completed"));
 
 		consoleLogSpy.mockRestore();
 	});
@@ -123,6 +211,30 @@ describe("handleAgent", () => {
 
 	it("should show verbose options when verbose flag is set", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(stateModule, "readStateFile").mockResolvedValue({
+			success: true,
+			data: {
+				metadata: {
+					agentName: "tiny-agent",
+					agentVersion: "1.0.0",
+					invocationTimestamp: new Date().toISOString(),
+					parameters: {},
+				},
+				phase: "plan",
+				taskDescription: "Test task",
+				status: "completed",
+				results: {
+					plan: { plan: "# Test Plan\n\n## Phase 1: Test\n1. Test step" },
+				},
+				errors: [],
+				artifacts: [],
+			},
+		});
+		vi.spyOn(buildModule, "buildAgent").mockResolvedValue({
+			success: true,
+			steps: [],
+		});
+
 		await handleAgent("build", [], { stateFile: "/tmp/test-state.json", verbose: true });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Options:"));
