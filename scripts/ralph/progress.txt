@@ -2,6 +2,15 @@
 Started: Mon Jan 26 08:10:48 +08 2026
 ---
 
+## Codebase Patterns
+- Use `fs.open(path, "wx")` for exclusive file creation to implement file locking
+- Use template literals (backticks) for string concatenation in this codebase
+- Use `bun:test` with `describe`, `it`, `expect` for testing
+- Always prefix unused function parameters with underscore (e.g., `_options?: Options`)
+- Return `{ success: boolean; data?: T; error?: string }` pattern for operations that can fail
+- CLI handlers in `src/cli/handlers/` directory for each command type
+- Use `process.exit(2)` for invalid arguments, `process.exit(1)` for errors
+
 ## Mon Jan 26 08:12:00 +08 2026 - US-001
 [Session: https://opncd.ai/s/NzqM]
 - Created src/agents/types.ts with StateFile interface and all supporting types
@@ -16,3 +25,19 @@ Started: Mon Jan 26 08:10:48 +08 2026
   - Patterns discovered: This codebase uses `export interface` for types, `import type` for type-only imports, `Record<string, unknown>` for flexible object types
   - Gotchas encountered: biome lint requires trailing newlines in JSON files
   - Useful context: The src/agents/ directory is now ready for state.ts and agent implementations
+
+## Mon Jan 26 09:30:00 +08 2026 - US-003
+- Created src/cli/handlers/agent.ts with handler for plan, build, explore, run-plan-build, run-all commands
+- Created src/cli/handlers/state.ts with handler for state show and state clear commands
+- Added --state-file flag to CliOptions in shared.ts
+- Updated main.tsx to dispatch new agent commands
+- Updated showHelp() to document new commands
+- Created unit tests for agent and state handlers
+- All tests pass (786 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: CLI handlers return void and use process.exit() for error codes
+  - Gotchas encountered: biome lint flags unused imports, must remove them
+  - Useful context: New agent commands (plan, build, explore, run-plan-build, run-all) are now registered in main.tsx dispatch
