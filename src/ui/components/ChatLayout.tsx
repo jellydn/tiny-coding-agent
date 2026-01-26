@@ -4,6 +4,8 @@ import { ThinkingTagFilter } from "../../cli/main.js";
 import type { ToolExecution } from "../../core/agent.js";
 import type { SkillMetadata } from "../../skills/types.js";
 import { useStatusLine } from "../contexts/StatusLineContext.js";
+import type { AgentType } from "../types/enums.js";
+import { AgentSwitcher } from "./AgentSwitcher.js";
 import { type Command, CommandMenu } from "./CommandMenu.js";
 import { Header } from "./Header.js";
 import { type ChatMessage, MessageList } from "./MessageList.js";
@@ -41,9 +43,11 @@ interface ChatLayoutProps {
 	onCommandSelect?: (command: Command) => void;
 	onModelSelect?: (modelId: string) => void;
 	onSkillSelect?: (skill: SkillMetadata) => void;
+	onAgentSelect?: (agent: AgentType) => void;
 	inputPlaceholder?: string;
 	inputDisabled?: boolean;
 	showModelPicker?: boolean;
+	showAgentSwitcher?: boolean;
 	enabledProviders?: EnabledProviders;
 	skillItems?: SkillMetadata[];
 	toolExecutions?: ToolExecution[];
@@ -88,9 +92,11 @@ export function ChatLayout({
 	onCommandSelect,
 	onModelSelect,
 	onSkillSelect,
+	onAgentSelect,
 	inputPlaceholder,
 	inputDisabled,
 	showModelPicker = false,
+	showAgentSwitcher = false,
 	enabledProviders,
 	skillItems = [],
 	toolExecutions = [],
@@ -227,7 +233,8 @@ export function ChatLayout({
 							onClose={() => onInputChange("")}
 						/>
 					)}
-					{!showCommandMenu && !showModelPicker && !showSkillPicker && (
+					{showAgentSwitcher && <AgentSwitcher onAgentSelect={onAgentSelect} />}
+					{!showCommandMenu && !showModelPicker && !showSkillPicker && !showAgentSwitcher && (
 						<TextInput
 							onChange={onInputChange}
 							onSubmit={onInputSubmit}

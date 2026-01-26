@@ -8,6 +8,7 @@ interface UseCommandHandlerProps {
 	onAddMessage: (role: MessageRole, content: string) => void;
 	onClearMessages: () => void;
 	onSetShowModelPicker: (show: boolean) => void;
+	onSetShowAgentSwitcher?: (show: boolean) => void;
 	onSetShowToolsPanel?: (show: boolean) => void;
 	onExit: () => void;
 	agent?: Agent;
@@ -18,6 +19,7 @@ export function useCommandHandler({
 	onAddMessage,
 	onClearMessages,
 	onSetShowModelPicker,
+	onSetShowAgentSwitcher,
 	onSetShowToolsPanel,
 	onExit,
 	agent,
@@ -160,6 +162,7 @@ export function useCommandHandler({
   /help    - Show this help
   /clear   - Clear conversation
   /model   - Switch model
+  /agent   - Switch agent
   /tools   - View tool executions
   /mcp     - Show MCP server status
   /memory  - List memories
@@ -169,6 +172,22 @@ export function useCommandHandler({
 					break;
 				case "/model":
 					onSetShowModelPicker(true);
+					break;
+				case "/agent":
+					if (onSetShowAgentSwitcher) {
+						onSetShowAgentSwitcher(true);
+					} else {
+						onAddMessage(
+							MessageRole.ASSISTANT,
+							`Available agents:
+  • Default - General purpose coding assistant
+  • Plan    - Plan and analyze tasks
+  • Build   - Execute code changes
+  • Explore - Read-only code analysis
+
+Use ←/→ to navigate, Enter to select, or Ctrl+1-4 shortcut.`
+						);
+					}
 					break;
 				case "/mcp":
 					handleMcpCommand();
@@ -194,6 +213,7 @@ export function useCommandHandler({
 			onAddMessage,
 			onClearMessages,
 			onSetShowModelPicker,
+			onSetShowAgentSwitcher,
 			onSetShowToolsPanel,
 			onExit,
 			handleSkillCommand,

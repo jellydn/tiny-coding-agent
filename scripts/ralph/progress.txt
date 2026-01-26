@@ -119,3 +119,44 @@ Started: Mon Jan 26 08:10:48 +08 2026
   - Useful context: State file defaults to ".tiny-state.json" if not specified
 
 ---
+
+## Mon Jan 27 2026 - US-010
+[Session: https://opncd.ai/s/session-010]
+- Added AgentType enum to src/ui/types/enums.ts (default, plan, build, explore)
+- Added currentAgent field to StatusLineState in status-line-manager.ts
+- Added setCurrentAgent method to StatusLineManager and StatusLineContext
+- Updated StatusLine.tsx to display current agent with color-coding (blue=plan, green=build, magenta=explore)
+- Added AGENT_CONFIG with labels and colors in constants.ts
+- Updated ChatLayout.tsx to pass currentAgent prop to StatusLine
+- All 826 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-010 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: Use color-coded agent indicators in status bar for clear visual feedback
+  - Gotchas encountered: Don't display agent when it's "default" to keep UI clean
+  - Useful context: Agent display is placed between model and context info in status line
+ ---
+
+## Tue Jan 27 2026 - US-011
+[Session: https://opncd.ai/s/session-011]
+- Created AgentSwitcher.tsx component with tabs: Default, Plan, Build, Explore
+- Added keyboard navigation (←/→ to navigate, Enter to select)
+- Added Ctrl+1/2/3/4 shortcuts for quick agent switching
+- Integrated AgentSwitcher into ChatLayout above input area
+- Added /agent command to command handler
+- Updated App.tsx to manage showAgentSwitcher state
+- Updated ChatContext to handle agent selection messages
+- All 826 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-011 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: useInput hook in Ink handles keyboard events; use state to track selected index for tab navigation
+  - Gotchas encountered: Duplicate import declarations cause TypeScript errors - must ensure clean imports
+  - Useful context: AgentSwitcher uses AGENT_CONFIG from constants.ts for labels and colors
+  - Useful context: Agent switching shows confirmation message and updates status line context
+ ---
+
