@@ -154,6 +154,37 @@
 			"priority": 9,
 			"passes": true,
 			"notes": ""
+		},
+		{
+			"id": "US-010",
+			"title": "Display current agent in chat UI status bar",
+			"description": "As a user, I want to see which agent is currently active in the status bar.",
+			"acceptanceCriteria": [
+				"Add currentAgent field to UI state (default: 'default', options: 'default', 'plan', 'build', 'explore')",
+				"Display current agent name in StatusBar component",
+				"Update status when agent changes",
+				"Style agent indicator distinctly (color-coded per agent type)",
+				"Typecheck passes"
+			],
+			"priority": 10,
+			"passes": true,
+			"notes": ""
+		},
+		{
+			"id": "US-011",
+			"title": "Add agent switcher tab in chat UI",
+			"description": "As a user, I want to switch between agents using tabs in the chat interface.",
+			"acceptanceCriteria": [
+				"Create AgentSwitcher component with tabs: Default, Plan, Build, Explore",
+				"Display tabs above or below the input area",
+				"Highlight currently selected agent tab",
+				"Keyboard shortcut: Ctrl+1/2/3/4 to switch agents",
+				"Switching agent updates currentAgent state and clears/preserves context as appropriate",
+				"Typecheck passes"
+			],
+			"priority": 11,
+			"passes": false,
+			"notes": ""
 		}
 	]
 }
