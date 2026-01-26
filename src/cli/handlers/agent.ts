@@ -1,3 +1,4 @@
+import { planAgent } from "../../agents/plan-agent.js";
 import type { CliOptions } from "../shared.js";
 
 const DEFAULT_STATE_FILE = ".tiny-state.json";
@@ -15,7 +16,21 @@ export async function handleAgent(command: string, args: string[], options: CliO
 			}
 			console.log(`Plan command received: ${taskDescription}`);
 			console.log(`State file: ${stateFile}`);
-			console.log("Plan agent not yet implemented - placeholder");
+
+			const result = await planAgent(taskDescription, {
+				stateFilePath: stateFile,
+				generatePrd: false,
+				verbose: options.verbose,
+			});
+
+			if (!result.success) {
+				console.error(`Error: ${result.error}`);
+				process.exit(1);
+			}
+
+			console.log("\n=== Generated Plan ===");
+			console.log(result.plan);
+			console.log("\nPlan written to state file.");
 			break;
 		}
 		case "build": {

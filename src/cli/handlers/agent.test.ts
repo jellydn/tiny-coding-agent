@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import * as agentModule from "../../agents/plan-agent.js";
 import { handleAgent } from "./agent.js";
 
 describe("handleAgent", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("should exit with error when plan command has no task description", async () => {
 		const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
@@ -46,12 +51,17 @@ describe("handleAgent", () => {
 
 	it("should handle plan command with task description", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(agentModule, "planAgent").mockResolvedValue({
+			success: true,
+			plan: "# Test Plan\n\nTest content",
+		});
+
 		await handleAgent("plan", ["Create a new API"], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Plan command received"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Create a new API"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("State file"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("placeholder"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Generated Plan"));
 
 		consoleLogSpy.mockRestore();
 	});
