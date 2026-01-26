@@ -147,6 +147,7 @@ describe("MemoryStore", () => {
 
 ```
 src/
+  agents/     # Agent system (plan, build, explore agents, state management)
   core/       # Agent loop, memory, tokens
   tools/      # Built-in tools (file, bash, grep, glob, web)
   providers/  # LLM clients (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode)
