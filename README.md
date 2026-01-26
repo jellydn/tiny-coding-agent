@@ -483,6 +483,7 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 008: Memory System
 - 009: Tool Confirmation System
 - 010: Ink CLI Integration
+- 011: Multi-Agent System (Plan/Build/Explore)
 
 ## Development
 

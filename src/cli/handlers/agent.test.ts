@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
 import * as buildModule from "../../agents/build-agent.js";
+import * as exploreModule from "../../agents/explore-agent.js";
 import * as agentModule from "../../agents/plan-agent.js";
 import * as stateModule from "../../agents/state.js";
 import { handleAgent } from "./agent.js";
@@ -156,16 +157,29 @@ describe("handleAgent", () => {
 
 	it("should handle explore command with task", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(exploreModule, "exploreAgent").mockResolvedValue({
+			success: true,
+			findings: "# Analysis Report\n\n## Key Findings\n- Test finding",
+			recommendations: "- Test recommendation",
+			metrics: { fileCount: 100 },
+		});
 		await handleAgent("explore", ["Analyze the auth module"], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Explore command received"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Analyze the auth module"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Exploration Findings"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Exploration results written to state file"));
 
 		consoleLogSpy.mockRestore();
 	});
 
 	it("should handle explore command without task (uses default)", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(exploreModule, "exploreAgent").mockResolvedValue({
+			success: true,
+			findings: "# Analysis Report",
+			metrics: {},
+		});
 		await handleAgent("explore", [], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Explore command received"));
@@ -198,13 +212,27 @@ describe("handleAgent", () => {
 
 	it("should handle run-all command", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(agentModule, "planAgent").mockResolvedValue({
+			success: true,
+			plan: "# Test Plan\n\n## Phase 1: Test\n1. Test step",
+		});
+		vi.spyOn(buildModule, "buildAgent").mockResolvedValue({
+			success: true,
+			steps: [],
+		});
+		vi.spyOn(exploreModule, "exploreAgent").mockResolvedValue({
+			success: true,
+			findings: "# Analysis Report",
+			metrics: {},
+		});
 		await handleAgent("run-all", ["Create a new feature"], { stateFile: "/tmp/test-state.json" });
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Run all command received"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Create a new feature"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Running plan agent"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Running build agent"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Running explore agent"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Phase 1/3"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Phase 2/3"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Phase 3/3"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("run-all completed"));
 
 		consoleLogSpy.mockRestore();
 	});

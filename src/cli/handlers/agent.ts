@@ -1,4 +1,5 @@
 import { buildAgent } from "../../agents/build-agent.js";
+import { exploreAgent } from "../../agents/explore-agent.js";
 import { planAgent } from "../../agents/plan-agent.js";
 import { readStateFile } from "../../agents/state.js";
 import type { CliOptions } from "../shared.js";
@@ -72,7 +73,32 @@ export async function handleAgent(command: string, args: string[], options: CliO
 			const explorationTask = taskDescription || "Explore codebase structure";
 			console.log(`Explore command received: ${explorationTask}`);
 			console.log(`State file: ${stateFile}`);
-			console.log("Explore agent not yet implemented - placeholder");
+
+			const result = await exploreAgent(explorationTask, {
+				stateFilePath: stateFile,
+				depth: "shallow",
+				verbose: options.verbose,
+			});
+
+			if (!result.success) {
+				console.error(`Error: ${result.error}`);
+				process.exit(1);
+			}
+
+			console.log("\n=== Exploration Findings ===");
+			console.log(result.findings);
+
+			if (result.recommendations) {
+				console.log("\n=== Recommendations ===");
+				console.log(result.recommendations);
+			}
+
+			if (result.metrics) {
+				console.log("\n=== Metrics ===");
+				console.log(JSON.stringify(result.metrics, null, 2));
+			}
+
+			console.log("\nExploration results written to state file.");
 			break;
 		}
 		case "run-plan-build": {
@@ -125,10 +151,50 @@ export async function handleAgent(command: string, args: string[], options: CliO
 			}
 			console.log(`Run all command received: ${taskDescription}`);
 			console.log(`State file: ${stateFile}`);
-			console.log("1. Running plan agent...");
-			console.log("2. Running build agent...");
-			console.log("3. Running explore agent...");
-			console.log("Workflow not yet implemented - placeholder");
+
+			console.log("Phase 1/3: Running plan agent...");
+			const planResult = await planAgent(taskDescription, {
+				stateFilePath: stateFile,
+				generatePrd: false,
+				verbose: options.verbose,
+			});
+
+			if (!planResult.success) {
+				console.error(`Plan failed: ${planResult.error}`);
+				process.exit(1);
+			}
+
+			console.log("\nPhase 2/3: Running build agent...");
+			const plan = planResult.plan;
+			if (!plan) {
+				console.error("Error: No plan generated.");
+				process.exit(1);
+			}
+
+			const buildResult = await buildAgent(plan, {
+				stateFilePath: stateFile,
+				dryRun: false,
+				verbose: options.verbose,
+			});
+
+			if (!buildResult.success) {
+				console.error(`Build failed: ${buildResult.error}`);
+				process.exit(1);
+			}
+
+			console.log("\nPhase 3/3: Running explore agent...");
+			const exploreResult = await exploreAgent(taskDescription, {
+				stateFilePath: stateFile,
+				depth: "deep",
+				verbose: options.verbose,
+			});
+
+			if (!exploreResult.success) {
+				console.error(`Explore failed: ${exploreResult.error}`);
+				process.exit(1);
+			}
+
+			console.log("\n✨ run-all completed successfully!");
 			break;
 		}
 		default:
