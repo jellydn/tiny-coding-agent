@@ -9,11 +9,11 @@ interface AgentSwitcherProps {
 	onAgentSelect?: (agent: AgentType) => void;
 }
 
-const AGENTS: { id: AgentType; label: string; shortcut: string }[] = [
-	{ id: "default", label: "Default", shortcut: "1" },
-	{ id: "plan", label: "Plan", shortcut: "2" },
-	{ id: "build", label: "Build", shortcut: "3" },
-	{ id: "explore", label: "Explore", shortcut: "4" },
+const AGENTS: { id: AgentType; label: string }[] = [
+	{ id: "default", label: "Default" },
+	{ id: "plan", label: "Plan" },
+	{ id: "build", label: "Build" },
+	{ id: "explore", label: "Explore" },
 ];
 
 export function AgentSwitcher({ onAgentSelect }: AgentSwitcherProps): React.ReactElement {
@@ -25,18 +25,7 @@ export function AgentSwitcher({ onAgentSelect }: AgentSwitcherProps): React.Reac
 	});
 
 	useInput((_input, key) => {
-		if (key.ctrl && key.return) {
-			const num = parseInt(_input, 10);
-			if (num >= 1 && num <= 4) {
-				const index = num - 1;
-				const agent = AGENTS[index]?.id;
-				if (agent) {
-					setSelectedIndex(index);
-					context.setCurrentAgent(agent);
-					onAgentSelect?.(agent);
-				}
-			}
-		} else if (key.leftArrow) {
+		if (key.leftArrow) {
 			setSelectedIndex((prev) => (prev === 0 ? AGENTS.length - 1 : prev - 1));
 		} else if (key.rightArrow) {
 			setSelectedIndex((prev) => (prev === AGENTS.length - 1 ? 0 : prev + 1));
@@ -53,7 +42,7 @@ export function AgentSwitcher({ onAgentSelect }: AgentSwitcherProps): React.Reac
 		<Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} paddingY={1}>
 			<Box marginBottom={1}>
 				<Text bold color="gray">
-					Agent (←/→ to navigate, Enter to select, Ctrl+1-4)
+					Agent (←/→ to navigate, Enter to select)
 				</Text>
 			</Box>
 			<Box>

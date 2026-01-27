@@ -185,7 +185,7 @@ export function useCommandHandler({
   • Build   - Execute code changes
   • Explore - Read-only code analysis
 
-Use ←/→ to navigate, Enter to select, or Ctrl+1-4 shortcut.`
+Use ←/→ to navigate, Enter to select.`
 						);
 					}
 					break;
