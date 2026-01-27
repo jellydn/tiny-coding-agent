@@ -2,14 +2,22 @@
 Started: Mon Jan 26 08:10:48 +08 2026
 ---
 
-## Codebase Patterns
-- Use `fs.open(path, "wx")` for exclusive file creation to implement file locking
-- Use template literals (backticks) for string concatenation in this codebase
-- Use `bun:test` with `describe`, `it`, `expect` for testing
-- Always prefix unused function parameters with underscore (e.g., `_options?: Options`)
-- Return `{ success: boolean; data?: T; error?: string }` pattern for operations that can fail
-- CLI handlers in `src/cli/handlers/` directory for each command type
-- Use `process.exit(2)` for invalid arguments, `process.exit(1)` for errors
+## Tue Jan 28 2026 - US-012
+[Session: https://opncd.ai/s/session-012]
+- Created src/cli/handlers/plan.ts with plan show, tasks, and todo subcommands
+- Added --json flag support for machine-readable output
+- Updated main.tsx to dispatch plan command and updated help documentation
+- Created src/cli/handlers/plan.test.ts with 12 unit tests
+- All 838 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-012 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: Switch cases with "pending" followed by "default" are flagged as redundant by biome lint - remove the pending case and let default handle it
+  - Gotchas encountered: Build step status only supports "pending", "completed", "failed", "skipped" - not "in_progress" for individual steps
+  - Useful context: The plan handler reads state using readStateFile from src/agents/state.js with ignoreMissing: true option
+  - Useful context: Commands use DEFAULT_STATE_FILE = ".tiny-state.json" if --state-file not specified
 
 ## Mon Jan 26 08:12:00 +08 2026 - US-001
 [Session: https://opncd.ai/s/NzqM]

@@ -1,8 +1,11 @@
 import { useCallback } from "react";
+import { readStateFile } from "../../agents/state.js";
 import type { Agent } from "../../core/agent.js";
 import type { McpManager } from "../../mcp/manager.js";
 import type { Command } from "../components/CommandMenu.js";
 import { MessageRole } from "../types/enums.js";
+
+const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 interface UseCommandHandlerProps {
 	onAddMessage: (role: MessageRole, content: string) => void;
@@ -124,6 +127,77 @@ export function useCommandHandler({
 		onAddMessage(MessageRole.ASSISTANT, `MCP Servers:\n\n${lines}\n\nUse a tool from an MCP server to connect it.`);
 	}, [mcpManager, onAddMessage]);
 
+	const handlePlanCommand = useCallback(
+		async (args: string) => {
+			const subcommand = args.trim().toLowerCase() || "show";
+			const stateFile = DEFAULT_STATE_FILE;
+
+			const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
+
+			if (!stateResult.success || !stateResult.data) {
+				onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
+				return;
+			}
+
+			const state = stateResult.data;
+
+			if (subcommand === "show") {
+				if (state.results?.plan?.plan) {
+					onAddMessage(MessageRole.ASSISTANT, `**Current Plan**\n\n${state.results.plan.plan}`);
+				} else {
+					onAddMessage(
+						MessageRole.ASSISTANT,
+						"No plan found in state file.\n\nRun 'tiny-agent plan <task>' to generate a plan first."
+					);
+				}
+			} else if (subcommand === "tasks") {
+				const steps = state.results?.build?.steps;
+
+				if (!steps || steps.length === 0) {
+					onAddMessage(
+						MessageRole.ASSISTANT,
+						"No tasks found in state file.\n\nRun 'tiny-agent run-plan-build <task>' to generate tasks first."
+					);
+					return;
+				}
+
+				const taskList = steps
+					.map((step) => {
+						const icon = step.status === "completed" ? "✓" : step.status === "failed" ? "✗" : "○";
+						return `  ${icon} **[${step.stepNumber}]** ${step.description}`;
+					})
+					.join("\n");
+
+				const completed = steps.filter((s) => s.status === "completed").length;
+				const pending = steps.filter((s) => s.status === "pending").length;
+				const failed = steps.filter((s) => s.status === "failed").length;
+
+				onAddMessage(
+					MessageRole.ASSISTANT,
+					`**Tasks** (${completed}/${steps.length} completed, ${pending} pending, ${failed} failed)\n\n${taskList}`
+				);
+			} else if (subcommand === "todo") {
+				const steps = state.results?.build?.steps;
+				const pendingSteps = steps?.filter((s) => s.status === "pending") ?? [];
+
+				if (pendingSteps.length === 0) {
+					onAddMessage(MessageRole.ASSISTANT, "No pending tasks. All tasks are completed!");
+					return;
+				}
+
+				const todoList = pendingSteps.map((step) => `  ○ **[${step.stepNumber}]** ${step.description}`).join("\n");
+
+				onAddMessage(MessageRole.ASSISTANT, `**TODO** (${pendingSteps.length} pending)\n\n${todoList}`);
+			} else {
+				onAddMessage(
+					MessageRole.ASSISTANT,
+					`Unknown plan subcommand: ${subcommand}\n\nAvailable: /plan show, /tasks, /todo`
+				);
+			}
+		},
+		[onAddMessage]
+	);
+
 	const handleMemoryCommand = useCallback(() => {
 		if (!agent) {
 			onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
@@ -167,6 +241,9 @@ export function useCommandHandler({
   /mcp     - Show MCP server status
   /memory  - List memories
   /skill   - List skills
+  /plan    - Show current plan
+  /tasks   - List all tasks with status
+  /todo    - Show pending tasks
   /exit    - Exit`
 					);
 					break;
@@ -198,6 +275,11 @@ Use ←/→ to navigate, Enter to select.`
 				case "/memory":
 					handleMemoryCommand();
 					break;
+				case "/plan":
+				case "/tasks":
+				case "/todo":
+					handlePlanCommand(args);
+					break;
 				case "/tools":
 					if (onSetShowToolsPanel) {
 						onSetShowToolsPanel(true);
@@ -219,6 +301,7 @@ Use ←/→ to navigate, Enter to select.`
 			handleSkillCommand,
 			handleMcpCommand,
 			handleMemoryCommand,
+			handlePlanCommand,
 		]
 	);
 
