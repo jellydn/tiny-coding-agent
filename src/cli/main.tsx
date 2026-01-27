@@ -12,6 +12,7 @@ import { handleAgent } from "./handlers/agent.js";
 import { handleConfig } from "./handlers/config.js";
 import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
+import { handlePlan } from "./handlers/plan.js";
 import { handleSkill } from "./handlers/skill.js";
 import { handleState } from "./handlers/state.js";
 import { handleStatus } from "./handlers/status.js";
@@ -508,6 +509,9 @@ USAGE:
     tiny-agent run-all <task>          Run plan, build, and explore in sequence
     tiny-agent state show              Show current state file
     tiny-agent state clear             Clear/reset state file
+    tiny-agent plan show               Show the current plan
+    tiny-agent tasks                   List all tasks with status
+    tiny-agent todo                    Show only pending tasks
 
 COMMANDS:
     memory list                        List all stored memories
@@ -518,7 +522,10 @@ COMMANDS:
     skill show <name>                  Show full skill content
     skill init <name>                  Initialize a new skill
     state show                         Show current state file (JSON)
-    state clear                        Clear/reset state file
+     state clear                        Clear/reset state file
+     plan show                          Show the current plan
+     tasks                              List all tasks with status
+     todo                               Show only pending tasks
 
 OPTIONS:
     --model <model>                    Override default model
@@ -602,10 +609,12 @@ export async function main(): Promise<void> {
 			await handleAgent(command, args, options);
 		} else if (command === "state") {
 			await handleState(config, args, options);
+		} else if (command === "plan") {
+			await handlePlan(config, args, options);
 		} else {
 			console.error(`Unknown command: ${command}`);
 			console.error(
-				"Available commands: chat, run <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state"
+				"Available commands: chat, run <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
 			);
 			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --state-file, --help");
 			process.exit(2);
