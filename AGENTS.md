@@ -7,9 +7,9 @@ bun run dev              # Watch mode
 bun run build            # Compile to binary (outputs tiny-agent)
 bun run generate:skills  # Regenerate embedded skills
 bun run typecheck        # Type check (tsc --noEmit)
-bun run lint             # Lint (oxlint)
+bun run lint             # Lint (biome check)
 bun run lint:fix         # Auto-fix lint issues
-bun run format           # Format code (oxfmt)
+bun run format           # Format code (biome format)
 bun run format:check     # Check formatting only
 bun test                 # Run all tests
 bun test <file>          # Run single test file (e.g., "bun test tools/file.test.ts")

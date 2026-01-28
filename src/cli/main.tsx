@@ -502,6 +502,7 @@ USAGE:
     tiny-agent status                  Show provider and model capabilities
     tiny-agent memory [command]        Manage memories
     tiny-agent skill [command]         Manage skills
+    tiny-agent mcp [command]           Manage MCP servers
     tiny-agent plan <task>             Generate a plan for a task
     tiny-agent build                   Execute the build plan from state file
     tiny-agent explore [task]          Explore and analyze codebase
@@ -521,15 +522,19 @@ COMMANDS:
     skill list                         List all discovered skills
     skill show <name>                  Show full skill content
     skill init <name>                  Initialize a new skill
+    mcp list                           List configured MCP servers
+    mcp add <name> <cmd> [args...]     Add a new MCP server
+    mcp enable <name>                  Enable an MCP server
+    mcp disable <name>                 Disable an MCP server
     state show                         Show current state file (JSON)
-     state clear                        Clear/reset state file
-     plan show                          Show the current plan
-     tasks                              List all tasks with status
-     todo                               Show only pending tasks
+    state clear                        Clear/reset state file
+    plan show                          Show the current plan
+    tasks                              List all tasks with status
+    todo                               Show only pending tasks
 
 OPTIONS:
     --model <model>                    Override default model
-    --provider <provider>              Override provider (openai|anthropic|ollama)
+    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|zai)
     --verbose, -v                      Enable verbose logging
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
@@ -540,6 +545,7 @@ OPTIONS:
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
     --state-file <path>                Path to state file (default: .tiny-state.json)
+    --allow-all, -y                    Auto-approve all tool executions
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -611,6 +617,10 @@ export async function main(): Promise<void> {
 			await handleAgent(command, args, options);
 		} else if (command === "state") {
 			await handleState(config, args, options);
+		} else if (command === "tasks") {
+			await handlePlan(config, ["tasks"], options);
+		} else if (command === "todo") {
+			await handlePlan(config, ["todo"], options);
 		} else {
 			console.error(`Unknown command: ${command}`);
 			console.error(

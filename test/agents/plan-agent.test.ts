@@ -2,11 +2,20 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { globTool, ToolRegistry } from "../../src/tools/index.js";
 import { readStateFile } from "../../src/agents/state.js";
 import type { StateFile } from "../../src/agents/types.js";
+import { globTool, ToolRegistry } from "../../src/tools/index.js";
 
 const DEFAULT_STATE_FILE = "/tmp/test-plan-agent-state.json";
+
+function cleanupStateFiles() {
+	try {
+		unlinkSync(DEFAULT_STATE_FILE);
+	} catch {}
+	try {
+		unlinkSync(`${DEFAULT_STATE_FILE}.lock`);
+	} catch {}
+}
 
 describe("exploreCodebase", () => {
 	it("should return exploration results structure", async () => {
@@ -36,33 +45,8 @@ describe("exploreCodebase", () => {
 });
 
 describe("StateFile structure for plan agent", () => {
-	const tempStateFile = DEFAULT_STATE_FILE;
-
-	beforeEach(() => {
-		try {
-			unlinkSync(tempStateFile);
-		} catch {
-			/* ignore */
-		}
-		try {
-			unlinkSync(`${tempStateFile}.lock`);
-		} catch {
-			/* ignore */
-		}
-	});
-
-	afterEach(() => {
-		try {
-			unlinkSync(tempStateFile);
-		} catch {
-			/* ignore */
-		}
-		try {
-			unlinkSync(`${tempStateFile}.lock`);
-		} catch {
-			/* ignore */
-		}
-	});
+	beforeEach(cleanupStateFiles);
+	afterEach(cleanupStateFiles);
 
 	it("should have correct plan phase in state file", () => {
 		const state: StateFile = {
@@ -107,9 +91,9 @@ describe("StateFile structure for plan agent", () => {
 			artifacts: [],
 		};
 
-		writeFileSync(tempStateFile, JSON.stringify(state, null, 2), "utf-8");
+		writeFileSync(DEFAULT_STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
 
-		const result = await readStateFile(tempStateFile);
+		const result = await readStateFile(DEFAULT_STATE_FILE);
 		expect(result.success).toBe(true);
 		expect(result.data?.phase).toBe("plan");
 		expect(result.data?.results.plan?.plan).toBe(planContent);
@@ -131,7 +115,7 @@ describe("StateFile structure for plan agent", () => {
 			artifacts: [],
 		};
 
-		writeFileSync(tempStateFile, JSON.stringify(existingState, null, 2), "utf-8");
+		writeFileSync(DEFAULT_STATE_FILE, JSON.stringify(existingState, null, 2), "utf-8");
 
 		const updatedState: StateFile = {
 			...existingState,
@@ -141,9 +125,9 @@ describe("StateFile structure for plan agent", () => {
 			},
 		};
 
-		writeFileSync(tempStateFile, JSON.stringify(updatedState, null, 2), "utf-8");
+		writeFileSync(DEFAULT_STATE_FILE, JSON.stringify(updatedState, null, 2), "utf-8");
 
-		const result = await readStateFile(tempStateFile);
+		const result = await readStateFile(DEFAULT_STATE_FILE);
 		expect(result.success).toBe(true);
 		expect(result.data?.status).toBe("completed");
 		expect(result.data?.metadata.agentName).toBe("test-agent");
