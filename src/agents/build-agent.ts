@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { loadConfig } from "../config/loader.js";
-import { createProvider } from "../providers/factory.js";
+import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { findGitignorePatterns, isIgnored } from "../tools/gitignore.js";
 import { fileTools, ToolRegistry } from "../tools/index.js";
@@ -563,9 +563,10 @@ export async function generateBuildActionsFromPlan(
 	verbose?: boolean
 ): Promise<BuildAction[]> {
 	const config = loadConfig();
-	const model = config.defaultModel;
+	const modelString = config.defaultModel;
+	const { model: modelName } = parseModelString(modelString);
 	const client = createProvider({
-		model,
+		model: modelString,
 		provider: undefined,
 		providers: config.providers,
 	});
@@ -597,9 +598,8 @@ Only include actions that are explicitly mentioned in the plan. If a step requir
 	];
 
 	try {
-		const capabilities = await client.getCapabilities(model);
 		const response = await client.chat({
-			model: capabilities.modelName,
+			model: modelName,
 			messages,
 			temperature: 0.2,
 			maxTokens: 8192,

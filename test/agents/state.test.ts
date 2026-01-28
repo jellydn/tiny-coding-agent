@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
-import { readStateFile, writeStateFile } from "./state.js";
-import type { StateFile, StateMetadata } from "./types.js";
+import { readStateFile, writeStateFile } from "../../src/agents/state.js";
+import type { StateFile, StateMetadata } from "../../src/agents/types.js";
 
 function createTestStateFile(overrides: Partial<StateFile> = {}): StateFile {
 	const metadata: StateMetadata = {

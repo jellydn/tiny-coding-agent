@@ -39,3 +39,4 @@ tiny-agent
 .opencode
 .claude/handoffs
 tiny-dev-agent
+.tiny-state.json

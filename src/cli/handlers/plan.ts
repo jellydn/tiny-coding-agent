@@ -9,12 +9,52 @@ interface TaskStatus {
 	status: "pending" | "completed" | "failed" | "skipped";
 }
 
+interface PlanPhase {
+	name: string;
+	tasks: string[];
+}
+
+function extractPhasesFromPlan(planText: string): PlanPhase[] {
+	const phases: PlanPhase[] = [];
+	const lines = planText.split("\n");
+
+	let currentPhase: PlanPhase | null = null;
+
+	for (const line of lines) {
+		const phaseMatch = line.match(/^##\s+(?:Phase\s+\d+[:.]\s*)?(.+)/i);
+		if (phaseMatch) {
+			if (currentPhase) {
+				phases.push(currentPhase);
+			}
+			currentPhase = { name: phaseMatch[1]?.trim() ?? "", tasks: [] };
+			continue;
+		}
+
+		if (currentPhase) {
+			const taskMatch = line.match(/^[-*]\s+\[[ x]\]\s*(.+)/i) || line.match(/^[-*]\s+(.+)/);
+			if (taskMatch?.[1] && !taskMatch[1].startsWith("**")) {
+				currentPhase.tasks.push(taskMatch[1].trim());
+			}
+		}
+	}
+
+	if (currentPhase) {
+		phases.push(currentPhase);
+	}
+
+	return phases;
+}
+
 export async function handlePlan(_config: unknown, args: string[], options: CliOptions): Promise<void> {
 	const stateFile = options.stateFile || DEFAULT_STATE_FILE;
 	const subcommand = args[0];
 
 	if (!subcommand) {
 		console.error("Error: plan command requires a subcommand (show, tasks, todo)");
+		console.error("");
+		console.error("  show   - Display the full plan");
+		console.error("  tasks  - Show build step progress (after running build)");
+		console.error("  todo   - Show pending build steps");
 		process.exit(2);
 	}
 
@@ -27,6 +67,7 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 
 	if (!stateResult.data) {
 		console.error(`No state file found at: ${stateFile}`);
+		console.error("Run 'tiny-agent plan <task>' to generate a plan first.");
 		process.exit(1);
 	}
 
@@ -38,7 +79,7 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 				console.log(JSON.stringify({ plan: state.results.plan.plan }, null, 2));
 			} else {
 				console.log("=".repeat(60));
-				console.log("PLAN");
+				console.log("📋 PLAN");
 				console.log("=".repeat(60));
 				console.log();
 				console.log(state.results.plan.plan);
@@ -65,20 +106,46 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 		}
 
 		if (tasks.length === 0) {
+			if (state.results?.plan?.plan) {
+				const phases = extractPhasesFromPlan(state.results.plan.plan);
+				if (phases.length > 0) {
+					if (options.json) {
+						console.log(JSON.stringify({ phases, source: "plan" }, null, 2));
+					} else {
+						console.log("=".repeat(60));
+						console.log("📋 PLAN PHASES (not yet executed)");
+						console.log("=".repeat(60));
+						console.log();
+
+						for (const phase of phases) {
+							console.log(`📁 ${phase.name}`);
+							for (const task of phase.tasks) {
+								console.log(`   ○ ${task}`);
+							}
+							console.log();
+						}
+
+						console.log("─".repeat(60));
+						console.log("Run 'tiny-agent build' to execute these tasks.");
+					}
+					return;
+				}
+			}
+
 			if (options.json) {
-				console.log(JSON.stringify({ tasks: [], message: "No tasks found in state file" }, null, 2));
+				console.log(JSON.stringify({ tasks: [], message: "No tasks found" }, null, 2));
 			} else {
 				console.log("No tasks found in state file.");
-				console.log("Run 'tiny-agent run-plan-build <task>' to generate tasks first.");
+				console.log("Run 'tiny-agent plan <task>' to generate a plan first.");
 			}
 			return;
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify({ tasks }, null, 2));
+			console.log(JSON.stringify({ tasks, source: "build" }, null, 2));
 		} else {
 			console.log("=".repeat(60));
-			console.log("TASKS");
+			console.log("🔧 BUILD TASKS");
 			console.log("=".repeat(60));
 			console.log();
 
@@ -116,19 +183,52 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 		}
 
 		if (pendingTasks.length === 0) {
+			if (state.results?.plan?.plan) {
+				const phases = extractPhasesFromPlan(state.results.plan.plan);
+				const allTasks = phases.flatMap((p) => p.tasks);
+
+				if (allTasks.length > 0) {
+					if (options.json) {
+						console.log(JSON.stringify({ todos: allTasks, source: "plan" }, null, 2));
+					} else {
+						console.log("=".repeat(60));
+						console.log("📝 TODO (from plan - not yet executed)");
+						console.log("=".repeat(60));
+						console.log();
+
+						let taskNum = 1;
+						for (const phase of phases) {
+							if (phase.tasks.length > 0) {
+								console.log(`📁 ${phase.name}`);
+								for (const task of phase.tasks) {
+									console.log(`   ${taskNum}. ${task}`);
+									taskNum++;
+								}
+								console.log();
+							}
+						}
+
+						console.log("─".repeat(60));
+						console.log(`Total: ${allTasks.length} task${allTasks.length === 1 ? "" : "s"} to do`);
+						console.log("Run 'tiny-agent build' to start executing.");
+					}
+					return;
+				}
+			}
+
 			if (options.json) {
 				console.log(JSON.stringify({ todos: [], message: "No pending tasks" }, null, 2));
 			} else {
-				console.log("No pending tasks. All tasks are completed!");
+				console.log("✓ No pending tasks. All tasks are completed!");
 			}
 			return;
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify({ todos: pendingTasks }, null, 2));
+			console.log(JSON.stringify({ todos: pendingTasks, source: "build" }, null, 2));
 		} else {
 			console.log("=".repeat(60));
-			console.log("TODO");
+			console.log("📝 TODO (pending build steps)");
 			console.log("=".repeat(60));
 			console.log();
 

@@ -605,12 +605,12 @@ export async function main(): Promise<void> {
 			await handleSkill(config, args, options);
 		} else if (command === "mcp") {
 			await handleMcp(args);
+		} else if (command === "plan" && args.length > 0 && ["show", "tasks", "todo"].includes(args[0] ?? "")) {
+			await handlePlan(config, args, options);
 		} else if (["plan", "build", "explore", "run-plan-build", "run-all"].includes(command)) {
 			await handleAgent(command, args, options);
 		} else if (command === "state") {
 			await handleState(config, args, options);
-		} else if (command === "plan") {
-			await handlePlan(config, args, options);
 		} else {
 			console.error(`Unknown command: ${command}`);
 			console.error(

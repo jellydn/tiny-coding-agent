@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { globTool, ToolRegistry } from "../tools/index.js";
-import { readStateFile } from "./state.js";
-import type { StateFile } from "./types.js";
+import { globTool, ToolRegistry } from "../../src/tools/index.js";
+import { readStateFile } from "../../src/agents/state.js";
+import type { StateFile } from "../../src/agents/types.js";
 
 const DEFAULT_STATE_FILE = "/tmp/test-plan-agent-state.json";
 

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import * as buildModule from "../../agents/build-agent.js";
-import * as exploreModule from "../../agents/explore-agent.js";
-import * as agentModule from "../../agents/plan-agent.js";
-import * as stateModule from "../../agents/state.js";
-import { handleAgent } from "./agent.js";
+import * as buildModule from "../../../src/agents/build-agent.js";
+import * as exploreModule from "../../../src/agents/explore-agent.js";
+import * as agentModule from "../../../src/agents/plan-agent.js";
+import * as stateModule from "../../../src/agents/state.js";
+import { handleAgent } from "../../../src/cli/handlers/agent.js";
 
 describe("handleAgent", () => {
 	beforeEach(() => {

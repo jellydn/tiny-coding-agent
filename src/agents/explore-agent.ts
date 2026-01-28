@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { loadConfig } from "../config/loader.js";
-import { createProvider } from "../providers/factory.js";
+import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { fileTools, globTool, grepTool, ToolRegistry } from "../tools/index.js";
 import { readStateFile, writeStateFile } from "./state.js";
@@ -397,7 +397,7 @@ export async function exploreAgent(
 	const cwd = process.cwd();
 
 	try {
-		console.log(`Exploring codebase (${depth} mode)...`);
+		console.log(`📂 Exploring codebase (${depth} mode)...`);
 
 		let codebaseContext: string;
 		if (depth === "shallow") {
@@ -405,33 +405,29 @@ export async function exploreAgent(
 		} else {
 			codebaseContext = await exploreDeep(cwd);
 		}
-
-		if (verbose) {
-			console.log("Codebase exploration complete. Generating analysis with LLM...");
-		}
+		console.log("✓ Codebase exploration complete");
 
 		const config = loadConfig();
-		const model = config.defaultModel;
+		const modelString = config.defaultModel;
+		const { model: modelName } = parseModelString(modelString);
+
+		console.log(`🤖 Generating analysis with ${modelName}...`);
 		const client = createProvider({
-			model,
+			model: modelString,
 			provider: undefined,
 			providers: config.providers,
 		});
 		const messages = createExploreMessages(taskDescription, codebaseContext);
 
-		const capabilities = await client.getCapabilities(model);
 		const response = await client.chat({
-			model: capabilities.modelName,
+			model: modelName,
 			messages,
 			temperature: 0.3,
 			maxTokens: 8192,
 		});
 
 		const findings = response.content;
-
-		if (verbose) {
-			console.log(`Analysis generated (${findings.length} characters)`);
-		}
+		console.log(`✓ Analysis generated (${findings.length} characters)`);
 
 		let recommendations: string | undefined;
 		let metrics: Record<string, number | string> | undefined;

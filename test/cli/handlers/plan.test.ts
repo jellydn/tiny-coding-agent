@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import * as stateModule from "../../agents/state.js";
-import { handlePlan } from "./plan.js";
+import * as stateModule from "../../../src/agents/state.js";
+import { handlePlan } from "../../../src/cli/handlers/plan.js";
 
 describe("handlePlan", () => {
 	beforeEach(() => {

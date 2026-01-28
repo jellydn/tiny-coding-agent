@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type BuildStep, buildAgent, parsePlanToSteps } from "./build-agent.js";
-import { readStateFile } from "./state.js";
-import type { StateFile, StateMetadata } from "./types.js";
+import { type BuildStep, buildAgent, parsePlanToSteps } from "../../src/agents/build-agent.js";
+import { readStateFile } from "../../src/agents/state.js";
+import type { StateFile, StateMetadata } from "../../src/agents/types.js";
 
 function createTestStateFile(overrides: Partial<StateFile> = {}): StateFile {
 	const metadata: StateMetadata = {

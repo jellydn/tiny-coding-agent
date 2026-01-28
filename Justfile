@@ -66,10 +66,12 @@ clean:
 rebuild-dev *ARGS: build-dev
     ./tiny-dev-agent {{ARGS}}
 
-# Install to ~/.local/bin (dev version)
+# Install to ~/.local/bin (dev version) - uses symlink to avoid macOS code signing issues
 install-dev: build-dev
-    cp tiny-dev-agent ~/.local/bin/
+    rm -f ~/.local/bin/tiny-dev-agent
+    ln -s "$(pwd)/tiny-dev-agent" ~/.local/bin/tiny-dev-agent
 
-# Install to ~/.local/bin (production)
+# Install to ~/.local/bin (production) - uses symlink to avoid macOS code signing issues
 install: build
-    cp tiny-agent ~/.local/bin/
+    rm -f ~/.local/bin/tiny-agent
+    ln -s "$(pwd)/tiny-agent" ~/.local/bin/tiny-agent

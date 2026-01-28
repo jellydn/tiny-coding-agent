@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { loadConfig } from "../config/loader.js";
-import { createProvider } from "../providers/factory.js";
+import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { globTool, ToolRegistry } from "../tools/index.js";
 import { readStateFile, writeStateFile } from "./state.js";
@@ -172,35 +172,31 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 	}
 
 	try {
-		console.log("Exploring codebase context...");
+		console.log("📂 Exploring codebase context...");
 		const codebaseContext = await exploreCodebase(taskDescription);
-
-		if (verbose) {
-			console.log("Codebase exploration complete. Generating plan with LLM...");
-		}
+		console.log("✓ Codebase exploration complete");
 
 		const config = loadConfig();
-		const model = config.defaultModel;
+		const modelString = config.defaultModel;
+		const { model: modelName } = parseModelString(modelString);
+
+		console.log(`🤖 Generating plan with ${modelName}...`);
 		const client = createProvider({
-			model,
+			model: modelString,
 			provider: undefined,
 			providers: config.providers,
 		});
 		const messages = createPlanMessages(taskDescription, codebaseContext, generatePrd);
 
-		const capabilities = await client.getCapabilities(model);
 		const response = await client.chat({
-			model: capabilities.modelName,
+			model: modelName,
 			messages,
 			temperature: 0.3,
 			maxTokens: 8192,
 		});
 
 		const plan = response.content;
-
-		if (verbose) {
-			console.log(`Plan generated (${plan.length} characters)`);
-		}
+		console.log(`✓ Plan generated (${plan.length} characters)`);
 
 		let prd: string | undefined;
 		if (generatePrd) {

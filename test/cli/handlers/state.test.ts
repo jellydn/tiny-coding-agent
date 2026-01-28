@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { existsSync, unlinkSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { handleState } from "./state.js";
+import { handleState } from "../../../src/cli/handlers/state.js";
 
 const TEMP_STATE_FILE = `/tmp/test-state-${Date.now()}.json`;
 

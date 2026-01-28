@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { formatArgs, ThinkingTagFilter } from "./main.js";
+import { formatArgs, ThinkingTagFilter } from "../../src/cli/main.js";
 
 // Thinking tag constants - these are the actual strings the filter looks for
 const THINK_START = "<thinking>";
