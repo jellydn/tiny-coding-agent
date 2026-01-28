@@ -16,7 +16,7 @@
 				"Typecheck passes"
 			],
 			"priority": 1,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -33,7 +33,7 @@
 				"Typecheck passes"
 			],
 			"priority": 2,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -50,7 +50,7 @@
 				"Typecheck passes"
 			],
 			"priority": 3,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -69,7 +69,7 @@
 				"Typecheck passes"
 			],
 			"priority": 4,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -87,7 +87,7 @@
 				"Typecheck passes"
 			],
 			"priority": 5,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -105,7 +105,7 @@
 				"Typecheck passes"
 			],
 			"priority": 6,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -121,7 +121,7 @@
 				"Typecheck passes"
 			],
 			"priority": 7,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -137,7 +137,7 @@
 				"Typecheck passes"
 			],
 			"priority": 8,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		},
 		{
@@ -152,72 +152,7 @@
 				"Typecheck passes"
 			],
 			"priority": 9,
-			"passes": true,
-			"notes": ""
-		},
-		{
-			"id": "US-010",
-			"title": "Display current agent in chat UI status bar",
-			"description": "As a user, I want to see which agent is currently active in the status bar.",
-			"acceptanceCriteria": [
-				"Add currentAgent field to UI state (default: 'default', options: 'default', 'plan', 'build', 'explore')",
-				"Display current agent name in StatusBar component",
-				"Update status when agent changes",
-				"Style agent indicator distinctly (color-coded per agent type)",
-				"Typecheck passes"
-			],
-			"priority": 10,
-			"passes": true,
-			"notes": ""
-		},
-		{
-			"id": "US-011",
-			"title": "Add agent switcher tab in chat UI",
-			"description": "As a user, I want to switch between agents using tabs in the chat interface.",
-			"acceptanceCriteria": [
-				"Create AgentSwitcher component with tabs: Default, Plan, Build, Explore",
-				"Display tabs above or below the input area",
-				"Highlight currently selected agent tab",
-				"Use arrow keys and Enter to navigate/select agents",
-				"Switching agent updates currentAgent state and clears/preserves context as appropriate",
-				"Typecheck passes"
-			],
-			"priority": 11,
-			"passes": true,
-			"notes": ""
-		},
-		{
-			"id": "US-012",
-			"title": "Add plan/tasks viewer CLI command",
-			"description": "As a user, I want to view the current plan, tasks, and todos from the state file via CLI.",
-			"acceptanceCriteria": [
-				"Implement tiny-agent plan show [--state-file path] to display the current plan",
-				"Implement tiny-agent tasks [--state-file path] to list all tasks with status (pending/done/failed)",
-				"Implement tiny-agent todo [--state-file path] to show only pending tasks",
-				"Format output with clear task numbering and status indicators",
-				"Support --json flag for machine-readable output",
-				"Show helpful message if no plan exists yet",
-				"Typecheck passes"
-			],
-			"priority": 12,
-			"passes": true,
-			"notes": ""
-		},
-		{
-			"id": "US-013",
-			"title": "Add plan/tasks viewer in chat UI",
-			"description": "As a user, I want to view plan, tasks, and todos within the chat interface using slash commands.",
-			"acceptanceCriteria": [
-				"Implement /plan command to display the current plan in chat",
-				"Implement /tasks command to list all tasks with status indicators (✓ done, ○ pending, ✗ failed)",
-				"Implement /todo command to show only pending tasks",
-				"Display tasks in a formatted, readable box component",
-				"Add commands to /help output",
-				"Show helpful message if no plan exists yet",
-				"Typecheck passes"
-			],
-			"priority": 13,
-			"passes": true,
+			"passes": false,
 			"notes": ""
 		}
 	]

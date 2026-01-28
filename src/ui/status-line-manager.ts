@@ -1,4 +1,5 @@
 import type { StatusLineStatus } from "./contexts/StatusLineContext.js";
+import type { AgentType } from "./types/enums.js";
 
 export interface StatusLineState {
 	status?: StatusLineStatus;
@@ -7,6 +8,7 @@ export interface StatusLineState {
 	tokensMax?: number;
 	tool?: string;
 	mcpServerCount?: number;
+	currentAgent?: AgentType;
 }
 
 type StatusLineListener = (state: StatusLineState) => void;
@@ -71,6 +73,11 @@ class StatusLineManager {
 
 	setMcpServerCount(count?: number): void {
 		this.state.mcpServerCount = count;
+		this.notify();
+	}
+
+	setCurrentAgent(agent?: AgentType): void {
+		this.state.currentAgent = agent;
 		this.notify();
 	}
 
