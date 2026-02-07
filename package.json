@@ -22,7 +22,7 @@
 		"pre": "bun run test && bun run typecheck && bun run lint"
 	},
 	"dependencies": {
-		"@anthropic-ai/sdk": "^0.71.2",
+		"@anthropic-ai/sdk": "^0.74.0",
 		"@modelcontextprotocol/sdk": "^1.25.2",
 		"ink": "^6.6.0",
 		"ink-box": "^2.0.0",
