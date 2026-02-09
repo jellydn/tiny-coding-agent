@@ -176,6 +176,11 @@ export const readFileTool: Tool = {
 
 		const { path: filePath, start_line, end_line } = parsed.data;
 
+		const pathValidation = await validatePath(filePath);
+		if (!pathValidation.valid) {
+			return { success: false, error: pathValidation.error };
+		}
+
 		try {
 			const resolvedPath = path.resolve(filePath);
 			const gitignorePatterns = await findGitignorePatterns(resolvedPath);
