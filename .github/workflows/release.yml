@@ -45,14 +45,16 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: tiny-agent-linux-x64
+            extra-args: "--target=bun-linux-x64"
           - os: ubuntu-latest
             artifact: tiny-agent-linux-arm64
+            extra-args: "--target=bun-linux-arm64"
           - os: macos-latest
             artifact: tiny-agent-darwin-x64
-            extra-args: ""
+            extra-args: "--target=bun-darwin-x64"
           - os: macos-latest
             artifact: tiny-agent-darwin-arm64
-            extra-args: "--arm64"
+            extra-args: "--target=bun-darwin-arm64"
 
     steps:
       - name: Checkout repository
