@@ -54,6 +54,9 @@ format:
 format-check:
     biome format .
 
+# Quick check: lint and type check
+check: lint typecheck
+
 # Run all checks (test, typecheck, lint)
 pre: test check
 
@@ -83,6 +86,3 @@ run *ARGS:
 
 # Full development cycle: clean, install, build, test
 cycle: clean install build test
-
-# Quick check: lint and type check
-check: lint typecheck

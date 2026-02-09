@@ -78,13 +78,14 @@ make check                  # Quick quality check
 just dev                    # Start development mode
 just build                  # Build the project
 just test                   # Run tests
-just test-file src/core/agent.test.ts  # Run specific test
+just test-file test/utils/xml.test.ts  # Run specific test
 just check                  # Quick quality check
 just run --help            # Run built binary with args
 
 # Common workflows
 make clean && make build && make test    # Clean rebuild and test
 just cycle                              # Same thing with just
+just test-file test/utils/xml.test.ts   # Run specific test file
 ```
 
 ## Why Both?
