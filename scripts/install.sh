@@ -71,6 +71,41 @@ if [ -n "$CHECKSUM_URL" ]; then
   fi
 fi
 
+# Verify binary architecture if 'file' command is available
+if command -v file >/dev/null 2>&1; then
+  echo "Verifying binary architecture..."
+  FILE_OUTPUT=$(file "${INSTALL_DIR}/${BINARY_NAME}")
+  
+  case "$ARCH" in
+    arm64)
+      if echo "$FILE_OUTPUT" | grep -q "x86-64\|x86_64"; then
+        echo "Error: Downloaded binary is x86_64, but ARM64 was expected!"
+        echo "File info: $FILE_OUTPUT"
+        rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+        exit 1
+      elif echo "$FILE_OUTPUT" | grep -q "ARM aarch64\|arm64"; then
+        echo "Architecture verified: ARM64 ✓"
+      else
+        echo "Warning: Could not verify architecture from file output:"
+        echo "$FILE_OUTPUT"
+      fi
+      ;;
+    x64)
+      if echo "$FILE_OUTPUT" | grep -q "ARM aarch64\|arm64"; then
+        echo "Error: Downloaded binary is ARM64, but x86_64 was expected!"
+        echo "File info: $FILE_OUTPUT"
+        rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+        exit 1
+      elif echo "$FILE_OUTPUT" | grep -q "x86-64\|x86_64"; then
+        echo "Architecture verified: x86_64 ✓"
+      else
+        echo "Warning: Could not verify architecture from file output:"
+        echo "$FILE_OUTPUT"
+      fi
+      ;;
+  esac
+fi
+
 chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
 echo ""
