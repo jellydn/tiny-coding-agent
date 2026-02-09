@@ -115,16 +115,15 @@ export class MemoryStore {
 
 		this._memories.set(memory.id, memory);
 		const newTime = new Date(memory.lastAccessedAt).getTime();
-		let insertIndex = 0;
+		let insertIndex = this._sortedIds.length;
 		for (let i = 0; i < this._sortedIds.length; i++) {
 			const existingId = this._sortedIds[i];
 			if (!existingId) continue;
 			const existingTime = new Date(this._memories.get(existingId)?.lastAccessedAt ?? "").getTime();
-			if (existingTime >= newTime) {
+			if (existingTime <= newTime) {
 				insertIndex = i;
 				break;
 			}
-			insertIndex = i + 1;
 		}
 		this._sortedIds.splice(insertIndex, 0, memory.id);
 		this._evictIfNeeded();
