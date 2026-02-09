@@ -57,12 +57,12 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 	const capabilities: ModelCapabilities = await llmClient.getCapabilities(model);
 
 	console.log("Model Capabilities:");
-	
+
 	// Show warning if capabilities are not verified from provider API
 	if (capabilities.isVerified === false) {
 		console.log("  ⚠️  Note: Capabilities below are inferred from model registry, not verified by provider API");
 	}
-	
+
 	const capabilityCheck = (_name: string, supported: boolean): string => (supported ? "[✓]" : "[✗]");
 
 	console.log(`${capabilityCheck("Tools", capabilities.supportsTools)} Tools`);
