@@ -1,7 +1,8 @@
 # Tiny Coding Agent Development Tasks
 # Requires: make (usually pre-installed on Unix systems)
 
-.PHONY: help dev generate-skills build test test-watch typecheck lint lint-fix format format-check pre release-patch release-minor release-major install clean run cycle check
+.DEFAULT_GOAL := help
+.PHONY: help dev generate-skills build test test-watch typecheck lint lint-fix format format-check pre release-patch release-minor release-major install clean cycle check
 
 # Default target: show help
 help:
@@ -34,8 +35,8 @@ generate-skills:
 	bun run scripts/generate-embedded-skills.ts
 
 # Build the binary
-build:
-	bun run generate:skills && bun build index.ts --compile --outfile=tiny-agent
+build: generate-skills
+	bun build index.ts --compile --outfile=tiny-agent
 
 # Run all tests
 test:

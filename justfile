@@ -15,8 +15,8 @@ generate-skills:
     bun run scripts/generate-embedded-skills.ts
 
 # Build the binary
-build:
-    bun run generate:skills && bun build index.ts --compile --outfile=tiny-agent
+build: generate-skills
+    bun build index.ts --compile --outfile=tiny-agent
 
 # Run all tests
 test:
