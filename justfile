@@ -55,20 +55,19 @@ format-check:
     biome format .
 
 # Run all checks (test, typecheck, lint)
-pre:
-    bun run test && bun run typecheck && bun run lint
+pre: test check
 
 # Release patch version (bumps x.y.Z)
-release-patch:
-    bun run test && bun run typecheck && bun run lint && bunx bumpp patch --yes
+release-patch: pre
+    bunx bumpp patch --yes
 
 # Release minor version (bumps x.Y.z)
-release-minor:
-    bun run test && bun run typecheck && bun run lint && bunx bumpp minor --yes
+release-minor: pre
+    bunx bumpp minor --yes
 
 # Release major version (bumps X.y.z)
-release-major:
-    bun run test && bun run typecheck && bun run lint && bunx bumpp major --yes
+release-major: pre
+    bunx bumpp major --yes
 
 # Install dependencies
 install:
