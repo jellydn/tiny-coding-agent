@@ -32,7 +32,7 @@ All commands work with both `make` and `just`:
 
 ### Development
 - `make dev` / `just dev` - Run in watch mode
-- `make build` / `just build` - Build the binary
+- `make build` / `just build` - Build the binary (creates `tiny-agent` and `tiny-agent-dev` symlink)
 - `make generate-skills` / `just generate-skills` - Generate embedded skills
 
 ### Testing

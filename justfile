@@ -17,6 +17,7 @@ generate-skills:
 # Build the binary
 build: generate-skills
     bun build index.ts --compile --outfile=tiny-agent
+    ln -sf tiny-agent tiny-agent-dev
 
 # Run all tests
 test:
@@ -78,7 +79,7 @@ install:
 
 # Clean build artifacts
 clean:
-    rm -f tiny-agent
+    rm -f tiny-agent tiny-agent-dev
 
 # Run the built binary
 run *ARGS:
