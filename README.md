@@ -492,6 +492,30 @@ This project follows the [AGENTS.md](https://agents.md/) standard for guiding co
 - TypeScript conventions and code style
 - Testing patterns with bun:test
 
+### Using Make or Just
+
+For easier development, you can use either **Make** (traditional) or **Just** (modern alternative):
+
+**Using Make** (pre-installed on most Unix systems):
+```bash
+make help          # Show all available targets
+make dev           # Run in watch mode
+make build         # Build the binary
+make test          # Run tests
+make check         # Quick check (lint + typecheck)
+```
+
+**Using Just** (install with `cargo install just` or `brew install just`):
+```bash
+just               # List all available recipes
+just dev           # Run in watch mode
+just build         # Build the binary
+just test          # Run tests
+just check         # Quick check (lint + typecheck)
+```
+
+Both provide the same functionality - choose whichever you prefer!
+
 ## License
 
 MIT
