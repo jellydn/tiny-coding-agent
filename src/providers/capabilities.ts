@@ -10,4 +10,6 @@ export interface ModelCapabilities extends ProviderCapabilities {
 	modelName: string;
 	contextWindow?: number;
 	maxOutputTokens?: number;
+	/** Indicates if capabilities were fetched from provider API (true) or are inferred/defaults (false) */
+	isVerified?: boolean;
 }

@@ -286,6 +286,7 @@ export class AnthropicProvider implements LLMClient {
 			supportsThinking: hasThinking,
 			contextWindow: contextWindow ?? 200000,
 			maxOutputTokens: 8192,
+			isVerified: false,
 		};
 
 		this._capabilitiesCache.set(model, capabilities);

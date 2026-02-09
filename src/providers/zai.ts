@@ -222,6 +222,7 @@ export class ZaiProvider implements LLMClient {
 			supportsThinking: hasThinking,
 			contextWindow: modelContextWindow[model] ?? 16385,
 			maxOutputTokens: hasThinking ? 100000 : 4096,
+			isVerified: false,
 		};
 
 		this._capabilitiesCache.set(model, capabilities);
