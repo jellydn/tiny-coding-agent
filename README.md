@@ -516,6 +516,8 @@ just check         # Quick check (lint + typecheck)
 
 Both provide the same functionality - choose whichever you prefer!
 
+For a complete list of commands and more details, see the [Development Tasks Guide](docs/development-tasks.md).
+
 ## License
 
 MIT
