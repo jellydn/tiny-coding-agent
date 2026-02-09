@@ -77,6 +77,8 @@ providers:
   #   apiKey: \${OPENAI_API_KEY}
   # anthropic:
   #   apiKey: \${ANTHROPIC_API_KEY}
+  # opencode:
+  #   apiKey: \${OPENCODE_API_KEY}
 
 # MCP servers for extended capabilities
 mcpServers:

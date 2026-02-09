@@ -260,17 +260,40 @@ providers:
 
 **Available models:**
 
-- `big-pickle` - OpenCode's flagship coding model
-- `claude-opus-4`, `claude-sonnet-4`, `claude-3-5-haiku`
-- `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-nano`
-- `qwen3-coder` - Qwen Coder
-- `kimi-k2`, `kimi-k2-thinking` - Kimi models
+- `opencode/big-pickle` - OpenCode's flagship coding model
+- `opencode/claude-3-5-haiku`
+- `opencode/claude-haiku-4-5`
+- `opencode/claude-opus-4-1`
+- `opencode/claude-opus-4-5`
+- `opencode/claude-opus-4-6`
+- `opencode/claude-sonnet-4`
+- `opencode/claude-sonnet-4-5`
+- `opencode/gemini-3-flash`
+- `opencode/gemini-3-pro`
+- `opencode/glm-4.6`
+- `opencode/glm-4.7`
+- `opencode/gpt-5`
+- `opencode/gpt-5-codex`
+- `opencode/gpt-5-nano`
+- `opencode/gpt-5.1`
+- `opencode/gpt-5.1-codex`
+- `opencode/gpt-5.1-codex-max`
+- `opencode/gpt-5.1-codex-mini`
+- `opencode/gpt-5.2`
+- `opencode/gpt-5.2-codex`
+- `opencode/kimi-k2`
+- `opencode/kimi-k2-thinking`
+- `opencode/kimi-k2.5`
+- `opencode/kimi-k2.5-free`
+- `opencode/minimax-m2.1`
+- `opencode/minimax-m2.1-free`
+- `opencode/trinity-large-preview-free`
 
 **Usage:**
 
 ```bash
-tiny-agent --provider opencode --model big-pickle "fix this bug"
-tiny-agent --provider opencode --model qwen3-coder "write a function"
+tiny-agent --provider opencode --model opencode/big-pickle "fix this bug"
+tiny-agent --provider opencode --model opencode/gpt-5.2-codex "write a function"
 ```
 
 ## CLI Commands
