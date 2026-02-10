@@ -47,8 +47,9 @@ function compareVersions(v1: string, v2: string): number {
 
 function isCompiledBinary(): boolean {
 	// Check if we're running from a compiled Bun binary
-	// Compiled binaries have the executable name in the path
-	return process.execPath.includes("tiny-agent");
+	// Compiled binaries will have the binary name at the end of the path
+	const execPath = process.execPath;
+	return execPath.endsWith("/tiny-agent") || execPath.endsWith("\\tiny-agent") || execPath === "tiny-agent";
 }
 
 async function fetchLatestRelease(): Promise<GitHubRelease> {
