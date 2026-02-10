@@ -67,7 +67,7 @@ function createDefaultConfig(): void {
 # See https://github.com/jellydn/tiny-coding-agent for full docs
 
 # Default model to use
-defaultModel: glm-4.7
+defaultModel: qwen3-coder-next:cloud
 
 # Provider configurations
 providers:
