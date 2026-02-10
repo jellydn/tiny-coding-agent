@@ -260,7 +260,6 @@ providers:
 
 **Available models:**
 
-- `opencode/big-pickle` - OpenCode's flagship coding model
 - `opencode/claude-opus-4-6` - Latest Claude Opus (also: 4-1, 4-5)
 - `opencode/claude-sonnet-4-5` - Latest Claude Sonnet (also: 4)
 - `opencode/claude-haiku-4-5` - Latest Claude Haiku (also: 3-5-haiku)
@@ -274,6 +273,7 @@ providers:
 
 **Free models:**
 
+- `opencode/big-pickle` - OpenCode's flagship coding model
 - `opencode/kimi-k2.5-free`
 - `opencode/minimax-m2.1-free`
 - `opencode/trinity-large-preview-free`
