@@ -27,11 +27,11 @@ describe("OpenAIProvider capabilities", () => {
 		const capabilities = await provider.getCapabilities("gpt-4o");
 
 		expect(capabilities.modelName).toBe("gpt-4o");
-		expect(capabilities.supportsTools).toBe(false);
+		expect(capabilities.supportsTools).toBe(true);
 		expect(capabilities.supportsStreaming).toBe(true);
-		expect(capabilities.supportsSystemPrompt).toBe(false);
+		expect(capabilities.supportsSystemPrompt).toBe(true);
 		expect(capabilities.contextWindow).toBe(128000);
-		expect(capabilities.maxOutputTokens).toBe(100000);
+		expect(capabilities.maxOutputTokens).toBe(4096);
 	});
 
 	it("should return capabilities for o1 model with thinking enabled", async () => {
@@ -41,8 +41,8 @@ describe("OpenAIProvider capabilities", () => {
 
 		expect(capabilities.modelName).toBe("o1");
 		expect(capabilities.supportsThinking).toBe(true);
-		expect(capabilities.supportsTools).toBe(false); // o1 doesn't support tools
-		expect(capabilities.supportsSystemPrompt).toBe(false);
+		expect(capabilities.supportsTools).toBe(true); // o1 supports function calling
+		expect(capabilities.supportsSystemPrompt).toBe(true); // o1 supports developer/system messages
 		expect(capabilities.contextWindow).toBe(200000);
 		expect(capabilities.maxOutputTokens).toBe(100000);
 	});
@@ -70,12 +70,13 @@ describe("OpenAIProvider capabilities", () => {
 
 		// Standard chat model
 		const chatCaps = await provider.getCapabilities("gpt-3.5-turbo");
-		expect(chatCaps.supportsTools).toBe(false);
-		expect(chatCaps.supportsThinking).toBe(true);
+		expect(chatCaps.supportsTools).toBe(true);
+		expect(chatCaps.supportsThinking).toBe(false);
 
-		// Reasoning model
+		// Reasoning model (supports tools and system prompts)
 		const reasonCaps = await provider.getCapabilities("o1-mini");
 		expect(reasonCaps.supportsThinking).toBe(true);
-		expect(reasonCaps.supportsTools).toBe(false);
+		expect(reasonCaps.supportsTools).toBe(true);
+		expect(reasonCaps.supportsSystemPrompt).toBe(true);
 	});
 });

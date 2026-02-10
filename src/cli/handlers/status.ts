@@ -58,14 +58,16 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 
 	console.log("Model Capabilities:");
 
-	// Show warning/info based on capability source
-	if (capabilities.source === "api") {
-		console.log("  ✓ Capabilities verified from provider API");
-	} else if (capabilities.source === "catalog") {
-		console.log("  ℹ️  Capabilities from models.dev catalog (https://models.dev/)");
-	} else if (capabilities.source === "fallback" || capabilities.isVerified === false) {
-		console.log("  ⚠️  Note: Capabilities below are inferred from model registry, not verified by provider API");
-	}
+	const sourceMessages: Record<string, string> = {
+		api: "  ✓ Capabilities verified from provider API",
+		catalog: "  ℹ️  Capabilities from models.dev catalog (https://models.dev/)",
+		fallback: "  ⚠️  Note: Capabilities below are inferred from model registry, not verified by provider API",
+	};
+
+	const source = capabilities.source ?? "fallback";
+	const message = sourceMessages[source];
+
+	if (message) console.log(message);
 
 	const capabilityCheck = (_name: string, supported: boolean): string => (supported ? "[✓]" : "[✗]");
 

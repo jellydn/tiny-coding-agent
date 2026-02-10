@@ -252,11 +252,9 @@ export class AnthropicProvider implements LLMClient {
 	}
 
 	async getCapabilities(model: string): Promise<ModelCapabilities> {
-		// Guard: check cache first
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
-		// Hardcoded values for well-known models
 		const modelContextWindow: Record<string, number> = {
 			"claude-3-5-sonnet-20241022": 200000,
 			"claude-3-5-haiku-20241022": 200000,
@@ -271,7 +269,6 @@ export class AnthropicProvider implements LLMClient {
 		const hasThinking = modelRegistrySupportsThinking(model);
 		const contextWindow = modelContextWindow[model];
 
-		// If this is a well-known model with known context window, use hardcoded values
 		if (contextWindow !== undefined) {
 			const capabilities: ModelCapabilities = {
 				modelName: model,
@@ -290,14 +287,12 @@ export class AnthropicProvider implements LLMClient {
 			return capabilities;
 		}
 
-		// For unknown models, try models.dev catalog
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "anthropic");
 		if (catalogCapabilities) {
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}
 
-		// Final fallback for completely unknown models
 		console.warn(
 			`[WARN] Unknown model "${model}" - using default context window of 200000 tokens. ` +
 				"Context limits may be inaccurate. Consider updating the model registry."

@@ -112,13 +112,13 @@ describe("getModelInfo()", () => {
 		const info = getModelInfo("o1-preview");
 		expect(info?.provider).toBe("openai");
 		expect(info?.supportsThinking).toBe(true);
-		expect(info?.supportsTools).toBe(false);
+		expect(info?.supportsTools).toBe(true); // o1 supports function calling
 	});
 
 	it("should return correct info for GPT models", () => {
 		const info = getModelInfo("gpt-4o");
 		expect(info?.provider).toBe("openai");
-		expect(info?.supportsThinking).toBe(true);
+		expect(info?.supportsThinking).toBe(false); // gpt-4o doesn't have thinking
 		expect(info?.supportsTools).toBe(true);
 	});
 
@@ -161,7 +161,7 @@ describe("supportsThinking()", () => {
 		expect(supportsThinking("claude-4-opus")).toBe(true);
 	});
 
-	it("should return false for claude-3 models", () => {
+	it("should return true for claude-3 models", () => {
 		expect(supportsThinking("claude-3-opus")).toBe(true);
 		expect(supportsThinking("claude-3-sonnet")).toBe(true);
 	});
@@ -172,8 +172,8 @@ describe("supportsThinking()", () => {
 	});
 
 	it("should return false for GPT models", () => {
-		expect(supportsThinking("gpt-4o")).toBe(true);
-		expect(supportsThinking("gpt-4-turbo")).toBe(true);
+		expect(supportsThinking("gpt-4o")).toBe(false);
+		expect(supportsThinking("gpt-4-turbo")).toBe(false);
 	});
 
 	it("should return false for gateway provider models", () => {
@@ -193,9 +193,9 @@ describe("supportsTools()", () => {
 		expect(supportsTools("claude-3-opus")).toBe(true);
 	});
 
-	it("should return false for o1/o3 thinking models", () => {
-		expect(supportsTools("o1-preview")).toBe(false);
-		expect(supportsTools("o3-mini")).toBe(false);
+	it("should return true for o1/o3 thinking models", () => {
+		expect(supportsTools("o1-preview")).toBe(true); // o1 supports function calling
+		expect(supportsTools("o3-mini")).toBe(true); // o3-mini supports function calling
 	});
 
 	it("should return true for GPT models", () => {

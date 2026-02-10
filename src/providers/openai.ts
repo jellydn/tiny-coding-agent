@@ -197,11 +197,9 @@ export class OpenAIProvider implements LLMClient {
 	}
 
 	async getCapabilities(model: string): Promise<ModelCapabilities> {
-		// Guard: check cache first
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
-		// Hardcoded values for well-known models (verified manually)
 		const modelContextWindow: Record<string, number> = {
 			"gpt-4o": 128000,
 			"gpt-4o-mini": 128000,
@@ -216,13 +214,12 @@ export class OpenAIProvider implements LLMClient {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
-		// If this is a well-known model with hardcoded values, use those
 		if (model in modelContextWindow) {
 			const capabilities: ModelCapabilities = {
 				modelName: model,
-				supportsTools: !hasThinking,
+				supportsTools: true,
 				supportsStreaming: true,
-				supportsSystemPrompt: !hasThinking,
+				supportsSystemPrompt: true,
 				supportsToolStreaming: !hasThinking,
 				supportsThinking: hasThinking,
 				contextWindow: modelContextWindow[model],
@@ -235,14 +232,12 @@ export class OpenAIProvider implements LLMClient {
 			return capabilities;
 		}
 
-		// For unknown models, try models.dev catalog
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openai");
 		if (catalogCapabilities) {
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}
 
-		// Final fallback for completely unknown models
 		const capabilities: ModelCapabilities = {
 			modelName: model,
 			supportsTools: true,

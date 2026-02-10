@@ -200,14 +200,12 @@ export class ZaiProvider implements LLMClient {
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
-		// For Z.AI models, prioritize models.dev catalog (as requested by user feedback)
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "zai");
 		if (catalogCapabilities) {
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}
 
-		// Fallback to hardcoded values for models not in catalog
 		const modelContextWindow: Record<string, number> = {
 			"glm-4.7": 128000,
 			"glm-4-plus": 128000,
@@ -222,7 +220,6 @@ export class ZaiProvider implements LLMClient {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
-		// Z.AI GLM models support BOTH thinking and tools (per model-registry line 92-93)
 		const capabilities: ModelCapabilities = {
 			modelName: model,
 			supportsTools: true,
