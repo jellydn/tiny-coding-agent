@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
+import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
 
 export interface OpenAIProviderConfig {
@@ -200,6 +201,7 @@ export class OpenAIProvider implements LLMClient {
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
+		// Hardcoded values for well-known models (verified manually)
 		const modelContextWindow: Record<string, number> = {
 			"gpt-4o": 128000,
 			"gpt-4o-mini": 128000,
@@ -214,16 +216,45 @@ export class OpenAIProvider implements LLMClient {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
+		// If this is a well-known model with hardcoded values, use those
+		if (model in modelContextWindow || hasThinking) {
+			const capabilities: ModelCapabilities = {
+				modelName: model,
+				supportsTools: !hasThinking,
+				supportsStreaming: true,
+				supportsSystemPrompt: !hasThinking,
+				supportsToolStreaming: !hasThinking,
+				supportsThinking: hasThinking,
+				contextWindow: modelContextWindow[model] ?? 16385,
+				maxOutputTokens: hasThinking ? 100000 : 4096,
+				isVerified: false,
+				source: "fallback",
+			};
+
+			this._capabilitiesCache.set(model, capabilities);
+			return capabilities;
+		}
+
+		// For unknown models, try models.dev catalog
+		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openai");
+		if (catalogCapabilities) {
+			catalogCapabilities.isVerified = false; // From catalog, not API-verified
+			this._capabilitiesCache.set(model, catalogCapabilities);
+			return catalogCapabilities;
+		}
+
+		// Final fallback for completely unknown models
 		const capabilities: ModelCapabilities = {
 			modelName: model,
-			supportsTools: !hasThinking,
+			supportsTools: true,
 			supportsStreaming: true,
-			supportsSystemPrompt: !hasThinking,
-			supportsToolStreaming: !hasThinking,
-			supportsThinking: hasThinking,
-			contextWindow: modelContextWindow[model] ?? 16385,
-			maxOutputTokens: hasThinking ? 100000 : 4096,
+			supportsSystemPrompt: true,
+			supportsToolStreaming: true,
+			supportsThinking: false,
+			contextWindow: 16385,
+			maxOutputTokens: 4096,
 			isVerified: false,
+			source: "fallback",
 		};
 
 		this._capabilitiesCache.set(model, capabilities);

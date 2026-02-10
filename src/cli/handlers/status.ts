@@ -58,8 +58,12 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 
 	console.log("Model Capabilities:");
 
-	// Show warning if capabilities are not verified from provider API
-	if (capabilities.isVerified === false) {
+	// Show warning/info based on capability source
+	if (capabilities.source === "api") {
+		console.log("  ✓ Capabilities verified from provider API");
+	} else if (capabilities.source === "catalog") {
+		console.log("  ℹ️  Capabilities from models.dev catalog (https://models.dev/)");
+	} else if (capabilities.source === "fallback" || capabilities.isVerified === false) {
 		console.log("  ⚠️  Note: Capabilities below are inferred from model registry, not verified by provider API");
 	}
 
