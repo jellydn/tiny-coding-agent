@@ -39,3 +39,7 @@ tiny-agent-dev
 
 .opencode
 .claude/handoffs
+
+# auto-generated files
+src/utils/version-constant.ts
+src/skills/embedded-content.ts

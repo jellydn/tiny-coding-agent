@@ -13,6 +13,7 @@ export interface CliOptions {
 	verbose?: boolean;
 	save?: boolean;
 	help?: boolean;
+	upgrade?: boolean;
 	noMemory?: boolean;
 	noTrackContext?: boolean;
 	noStatus?: boolean;
@@ -40,6 +41,9 @@ export function parseArgs(args: string[] = process.argv.slice(2)): ParsedArgs {
 			case "--help":
 			case "-h":
 				options.help = true;
+				break;
+			case "--upgrade":
+				options.upgrade = true;
 				break;
 			case "--model":
 				options.model = args[++i];
