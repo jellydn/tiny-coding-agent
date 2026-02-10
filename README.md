@@ -261,31 +261,20 @@ providers:
 **Available models:**
 
 - `opencode/big-pickle` - OpenCode's flagship coding model
-- `opencode/claude-3-5-haiku`
-- `opencode/claude-haiku-4-5`
-- `opencode/claude-opus-4-1`
-- `opencode/claude-opus-4-5`
-- `opencode/claude-opus-4-6`
-- `opencode/claude-sonnet-4`
-- `opencode/claude-sonnet-4-5`
-- `opencode/gemini-3-flash`
-- `opencode/gemini-3-pro`
-- `opencode/glm-4.6`
-- `opencode/glm-4.7`
-- `opencode/gpt-5`
-- `opencode/gpt-5-codex`
-- `opencode/gpt-5-nano`
-- `opencode/gpt-5.1`
-- `opencode/gpt-5.1-codex`
-- `opencode/gpt-5.1-codex-max`
-- `opencode/gpt-5.1-codex-mini`
-- `opencode/gpt-5.2`
-- `opencode/gpt-5.2-codex`
-- `opencode/kimi-k2`
-- `opencode/kimi-k2-thinking`
-- `opencode/kimi-k2.5`
+- `opencode/claude-opus-4-6` - Latest Claude Opus (also: 4-1, 4-5)
+- `opencode/claude-sonnet-4-5` - Latest Claude Sonnet (also: 4)
+- `opencode/claude-haiku-4-5` - Latest Claude Haiku (also: 3-5-haiku)
+- `opencode/gemini-3-pro` - Latest Gemini (also: 3-flash)
+- `opencode/glm-4.7` - Latest GLM (also: 4.6)
+- `opencode/gpt-5.2-codex` - Latest GPT-5.2 Codex (also: gpt-5.2)
+- `opencode/gpt-5.1-codex-max` - Latest GPT-5.1 (also: codex, codex-mini, gpt-5.1)
+- `opencode/gpt-5-codex` - Latest GPT-5 (also: gpt-5, gpt-5-nano)
+- `opencode/kimi-k2.5` - Latest Kimi (also: k2, k2-thinking)
+- `opencode/minimax-m2.1` - Latest Minimax
+
+**Free models:**
+
 - `opencode/kimi-k2.5-free`
-- `opencode/minimax-m2.1`
 - `opencode/minimax-m2.1-free`
 - `opencode/trinity-large-preview-free`
 
