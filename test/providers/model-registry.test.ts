@@ -63,6 +63,10 @@ describe("detectProvider()", () => {
 			expect(detectProvider("opencode/gpt-5.2-codex")).toBe("opencode");
 			expect(detectProvider("opencode/claude-sonnet-4-5")).toBe("opencode");
 			expect(detectProvider("opencode/kimi-k2")).toBe("opencode");
+			expect(detectProvider("opencode/big-pickle")).toBe("opencode");
+			expect(detectProvider("opencode/gemini-3-flash")).toBe("opencode");
+			expect(detectProvider("opencode/minimax-m2.1")).toBe("opencode");
+			expect(detectProvider("opencode/trinity-large-preview-free")).toBe("opencode");
 		});
 	});
 
