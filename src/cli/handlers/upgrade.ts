@@ -1,4 +1,4 @@
-import { chmod, rename, writeFile } from "node:fs/promises";
+import { chmod, rename, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getVersion } from "../../utils/version.js";
@@ -32,8 +32,31 @@ function getPlatformBinaryName(): string {
 	throw new Error(`Unsupported platform: ${platform}-${arch}`);
 }
 
+function compareVersions(v1: string, v2: string): number {
+	const parts1 = v1.split(".").map(Number);
+	const parts2 = v2.split(".").map(Number);
+
+	for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+		const p1 = parts1[i] ?? 0;
+		const p2 = parts2[i] ?? 0;
+		if (p1 > p2) return 1;
+		if (p1 < p2) return -1;
+	}
+	return 0;
+}
+
+function isCompiledBinary(): boolean {
+	// Check if we're running from a compiled Bun binary
+	// Compiled binaries have the executable name in the path
+	return process.execPath.includes("tiny-agent");
+}
+
 async function fetchLatestRelease(): Promise<GitHubRelease> {
-	const response = await fetch("https://api.github.com/repos/jellydn/tiny-coding-agent/releases/latest");
+	const response = await fetch("https://api.github.com/repos/jellydn/tiny-coding-agent/releases/latest", {
+		headers: {
+			"User-Agent": `tiny-agent/${getVersion()}`,
+		},
+	});
 
 	if (!response.ok) {
 		if (response.status === 403 || response.status === 429) {
@@ -62,6 +85,14 @@ async function downloadBinary(url: string, outputPath: string): Promise<void> {
 export async function handleUpgrade(): Promise<void> {
 	const currentVersion = getVersion();
 	console.log(`Current version: ${currentVersion}`);
+
+	// Check if running from a compiled binary
+	if (!isCompiledBinary()) {
+		console.error("\n✗ Upgrade is only supported when running from a compiled binary.");
+		console.error("Please build the binary with 'bun run build' or download a release from GitHub.");
+		process.exit(1);
+	}
+
 	console.log("Checking for updates...\n");
 
 	try {
@@ -70,7 +101,9 @@ export async function handleUpgrade(): Promise<void> {
 
 		console.log(`Latest version: ${latestVersion}`);
 
-		if (currentVersion === latestVersion) {
+		// Use semantic version comparison
+		const comparison = compareVersions(currentVersion, latestVersion);
+		if (comparison >= 0) {
 			console.log("✓ You are already on the latest version!");
 			process.exit(0);
 		}
@@ -97,10 +130,13 @@ export async function handleUpgrade(): Promise<void> {
 
 		try {
 			await rename(tempFile, currentBinary);
+			// Clean up backup file after successful upgrade
+			await unlink(backupFile);
 			console.log("\n✓ Successfully upgraded to version", latestVersion);
 			console.log("Please restart tiny-agent to use the new version.");
 			process.exit(0);
 		} catch (err) {
+			// Restore backup if upgrade fails
 			await rename(backupFile, currentBinary);
 			throw err;
 		}
