@@ -271,16 +271,8 @@ export class AnthropicProvider implements LLMClient {
 		const hasThinking = modelRegistrySupportsThinking(model);
 		const contextWindow = modelContextWindow[model];
 
-		// If this is a well-known model with hardcoded values, use those
-		if (contextWindow || hasThinking) {
-			// Warn for unknown models with hardcoded fallback
-			if (!contextWindow) {
-				console.warn(
-					`[WARN] Unknown model "${model}" - using default context window of 200000 tokens. ` +
-						"Context limits may be inaccurate. Consider updating the model registry."
-				);
-			}
-
+		// If this is a well-known model with known context window, use hardcoded values
+		if (contextWindow !== undefined) {
 			const capabilities: ModelCapabilities = {
 				modelName: model,
 				supportsTools: true,
@@ -288,7 +280,7 @@ export class AnthropicProvider implements LLMClient {
 				supportsSystemPrompt: true,
 				supportsToolStreaming: true,
 				supportsThinking: hasThinking,
-				contextWindow: contextWindow ?? 200000,
+				contextWindow: contextWindow,
 				maxOutputTokens: 8192,
 				isVerified: false,
 				source: "fallback",
@@ -301,7 +293,6 @@ export class AnthropicProvider implements LLMClient {
 		// For unknown models, try models.dev catalog
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "anthropic");
 		if (catalogCapabilities) {
-			catalogCapabilities.isVerified = false; // From catalog, not API-verified
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}

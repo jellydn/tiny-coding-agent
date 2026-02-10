@@ -203,7 +203,6 @@ export class ZaiProvider implements LLMClient {
 		// For Z.AI models, prioritize models.dev catalog (as requested by user feedback)
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "zai");
 		if (catalogCapabilities) {
-			catalogCapabilities.isVerified = false; // From catalog, not API-verified
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}

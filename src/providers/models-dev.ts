@@ -65,9 +65,9 @@ export function getModelCapabilitiesFromCatalog(model: string, providerType: str
 		supportsSystemPrompt: !modelData.reasoning, // Reasoning models often don't support system prompts
 		supportsToolStreaming: modelData.tool_call ?? false,
 		supportsThinking: modelData.reasoning ?? false,
-		contextWindow: modelData.limit?.context,
-		maxOutputTokens: modelData.limit?.output,
-		isVerified: undefined, // Will be set by caller based on source
+		contextWindow: modelData.limit?.context ?? 16385, // Default fallback
+		maxOutputTokens: modelData.limit?.output ?? 4096, // Default fallback
+		isVerified: false, // Catalog data is not API-verified
 		source: "catalog",
 	};
 

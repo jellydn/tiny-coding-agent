@@ -217,7 +217,7 @@ export class OpenAIProvider implements LLMClient {
 		const hasThinking = modelRegistrySupportsThinking(model);
 
 		// If this is a well-known model with hardcoded values, use those
-		if (model in modelContextWindow || hasThinking) {
+		if (model in modelContextWindow) {
 			const capabilities: ModelCapabilities = {
 				modelName: model,
 				supportsTools: !hasThinking,
@@ -225,7 +225,7 @@ export class OpenAIProvider implements LLMClient {
 				supportsSystemPrompt: !hasThinking,
 				supportsToolStreaming: !hasThinking,
 				supportsThinking: hasThinking,
-				contextWindow: modelContextWindow[model] ?? 16385,
+				contextWindow: modelContextWindow[model],
 				maxOutputTokens: hasThinking ? 100000 : 4096,
 				isVerified: false,
 				source: "fallback",
@@ -238,7 +238,6 @@ export class OpenAIProvider implements LLMClient {
 		// For unknown models, try models.dev catalog
 		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openai");
 		if (catalogCapabilities) {
-			catalogCapabilities.isVerified = false; // From catalog, not API-verified
 			this._capabilitiesCache.set(model, catalogCapabilities);
 			return catalogCapabilities;
 		}
