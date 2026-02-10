@@ -222,12 +222,13 @@ export class ZaiProvider implements LLMClient {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
+		// Z.AI GLM models support BOTH thinking and tools (per model-registry line 92-93)
 		const capabilities: ModelCapabilities = {
 			modelName: model,
-			supportsTools: !hasThinking,
+			supportsTools: true,
 			supportsStreaming: true,
-			supportsSystemPrompt: !hasThinking,
-			supportsToolStreaming: !hasThinking,
+			supportsSystemPrompt: true,
+			supportsToolStreaming: true,
 			supportsThinking: hasThinking,
 			contextWindow: modelContextWindow[model] ?? 16385,
 			maxOutputTokens: hasThinking ? 100000 : 4096,
