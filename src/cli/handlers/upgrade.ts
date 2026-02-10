@@ -69,6 +69,19 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
 	}
 
 	const data: unknown = await response.json();
+
+	// Validate response structure
+	if (
+		typeof data !== "object" ||
+		data === null ||
+		!("tag_name" in data) ||
+		typeof data.tag_name !== "string" ||
+		!("assets" in data) ||
+		!Array.isArray(data.assets)
+	) {
+		throw new Error("Invalid response from GitHub API");
+	}
+
 	return data as GitHubRelease;
 }
 
@@ -132,7 +145,12 @@ export async function handleUpgrade(): Promise<void> {
 		try {
 			await rename(tempFile, currentBinary);
 			// Clean up backup file after successful upgrade
-			await unlink(backupFile);
+			try {
+				await unlink(backupFile);
+			} catch (_err) {
+				// Non-critical: backup cleanup failed, but upgrade succeeded
+				console.warn(`Warning: Could not remove backup file at ${backupFile}`);
+			}
 			console.log("\n✓ Successfully upgraded to version", latestVersion);
 			console.log("Please restart tiny-agent to use the new version.");
 			process.exit(0);
