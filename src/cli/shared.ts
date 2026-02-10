@@ -106,7 +106,7 @@ export async function createLLMClient(config: Config, options: CliOptions): Prom
 
 	return createProvider({
 		model,
-		provider: provider as undefined | "openai" | "anthropic" | "ollama" | "openrouter" | "opencode",
+		provider: provider as undefined | "openai" | "anthropic" | "ollama" | "openrouter" | "opencode" | "zai",
 		providers: config.providers,
 	});
 }
