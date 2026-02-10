@@ -67,7 +67,7 @@ function createDefaultConfig(): void {
 # See https://github.com/jellydn/tiny-coding-agent for full docs
 
 # Default model to use
-defaultModel: llama3.2
+defaultModel: glm-4.7
 
 # Provider configurations
 providers:
@@ -79,6 +79,8 @@ providers:
   #   apiKey: \${ANTHROPIC_API_KEY}
   # opencode:
   #   apiKey: \${OPENCODE_API_KEY}
+  # zai:
+  #   apiKey: \${ZAI_API_KEY}
 
 # MCP servers for extended capabilities
 mcpServers:
@@ -140,7 +142,8 @@ function interpolateEnvVars(value: string, keyPath: string = ""): string {
 			envVar.startsWith("AWS") ||
 			envVar.startsWith("OLLAMA") ||
 			envVar.startsWith("OPENROUTER") ||
-			envVar.startsWith("OPENCODE");
+			envVar.startsWith("OPENCODE") ||
+			envVar.startsWith("ZAI");
 
 		if (!isWhitelistedProvider && containsSensitivePattern(keyPath)) {
 			console.warn(
