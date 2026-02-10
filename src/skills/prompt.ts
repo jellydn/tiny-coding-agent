@@ -13,5 +13,12 @@ export function generateSkillsPrompt(skills: SkillMetadata[]): string {
 		)
 		.join("");
 
-	return `<available_skills>${skillElements}</available_skills>`;
+	return `<available_skills>
+The following skills are available for use. To load a skill and receive its full instructions, call the 'skill' tool with the skill name.
+Example: skill({ name: "code-simplifier" })
+
+Once loaded, the skill will provide detailed instructions that you should follow.
+
+${skillElements}
+</available_skills>`;
 }
