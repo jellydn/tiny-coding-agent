@@ -115,7 +115,7 @@ brew untap jellydn/tap
 
 A default config is automatically created on first run with:
 
-- **Suggested Model**: GLM 4.7 (requires Zai API key)
+- **Suggested Model**: GLM 4.7 (requires Zai API key) or Kimi 2.5 free from OpenCode (requires OpenCode Zen API key)
 - **Local Fallback**: Ollama configured for local models
 - **Context7 MCP**: Up-to-date library documentation (no API key needed)
 - **All Tools**: Enabled by default (can be disabled in config)
