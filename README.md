@@ -115,7 +115,8 @@ brew untap jellydn/tap
 
 A default config is automatically created on first run with:
 
-- **Local LLM**: Ollama with llama3.2 model
+- **Suggested Model**: GLM 4.7 (requires Zai API key)
+- **Local Fallback**: Ollama configured for local models
 - **Context7 MCP**: Up-to-date library documentation (no API key needed)
 - **All Tools**: Enabled by default (can be disabled in config)
 
