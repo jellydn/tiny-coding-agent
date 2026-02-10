@@ -7,7 +7,8 @@
 	"scripts": {
 		"dev": "bun --watch index.ts",
 		"generate:skills": "bun run scripts/generate-embedded-skills.ts",
-		"build": "bun run generate:skills && bun build index.ts --compile --outfile=tiny-agent",
+		"generate:version": "bun run scripts/generate-version.ts",
+		"build": "bun run generate:version && bun run generate:skills && bun build index.ts --compile --outfile=tiny-agent",
 		"test": "bun test",
 		"test:watch": "bun test --watch",
 		"typecheck": "bun run tsc --noEmit",

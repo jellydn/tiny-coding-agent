@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs";
 import { chmod, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getVersion } from "../../utils/version.js";
 
 interface GitHubRelease {
 	tag_name: string;
@@ -10,15 +10,6 @@ interface GitHubRelease {
 		name: string;
 		browser_download_url: string;
 	}>;
-}
-
-function getVersion(): string {
-	try {
-		const packageJson = JSON.parse(readFileSync(join(import.meta.dir, "../../../package.json"), "utf-8"));
-		return packageJson.version;
-	} catch {
-		return "unknown";
-	}
 }
 
 function getPlatformBinaryName(): string {
@@ -45,6 +36,11 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
 	const response = await fetch("https://api.github.com/repos/jellydn/tiny-coding-agent/releases/latest");
 
 	if (!response.ok) {
+		if (response.status === 403 || response.status === 429) {
+			throw new Error(
+				"GitHub API rate limit exceeded. Please try again later or set GITHUB_TOKEN environment variable."
+			);
+		}
 		throw new Error(`Failed to fetch latest release: ${response.statusText}`);
 	}
 
