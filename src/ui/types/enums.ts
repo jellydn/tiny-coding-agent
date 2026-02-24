@@ -22,6 +22,8 @@ export enum ToolStatus {
 	ERROR = "error",
 }
 
+export type AgentType = "default" | "plan" | "build" | "explore";
+
 // Re-export for compatibility with existing code
 export type ChatMessageRole = MessageRole;
 export type ChatToolStatus = ToolStatus;

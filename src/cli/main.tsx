@@ -8,10 +8,13 @@ import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
 import { isJsonMode, setJsonMode, setNoColor, shouldUseInk } from "../ui/utils.js";
+import { handleAgent } from "./handlers/agent.js";
 import { handleConfig } from "./handlers/config.js";
 import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
+import { handlePlan } from "./handlers/plan.js";
 import { handleSkill } from "./handlers/skill.js";
+import { handleState } from "./handlers/state.js";
 import { handleStatus } from "./handlers/status.js";
 import { type CliOptions, createLLMClient, parseArgs, setupTools } from "./shared.js";
 
@@ -499,6 +502,17 @@ USAGE:
     tiny-agent status                  Show provider and model capabilities
     tiny-agent memory [command]        Manage memories
     tiny-agent skill [command]         Manage skills
+    tiny-agent mcp [command]           Manage MCP servers
+    tiny-agent plan <task>             Generate a plan for a task
+    tiny-agent build                   Execute the build plan from state file
+    tiny-agent explore [task]          Explore and analyze codebase
+    tiny-agent run-plan-build <task>   Run plan then build in sequence
+    tiny-agent run-all <task>          Run plan, build, and explore in sequence
+    tiny-agent state show              Show current state file
+    tiny-agent state clear             Clear/reset state file
+    tiny-agent plan show               Show the current plan
+    tiny-agent tasks                   List all tasks with status
+    tiny-agent todo                    Show only pending tasks
 
 COMMANDS:
     memory list                        List all stored memories
@@ -508,10 +522,19 @@ COMMANDS:
     skill list                         List all discovered skills
     skill show <name>                  Show full skill content
     skill init <name>                  Initialize a new skill
+    mcp list                           List configured MCP servers
+    mcp add <name> <cmd> [args...]     Add a new MCP server
+    mcp enable <name>                  Enable an MCP server
+    mcp disable <name>                 Disable an MCP server
+    state show                         Show current state file (JSON)
+    state clear                        Clear/reset state file
+    plan show                          Show the current plan
+    tasks                              List all tasks with status
+    todo                               Show only pending tasks
 
 OPTIONS:
     --model <model>                    Override default model
-    --provider <provider>              Override provider (openai|anthropic|ollama)
+    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|zai)
     --verbose, -v                      Enable verbose logging
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
@@ -521,6 +544,8 @@ OPTIONS:
     --skills-dir <path>                Add a skill directory (can be used multiple times)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
+    --state-file <path>                Path to state file (default: .tiny-state.json)
+    --allow-all, -y                    Auto-approve all tool executions
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -529,7 +554,7 @@ EXAMPLES:
     tiny-agent run "Fix this bug"      Run a single prompt
     tiny-agent run --model claude-3-5-sonnet "Help me"  Use specific model
     tiny-agent config                  Show current configuration
-    tiny-agent config open             Open config file in editor
+    tiny-agent config open             Open config in editor
     tiny-agent status                  Show provider and model capabilities
     tiny-agent --help                  Show this help message
     tiny-agent --no-memory run "Help me"  Run without memory
@@ -537,6 +562,9 @@ EXAMPLES:
     tiny-agent --agents-md ./AGENTS.md run "Help me"  Run with AGENTS.md
     tiny-agent memory add "I prefer TypeScript"  Add a memory
     tiny-agent memory list             List all memories
+    tiny-agent plan "Create a new API endpoint"  Generate a plan
+    tiny-agent run-plan-build "Add user authentication"  Plan and build
+    tiny-agent state show              Show current state file
 
 CONFIG:
     ~/.tiny-agent/config.yaml          Configuration file
@@ -583,11 +611,23 @@ export async function main(): Promise<void> {
 			await handleSkill(config, args, options);
 		} else if (command === "mcp") {
 			await handleMcp(args);
+		} else if (command === "plan" && args.length > 0 && ["show", "tasks", "todo"].includes(args[0] ?? "")) {
+			await handlePlan(config, args, options);
+		} else if (["plan", "build", "explore", "run-plan-build", "run-all"].includes(command)) {
+			await handleAgent(command, args, options);
+		} else if (command === "state") {
+			await handleState(config, args, options);
+		} else if (command === "tasks") {
+			await handlePlan(config, ["tasks"], options);
+		} else if (command === "todo") {
+			await handlePlan(config, ["todo"], options);
 		} else {
 			console.error(`Unknown command: ${command}`);
-			console.error("Available commands: chat, run <prompt>, config, status, memory, skill, mcp");
-			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help");
-			process.exit(1);
+			console.error(
+				"Available commands: chat, run <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
+			);
+			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --state-file, --help");
+			process.exit(2);
 		}
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);

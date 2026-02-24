@@ -9,12 +9,14 @@ import { ChatProvider, useChatContext } from "./contexts/ChatContext.js";
 import { StatusLineProvider } from "./contexts/StatusLineContext.js";
 import { ToastProvider, useToastContext } from "./contexts/ToastContext.js";
 import { useCommandHandler } from "./hooks/useCommandHandler.js";
+import type { AgentType } from "./types/enums.js";
 import { MessageRole } from "./types/enums.js";
 import { formatTimestamp } from "./utils.js";
 
 export function ChatApp(): React.ReactElement {
 	const [inputValue, setInputValue] = useState("");
 	const [showModelPicker, setShowModelPicker] = useState(false);
+	const [showAgentSwitcher, setShowAgentSwitcher] = useState(false);
 	const [showToolsPanel, setShowToolsPanel] = useState(false);
 	const {
 		messages,
@@ -36,6 +38,7 @@ export function ChatApp(): React.ReactElement {
 		onAddMessage: addMessage,
 		onClearMessages: clearMessages,
 		onSetShowModelPicker: setShowModelPicker,
+		onSetShowAgentSwitcher: setShowAgentSwitcher,
 		onSetShowToolsPanel: currentToolExecutions.length > 0 ? setShowToolsPanel : undefined,
 		onExit: () => process.exit(0),
 		agent,
@@ -159,6 +162,22 @@ export function ChatApp(): React.ReactElement {
 		[agent, addMessage]
 	);
 
+	const handleAgentSelect = useCallback(
+		(agentType: AgentType) => {
+			setShowAgentSwitcher(false);
+			addMessage(MessageRole.SEPARATOR, formatTimestamp());
+			if (agentType === "default") {
+				addMessage(MessageRole.ASSISTANT, "Agent changed to: Default");
+			} else {
+				addMessage(
+					MessageRole.ASSISTANT,
+					`Agent changed to: ${agentType.charAt(0).toUpperCase() + agentType.slice(1)}`
+				);
+			}
+		},
+		[addMessage]
+	);
+
 	return (
 		<Box flexDirection="column" height="100%">
 			<ChatLayout
@@ -171,12 +190,14 @@ export function ChatApp(): React.ReactElement {
 				onCommandSelect={handleCommandSelect}
 				onModelSelect={handleModelSelect}
 				onSkillSelect={handleSkillSelect}
+				onAgentSelect={handleAgentSelect}
 				inputDisabled={isThinking}
 				showModelPicker={showModelPicker}
+				showAgentSwitcher={showAgentSwitcher}
 				inputPlaceholder={
 					isThinking
 						? "Waiting... (PgUp/PgDn or scroll to read, ESC to cancel)"
-						: "Type a message... (/ for commands, @ for skills)"
+						: "Type a message... (/ for commands, @ for skills, /agent to switch agent)"
 				}
 				enabledProviders={enabledProviders}
 				skillItems={skillItems}

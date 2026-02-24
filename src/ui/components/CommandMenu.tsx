@@ -19,6 +19,7 @@ const STATIC_COMMANDS: Command[] = [
 	{ name: "/help", description: "Show available commands" },
 	{ name: "/clear", description: "Clear the conversation" },
 	{ name: "/model", description: "Switch the model" },
+	{ name: "/agent", description: "Switch agent" },
 	{ name: "/tools", description: "View tool executions" },
 	{ name: "/mcp", description: "Show MCP server status" },
 	{ name: "/memory", description: "List memories" },
@@ -27,6 +28,9 @@ const STATIC_COMMANDS: Command[] = [
 		name: "/skill",
 		description: "List skills",
 	},
+	{ name: "/plan", description: "Show current plan" },
+	{ name: "/tasks", description: "List all tasks with status" },
+	{ name: "/todo", description: "Show pending tasks" },
 ];
 
 export function CommandMenu({ filter = "", onSelect, onClose, skillItems = [] }: CommandMenuProps): React.ReactElement {

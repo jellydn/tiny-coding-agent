@@ -1,8 +1,8 @@
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { FORMATTING, LAYOUT, STATUS_CONFIG, TIMING } from "../config/constants.js";
-import type { StatusType } from "../types/enums.js";
+import { AGENT_CONFIG, FORMATTING, LAYOUT, STATUS_CONFIG, TIMING } from "../config/constants.js";
+import type { AgentType, StatusType } from "../types/enums.js";
 
 interface StatusLineProps {
 	status?: StatusType;
@@ -11,6 +11,7 @@ interface StatusLineProps {
 	tokensMax?: number;
 	tool?: string;
 	mcpServerCount?: number;
+	currentAgent?: AgentType;
 }
 
 function formatCompactNumber(num: number): string {
@@ -32,6 +33,7 @@ export function StatusLine({
 	tokensMax,
 	tool,
 	mcpServerCount,
+	currentAgent,
 }: StatusLineProps): React.ReactElement {
 	const { stdout } = useStdout();
 	const terminalWidth = stdout.columns || 80;
@@ -64,6 +66,19 @@ export function StatusLine({
 		elements.push(
 			<Text key="model">
 				<Text color="gray">Model:</Text> {truncatedModel}
+			</Text>
+		);
+	}
+
+	if (currentAgent && currentAgent !== "default") {
+		if (elements.length > 0) {
+			elements.push(<Text key={`sep-a-${elements.length}`}> | </Text>);
+		}
+		const agentLabel = AGENT_CONFIG.LABELS[currentAgent] || currentAgent;
+		const agentColor = AGENT_CONFIG.COLORS[currentAgent];
+		elements.push(
+			<Text key="agent" color={agentColor} bold>
+				[{agentLabel}]
 			</Text>
 		);
 	}
