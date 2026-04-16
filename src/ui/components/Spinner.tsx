@@ -1,7 +1,6 @@
-import { Box, Text } from "ink";
-import InkSpinner from "ink-spinner";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { Box, Spinner as StormSpinner, Text } from "@/ui/tui.js";
 
 interface SpinnerProps {
 	isLoading: boolean;
@@ -31,9 +30,7 @@ export function Spinner({ isLoading, label = "Thinking" }: SpinnerProps): React.
 
 	return (
 		<Box>
-			<Text color="cyan">
-				<InkSpinner type="dots" />
-			</Text>
+			<StormSpinner type="dots" color="cyan" />
 			<Text>
 				{" "}
 				{label}... {elapsed.toFixed(1)}s

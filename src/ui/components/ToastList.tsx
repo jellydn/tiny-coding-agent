@@ -1,5 +1,5 @@
-import { Box, Text } from "ink";
 import type React from "react";
+import { Box, Text } from "@/ui/tui.js";
 import { useToastContext } from "../contexts/ToastContext.js";
 
 export function ToastList(): React.ReactElement | null {

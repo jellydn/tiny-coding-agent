@@ -1,7 +1,6 @@
-import { Box, Text } from "ink";
-import InkSpinner from "ink-spinner";
 import type React from "react";
 import { memo } from "react";
+import { Box, Spinner as StormSpinner, Text } from "@/ui/tui.js";
 import type { ToolCallStatus } from "./ToolCall.js";
 
 export interface ToolSummary {
@@ -82,9 +81,7 @@ export const ToolsPanel = memo(function ToolsPanel({ tools, onClose }: ToolsPane
 					<Box key={`${tool.name}-${idx}`} gap={1}>
 						<Text dimColor>{String(idx + 1).padStart(2, " ")}.</Text>
 						{isPending ? (
-							<Text color={statusColor}>
-								<InkSpinner type="dots" />
-							</Text>
+							<StormSpinner type="dots" color={statusColor} />
 						) : (
 							<Text color={statusColor}>{statusIcon}</Text>
 						)}

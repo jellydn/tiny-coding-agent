@@ -1,6 +1,6 @@
-import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { Box, Text, useInput } from "@/ui/tui.js";
 import { detectProvider } from "../../providers/model-registry.js";
 import { getCachedOllamaModels } from "../../providers/ollama-models.js";
 

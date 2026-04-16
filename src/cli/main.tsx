@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { render } from "ink";
+import { render } from "@/ui/tui.js";
 import { loadConfig } from "../config/loader.js";
 import { Agent } from "../core/agent.js";
 import { createSkillTool } from "../tools/index.js";

@@ -1,5 +1,5 @@
-import { Box, Text } from "ink";
 import type React from "react";
+import { Box, Text } from "@/ui/tui.js";
 import { parseModelString } from "../../providers/factory.js";
 import { detectProvider } from "../../providers/model-registry.js";
 import { getCachedOllamaModels } from "../../providers/ollama-models.js";

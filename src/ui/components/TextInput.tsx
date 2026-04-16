@@ -1,6 +1,6 @@
-import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useCallback, useRef, useState } from "react";
+import { Box, Text, useInput, useStdout } from "@/ui/tui.js";
 
 interface TextInputProps {
 	onChange: (value: string) => void;

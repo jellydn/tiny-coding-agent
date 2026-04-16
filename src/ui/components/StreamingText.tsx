@@ -1,6 +1,6 @@
-import { Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { Text } from "@/ui/tui.js";
 
 interface StreamingTextProps {
 	text: string;

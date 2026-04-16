@@ -1,5 +1,5 @@
-import { Box, Text, useInput, useStdout } from "ink";
 import React, { useMemo } from "react";
+import { Box, Text, useInput, useStdout } from "@/ui/tui.js";
 import { ThinkingTagFilter } from "../../cli/main.js";
 import type { ToolExecution } from "../../core/agent.js";
 import type { SkillMetadata } from "../../skills/types.js";

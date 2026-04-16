@@ -1,6 +1,6 @@
-import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { Box, Text, useStdout } from "@/ui/tui.js";
 import { FORMATTING, LAYOUT, STATUS_CONFIG, TIMING } from "../config/constants.js";
 import type { StatusType } from "../types/enums.js";
 

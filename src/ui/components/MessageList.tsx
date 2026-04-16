@@ -1,5 +1,5 @@
-import { Box } from "ink";
 import type React from "react";
+import { Box } from "@/ui/tui.js";
 import type { ChatMessage } from "../contexts/ChatContext.js";
 import { Message } from "./Message.js";
 

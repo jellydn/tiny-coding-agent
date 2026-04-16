@@ -1,6 +1,6 @@
-import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { Box, Text, useInput } from "@/ui/tui.js";
 import type { SkillMetadata } from "../../skills/types.js";
 
 interface SkillPickerProps {

@@ -1,6 +1,6 @@
-import { Box, type Key, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { Box, type Key, Text, useInput, useStdout } from "@/ui/tui.js";
 
 interface ToolOutputProps {
 	name: string;

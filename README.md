@@ -10,7 +10,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 ## Features
 
-- **Rich Terminal UI**: Ink-powered CLI with components for messages, spinners, and tool output
+- **Rich Terminal UI**: Storm-powered CLI with components for messages, spinners, and tool output
 - **TTY Detection**: Automatically adapts to terminal capabilities with plain text fallback
 - **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, and OpenCode
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
@@ -479,7 +479,7 @@ src/
   providers/  # LLM clients (OpenAI, Anthropic, Ollama)
   mcp/        # MCP client
   cli/        # CLI interface
-  ui/         # Ink UI components (App, Message, Spinner, ToolOutput)
+  ui/         # Storm UI components (App, Message, Spinner, ToolOutput)
 ```
 
 ## Architecture
@@ -495,7 +495,7 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 007: Model Registry Pattern
 - 008: Memory System
 - 009: Tool Confirmation System
-- 010: Ink CLI Integration
+- 010: Storm CLI Integration
 
 ## Development
 

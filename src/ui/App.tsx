@@ -1,7 +1,7 @@
-import { Box, render, useInput } from "ink";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent } from "@/core/agent.js";
+import { Box, render, useInput } from "@/ui/tui.js";
 import type { SkillMetadata } from "../skills/types.js";
 import { ChatLayout } from "./components/ChatLayout.js";
 import type { EnabledProviders } from "./components/ModelPicker.js";

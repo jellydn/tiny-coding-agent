@@ -1,7 +1,6 @@
-import { Box, Text } from "ink";
-import InkSpinner from "ink-spinner";
 import type React from "react";
 import { memo, useMemo } from "react";
+import { Box, Spinner as StormSpinner, Text } from "@/ui/tui.js";
 
 export type ToolCallStatus = "pending" | "success" | "error";
 
@@ -68,13 +67,7 @@ export const ToolCall = memo(function ToolCall({
 
 	return (
 		<Box>
-			{isPending ? (
-				<Text color={statusColor}>
-					<InkSpinner type="dots" />
-				</Text>
-			) : (
-				<Text color={statusColor}>{statusIcon}</Text>
-			)}
+			{isPending ? <StormSpinner type="dots" color={statusColor} /> : <Text color={statusColor}>{statusIcon}</Text>}
 			<Text bold> {name}</Text>
 			{argsString && <Text dimColor> {argsString}</Text>}
 			{isPending && <Text dimColor> (pending)</Text>}

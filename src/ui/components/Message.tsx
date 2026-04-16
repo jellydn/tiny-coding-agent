@@ -1,6 +1,6 @@
-import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useMemo } from "react";
+import { Box, Text } from "@/ui/tui.js";
 import type { ToolExecution } from "../../core/agent.js";
 import { TRUNCATE_LIMITS } from "../config/constants.js";
 import { MessageRole, ToolStatus } from "../types/enums.js";
