@@ -1,2 +1,9 @@
 export PATH="$HOME/.bun/bin:$PATH"
+
+# Ensure generated files are in sync before lint.
+bun run generate:skills
+git diff --exit-code src/skills/embedded-content.ts
+bun run generate:version
+git diff --exit-code src/utils/version-constant.ts
+
 bun run lint && bun run format:check

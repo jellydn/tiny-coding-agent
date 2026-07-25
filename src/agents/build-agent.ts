@@ -4,6 +4,7 @@ import type { Message } from "../providers/types.js";
 import { bashTool } from "../tools/bash-tool.js";
 import { fileTools } from "../tools/file-tools.js";
 import { ToolRegistry } from "../tools/registry.js";
+import { type Step as GrammarStep, type Plan, parse as parsePlanGrammar } from "./plan-grammar.js";
 import { readStateFile, writeStateFile } from "./state.js";
 import type { StateFile } from "./types.js";
 
@@ -173,81 +174,83 @@ async function handleExecutionError(
 	return { action: decision.toLowerCase() as "retry" | "skip" | "abort" };
 }
 
+/**
+ * Convert a Plan returned by `PlanGrammar.parse` into the build-agent's
+ * `BuildStep[]` shape.
+ *
+ * Two shapes, picked automatically:
+ * - Phase-form: each Phase -> one BuildStep with multiple actions (one per
+ *   Step within the phase). Detected by the presence of a `## Phase ...`
+ *   marker in the raw text — the AST shape alone is ambiguous (a real
+ *   single-phase plan with sequentially-numbered sub-steps also produces
+ *   one phase with steps 1, 2, 3).
+ * - Flat-form (no phase headers, steps numbered 1, 2, 3, ... at top
+ *   level): each Step -> its own BuildStep.
+ *
+ * Legacy quirk: build-agent previously parsed sub-bullet `- text` lines
+ * under a numbered flat-form step as additional actions. The grammar
+ * doesn't include this shape, so we re-scan the raw text for those sub-
+ * bullets in flat-form mode to preserve backward compatibility.
+ */
+function planToBuildSteps(plan: Plan, rawText: string): BuildStep[] {
+	if (plan.phases.length === 0) {
+		return [];
+	}
+
+	const hasPhaseHeaders = /^\s*##\s*(?:Phase\s+)?\d+/m.test(rawText);
+
+	if (!hasPhaseHeaders) {
+		const flatPhase = plan.phases[0];
+		if (flatPhase) {
+			return buildFlatFormSteps(rawText, flatPhase.steps);
+		}
+	}
+
+	return plan.phases.map((phase) => ({
+		stepNumber: phase.number,
+		description: phase.title,
+		actions: phase.steps.map((step) => ({
+			type: "execute" as const,
+			description: step.text,
+		})),
+	}));
+}
+
+function buildFlatFormSteps(rawText: string, flatSteps: GrammarStep[]): BuildStep[] {
+	const result: BuildStep[] = [];
+	const lines = rawText.split("\n");
+	let currentBuild: BuildStep | null = null;
+
+	for (const line of lines) {
+		const stepMatch = line.match(/^\s*(\d+)\.\s+(.+?)\s*$/);
+		if (stepMatch) {
+			const n = parseInt(stepMatch[1] ?? "0", 10);
+			const text = (stepMatch[2] ?? "").trim();
+			const grammarStep = flatSteps.find((s) => s.number === n && s.text === text);
+			currentBuild = {
+				stepNumber: n,
+				description: grammarStep?.text ?? text,
+				actions: [{ type: "execute", description: text }],
+			};
+			result.push(currentBuild);
+			continue;
+		}
+
+		const bulletMatch = line.match(/^\s*-\s+(.+?)\s*$/);
+		if (bulletMatch && currentBuild) {
+			const text = (bulletMatch[1] ?? "").trim();
+			if (text && !text.startsWith("**")) {
+				currentBuild.actions.push({ type: "execute", description: text });
+			}
+		}
+	}
+
+	return result;
+}
+
 export function parsePlanToSteps(planContent: string): BuildStep[] {
-	const steps: BuildStep[] = [];
-	const phaseRegex = /## Phase (\d+)[:\s]+([^\n]+)/g;
-	let match: RegExpExecArray | null;
-
-	while ((match = phaseRegex.exec(planContent)) !== null) {
-		const stepNumberStr = match[1];
-		const descriptionStr = match[2];
-		if (!stepNumberStr || !descriptionStr) continue;
-
-		const stepNumber = parseInt(stepNumberStr, 10);
-		const description = descriptionStr.trim();
-
-		const stepsRegex = /(?:^|\n)(\d+)\.\s+([^\n]+)/g;
-		const actions: BuildAction[] = [];
-
-		let actionMatch: RegExpExecArray | null;
-		while ((actionMatch = stepsRegex.exec(planContent)) !== null) {
-			const actionNumStr = actionMatch[1];
-			const actionDescStr = actionMatch[2];
-			if (!actionNumStr || !actionDescStr) continue;
-
-			if (parseInt(actionNumStr, 10) === stepNumber) {
-				actions.push({
-					type: "execute",
-					description: actionDescStr.trim(),
-				});
-			}
-		}
-
-		steps.push({
-			stepNumber,
-			description,
-			actions,
-		});
-	}
-
-	if (steps.length === 0) {
-		const lines = planContent.split("\n");
-		let currentStep: BuildStep | null = null;
-
-		for (const line of lines) {
-			const stepMatch = line.match(/^(\d+)\.\s+(.+)$/);
-			if (stepMatch) {
-				const stepNumStr = stepMatch[1];
-				const stepDescStr = stepMatch[2];
-				if (!stepNumStr || !stepDescStr) continue;
-
-				if (currentStep) {
-					steps.push(currentStep);
-				}
-				currentStep = {
-					stepNumber: parseInt(stepNumStr, 10),
-					description: stepDescStr,
-					actions: [
-						{
-							type: "execute",
-							description: stepDescStr.trim(),
-						},
-					],
-				};
-			} else if (currentStep && line.trim().startsWith("-")) {
-				currentStep.actions.push({
-					type: "execute",
-					description: line.trim().substring(1).trim(),
-				});
-			}
-		}
-
-		if (currentStep) {
-			steps.push(currentStep);
-		}
-	}
-
-	return steps;
+	const plan = parsePlanGrammar(planContent);
+	return planToBuildSteps(plan, planContent);
 }
 
 function convertStepsToBuildResult(steps: BuildStep[]) {
@@ -373,7 +376,6 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 			}> = [];
 
 			let stepSuccess = true;
-			let _stepError: string | undefined;
 
 			for (const action of step.actions) {
 				let executionResult: ExecutionOutcome;
@@ -401,7 +403,6 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 				} else {
 					console.error(`  ✗ ${action.description}: ${executionResult.error}`);
 					stepSuccess = false;
-					_stepError = executionResult.error;
 
 					const decision = await handleExecutionError(
 						executionResult.error || "Unknown error",
@@ -443,10 +444,8 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 								});
 							}
 							stepSuccess = true;
-							_stepError = undefined;
 						} else {
 							stepSuccess = false;
-							_stepError = retryResult.error;
 						}
 					}
 				}

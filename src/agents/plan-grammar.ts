@@ -281,7 +281,6 @@ export function parse(text: string): Plan {
 					technicalConsiderations.push(text);
 				}
 			}
-			continue;
 		}
 		// mode === "none": ignore stray content.
 	}
@@ -348,6 +347,9 @@ export function validate(plan: Plan): ValidationResult {
 		const expected = i + 1;
 		if (phase.number !== expected) {
 			errors.push(`phase ${phase.number ?? "?"} is out of order; expected ${expected}`);
+		}
+		if (!phase.title || !phase.title.trim()) {
+			errors.push(`phase ${phase.number} has empty title`);
 		}
 		for (const dep of phase.dependencies) {
 			if (dep < 1) {

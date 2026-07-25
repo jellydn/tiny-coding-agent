@@ -69,20 +69,34 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
 	}
 
 	const data: unknown = await response.json();
+	return parseGitHubRelease(data);
+}
 
-	// Validate response structure
-	if (
-		typeof data !== "object" ||
-		data === null ||
-		!("tag_name" in data) ||
-		typeof data.tag_name !== "string" ||
-		!("assets" in data) ||
-		!Array.isArray(data.assets)
-	) {
+/**
+ * Validate and narrow a raw GitHub release API payload to GitHubRelease.
+ * Exported for unit testing the response-shape guards without hitting the network.
+ */
+export function parseGitHubRelease(data: unknown): GitHubRelease {
+	if (typeof data !== "object" || data === null) {
 		throw new Error("Invalid response from GitHub API");
 	}
-
-	return data as GitHubRelease;
+	const release = data as Record<string, unknown>;
+	if (typeof release.tag_name !== "string") {
+		throw new Error("Invalid response from GitHub API: tag_name missing or not a string");
+	}
+	if (!Array.isArray(release.assets)) {
+		throw new Error("Invalid response from GitHub API: assets missing or not an array");
+	}
+	for (const asset of release.assets) {
+		if (typeof asset !== "object" || asset === null) {
+			throw new Error("Invalid asset shape in GitHub release response");
+		}
+		const a = asset as Record<string, unknown>;
+		if (typeof a.name !== "string" || typeof a.browser_download_url !== "string") {
+			throw new Error("Invalid asset shape in GitHub release response");
+		}
+	}
+	return release as unknown as GitHubRelease;
 }
 
 async function downloadBinary(url: string, outputPath: string): Promise<void> {

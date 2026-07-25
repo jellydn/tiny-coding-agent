@@ -1,3 +1,4 @@
+import { parse as parsePlanGrammar } from "../../agents/plan-grammar.js";
 import { readStateFile } from "../../agents/state.js";
 import type { CliOptions } from "../shared.js";
 
@@ -15,34 +16,11 @@ interface PlanPhase {
 }
 
 function extractPhasesFromPlan(planText: string): PlanPhase[] {
-	const phases: PlanPhase[] = [];
-	const lines = planText.split("\n");
-
-	let currentPhase: PlanPhase | null = null;
-
-	for (const line of lines) {
-		const phaseMatch = line.match(/^##\s+(?:Phase\s+\d+[:.]\s*)?(.+)/i);
-		if (phaseMatch) {
-			if (currentPhase) {
-				phases.push(currentPhase);
-			}
-			currentPhase = { name: phaseMatch[1]?.trim() ?? "", tasks: [] };
-			continue;
-		}
-
-		if (currentPhase) {
-			const taskMatch = line.match(/^[-*]\s+\[[ x]\]\s*(.+)/i) || line.match(/^[-*]\s+(.+)/);
-			if (taskMatch?.[1] && !taskMatch[1].startsWith("**")) {
-				currentPhase.tasks.push(taskMatch[1].trim());
-			}
-		}
-	}
-
-	if (currentPhase) {
-		phases.push(currentPhase);
-	}
-
-	return phases;
+	const plan = parsePlanGrammar(planText);
+	return plan.phases.map((phase) => ({
+		name: phase.title,
+		tasks: phase.successCriteria,
+	}));
 }
 
 export async function handlePlan(_config: unknown, args: string[], options: CliOptions): Promise<void> {
