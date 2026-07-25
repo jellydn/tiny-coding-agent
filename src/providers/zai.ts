@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
+import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
 
 export interface ZaiProviderConfig {
@@ -199,6 +200,12 @@ export class ZaiProvider implements LLMClient {
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
+		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "zai");
+		if (catalogCapabilities) {
+			this._capabilitiesCache.set(model, catalogCapabilities);
+			return catalogCapabilities;
+		}
+
 		const modelContextWindow: Record<string, number> = {
 			"glm-4.7": 128000,
 			"glm-4-plus": 128000,
@@ -215,13 +222,15 @@ export class ZaiProvider implements LLMClient {
 
 		const capabilities: ModelCapabilities = {
 			modelName: model,
-			supportsTools: !hasThinking,
+			supportsTools: true,
 			supportsStreaming: true,
-			supportsSystemPrompt: !hasThinking,
-			supportsToolStreaming: !hasThinking,
+			supportsSystemPrompt: true,
+			supportsToolStreaming: true,
 			supportsThinking: hasThinking,
 			contextWindow: modelContextWindow[model] ?? 16385,
 			maxOutputTokens: hasThinking ? 100000 : 4096,
+			isVerified: false,
+			source: "fallback",
 		};
 
 		this._capabilitiesCache.set(model, capabilities);

@@ -42,6 +42,7 @@ export async function handleConfig(config: Config, args: string[]): Promise<void
 	console.log(`    Ollama: ${config.providers.ollama ? "configured" : "not configured"}`);
 	console.log(`    OllamaCloud: ${config.providers.ollamaCloud ? "configured" : "not configured"}`);
 	console.log(`    OpenCode: ${config.providers.opencode ? "configured" : "not configured"}`);
+	console.log(`    Zai: ${config.providers.zai ? "configured" : "not configured"}`);
 
 	const mcpEntries = Object.entries(config.mcpServers ?? {});
 	if (mcpEntries.length > 0) {

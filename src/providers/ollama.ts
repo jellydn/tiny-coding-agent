@@ -267,6 +267,8 @@ export class OllamaProvider implements LLMClient {
 				supportsThinking: details.supports_thinking ?? false,
 				contextWindow: details.context_length ?? 128000,
 				maxOutputTokens: details.num_ctx ?? 4096,
+				isVerified: true,
+				source: "api",
 			};
 		} catch (error) {
 			console.warn(`Failed to fetch model details for ${model}: ${error}`);
@@ -284,6 +286,8 @@ export class OllamaProvider implements LLMClient {
 			supportsThinking: false,
 			contextWindow: 128000,
 			maxOutputTokens: 4096,
+			isVerified: false,
+			source: "fallback",
 		};
 	}
 }

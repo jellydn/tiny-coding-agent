@@ -12,7 +12,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -28,7 +28,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -45,18 +45,20 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: tiny-agent-linux-x64
+            extra-args: "--target=bun-linux-x64"
           - os: ubuntu-latest
             artifact: tiny-agent-linux-arm64
+            extra-args: "--target=bun-linux-arm64"
           - os: macos-latest
             artifact: tiny-agent-darwin-x64
-            extra-args: ""
+            extra-args: "--target=bun-darwin-x64"
           - os: macos-latest
             artifact: tiny-agent-darwin-arm64
-            extra-args: "--arm64"
+            extra-args: "--target=bun-darwin-arm64"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -64,7 +66,7 @@ jobs:
           bun-version: latest
 
       - name: Cache dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
@@ -76,7 +78,7 @@ jobs:
         run: bun run build ${{ matrix.extra-args }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: tiny-agent
@@ -88,10 +90,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
 
@@ -134,7 +136,7 @@ jobs:
           cat checksums.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-artifacts/**/tiny-agent-*

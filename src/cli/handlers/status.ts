@@ -2,9 +2,11 @@ import type { Config } from "../../config/schema.js";
 import { AnthropicProvider } from "../../providers/anthropic.js";
 import type { ModelCapabilities } from "../../providers/capabilities.js";
 import { OllamaProvider } from "../../providers/ollama.js";
+import { OllamaCloudProvider } from "../../providers/ollama-cloud.js";
 import { OpenAIProvider } from "../../providers/openai.js";
 import { OpenCodeProvider } from "../../providers/opencode.js";
 import { OpenRouterProvider } from "../../providers/openrouter.js";
+import { ZaiProvider } from "../../providers/zai.js";
 import { createLLMClient, setupTools } from "../shared.js";
 
 interface StatusHandlerOptions {
@@ -28,6 +30,10 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 			return baseUrl ? `OpenAI (${baseUrl})` : "OpenAI";
 		}
 		if (llmClient instanceof AnthropicProvider) return "Anthropic";
+		if (llmClient instanceof OllamaCloudProvider) {
+			const baseUrl = config.providers.ollamaCloud?.baseUrl ?? "https://ollama.com";
+			return `Ollama Cloud (${baseUrl})`;
+		}
 		if (llmClient instanceof OllamaProvider) {
 			const baseUrl = config.providers.ollama?.baseUrl ?? "http://localhost:11434";
 			return `Ollama (${baseUrl})`;
@@ -40,6 +46,10 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 			const baseUrl = config.providers.opencode?.baseUrl ?? "https://opencode.ai/zen/v1";
 			return `OpenCode (${baseUrl})`;
 		}
+		if (llmClient instanceof ZaiProvider) {
+			const baseUrl = config.providers.zai?.baseUrl ?? "https://api.z.ai/api/paas/v4/";
+			return `Z.AI (${baseUrl})`;
+		}
 		return "Unknown";
 	})();
 	console.log(`  Provider: ${providerName}\n`);
@@ -47,6 +57,18 @@ export async function handleStatus(config: Config, options: StatusHandlerOptions
 	const capabilities: ModelCapabilities = await llmClient.getCapabilities(model);
 
 	console.log("Model Capabilities:");
+
+	const sourceMessages: Record<string, string> = {
+		api: "  ✓ Capabilities verified from provider API",
+		catalog: "  ℹ️  Capabilities from models.dev catalog (https://models.dev/)",
+		fallback: "  ⚠️  Note: Capabilities below are inferred from model registry, not verified by provider API",
+	};
+
+	const source = capabilities.source ?? "fallback";
+	const message = sourceMessages[source];
+
+	if (message) console.log(message);
+
 	const capabilityCheck = (_name: string, supported: boolean): string => (supported ? "[✓]" : "[✗]");
 
 	console.log(`${capabilityCheck("Tools", capabilities.supportsTools)} Tools`);

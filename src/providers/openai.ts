@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
+import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
 
 export interface OpenAIProviderConfig {
@@ -196,7 +197,6 @@ export class OpenAIProvider implements LLMClient {
 	}
 
 	async getCapabilities(model: string): Promise<ModelCapabilities> {
-		// Guard: check cache first
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
@@ -214,15 +214,41 @@ export class OpenAIProvider implements LLMClient {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
+		if (model in modelContextWindow) {
+			const capabilities: ModelCapabilities = {
+				modelName: model,
+				supportsTools: true,
+				supportsStreaming: true,
+				supportsSystemPrompt: true,
+				supportsToolStreaming: !hasThinking,
+				supportsThinking: hasThinking,
+				contextWindow: modelContextWindow[model],
+				maxOutputTokens: hasThinking ? 100000 : 4096,
+				isVerified: false,
+				source: "fallback",
+			};
+
+			this._capabilitiesCache.set(model, capabilities);
+			return capabilities;
+		}
+
+		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openai");
+		if (catalogCapabilities) {
+			this._capabilitiesCache.set(model, catalogCapabilities);
+			return catalogCapabilities;
+		}
+
 		const capabilities: ModelCapabilities = {
 			modelName: model,
-			supportsTools: !hasThinking,
+			supportsTools: true,
 			supportsStreaming: true,
-			supportsSystemPrompt: !hasThinking,
-			supportsToolStreaming: !hasThinking,
-			supportsThinking: hasThinking,
-			contextWindow: modelContextWindow[model] ?? 16385,
-			maxOutputTokens: hasThinking ? 100000 : 4096,
+			supportsSystemPrompt: true,
+			supportsToolStreaming: true,
+			supportsThinking: false,
+			contextWindow: 16385,
+			maxOutputTokens: 4096,
+			isVerified: false,
+			source: "fallback",
 		};
 
 		this._capabilitiesCache.set(model, capabilities);

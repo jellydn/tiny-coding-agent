@@ -115,7 +115,8 @@ brew untap jellydn/tap
 
 A default config is automatically created on first run with:
 
-- **Local LLM**: Ollama with llama3.2 model
+- **Suggested Model**: GLM 4.7 (requires Zai API key) or Kimi 2.5 free from OpenCode (requires OpenCode Zen API key)
+- **Local Fallback**: Ollama configured for local models
 - **Context7 MCP**: Up-to-date library documentation (no API key needed)
 - **All Tools**: Enabled by default (can be disabled in config)
 
@@ -260,17 +261,29 @@ providers:
 
 **Available models:**
 
-- `big-pickle` - OpenCode's flagship coding model
-- `claude-opus-4`, `claude-sonnet-4`, `claude-3-5-haiku`
-- `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-nano`
-- `qwen3-coder` - Qwen Coder
-- `kimi-k2`, `kimi-k2-thinking` - Kimi models
+- `opencode/claude-opus-4-6` - Latest Claude Opus (also: 4-1, 4-5)
+- `opencode/claude-sonnet-4-5` - Latest Claude Sonnet (also: 4)
+- `opencode/claude-haiku-4-5` - Latest Claude Haiku (also: 3-5-haiku)
+- `opencode/gemini-3-pro` - Latest Gemini (also: 3-flash)
+- `opencode/glm-4.7` - Latest GLM (also: 4.6)
+- `opencode/gpt-5.2-codex` - Latest GPT-5.2 Codex (also: gpt-5.2)
+- `opencode/gpt-5.1-codex-max` - Latest GPT-5.1 (also: codex, codex-mini, gpt-5.1)
+- `opencode/gpt-5-codex` - Latest GPT-5 (also: gpt-5, gpt-5-nano)
+- `opencode/kimi-k2.5` - Latest Kimi (also: k2, k2-thinking)
+- `opencode/minimax-m2.1` - Latest Minimax
+
+**Free models:**
+
+- `opencode/big-pickle` - OpenCode's flagship coding model
+- `opencode/kimi-k2.5-free`
+- `opencode/minimax-m2.1-free`
+- `opencode/trinity-large-preview-free`
 
 **Usage:**
 
 ```bash
-tiny-agent --provider opencode --model big-pickle "fix this bug"
-tiny-agent --provider opencode --model qwen3-coder "write a function"
+tiny-agent --provider opencode --model opencode/big-pickle "fix this bug"
+tiny-agent --provider opencode --model opencode/gpt-5.2-codex "write a function"
 ```
 
 ## CLI Commands
@@ -492,6 +505,32 @@ This project follows the [AGENTS.md](https://agents.md/) standard for guiding co
 - Build commands: `bun run dev`, `bun run build`, `bun test`
 - TypeScript conventions and code style
 - Testing patterns with bun:test
+
+### Using Make or Just
+
+For easier development, you can use either **Make** (traditional) or **Just** (modern alternative):
+
+**Using Make** (pre-installed on most Unix systems):
+```bash
+make help          # Show all available targets
+make dev           # Run in watch mode
+make build         # Build the binary
+make test          # Run tests
+make check         # Quick check (lint + typecheck)
+```
+
+**Using Just** (install with `cargo install just` or `brew install just`):
+```bash
+just               # List all available recipes
+just dev           # Run in watch mode
+just build         # Build the binary
+just test          # Run tests
+just check         # Quick check (lint + typecheck)
+```
+
+Both provide the same functionality - choose whichever you prefer!
+
+For a complete list of commands and more details, see the [Development Tasks Guide](docs/development-tasks.md).
 
 ## License
 

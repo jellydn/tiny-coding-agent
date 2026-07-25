@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
+import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
 
 export interface AnthropicProviderConfig {
@@ -251,7 +252,6 @@ export class AnthropicProvider implements LLMClient {
 	}
 
 	async getCapabilities(model: string): Promise<ModelCapabilities> {
-		// Guard: check cache first
 		const cached = this._capabilitiesCache.get(model);
 		if (cached) return cached;
 
@@ -269,13 +269,34 @@ export class AnthropicProvider implements LLMClient {
 		const hasThinking = modelRegistrySupportsThinking(model);
 		const contextWindow = modelContextWindow[model];
 
-		// Warn for unknown models with hardcoded fallback
-		if (!contextWindow) {
-			console.warn(
-				`[WARN] Unknown model "${model}" - using default context window of 200000 tokens. ` +
-					"Context limits may be inaccurate. Consider updating the model registry."
-			);
+		if (contextWindow !== undefined) {
+			const capabilities: ModelCapabilities = {
+				modelName: model,
+				supportsTools: true,
+				supportsStreaming: true,
+				supportsSystemPrompt: true,
+				supportsToolStreaming: true,
+				supportsThinking: hasThinking,
+				contextWindow: contextWindow,
+				maxOutputTokens: 8192,
+				isVerified: false,
+				source: "fallback",
+			};
+
+			this._capabilitiesCache.set(model, capabilities);
+			return capabilities;
 		}
+
+		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "anthropic");
+		if (catalogCapabilities) {
+			this._capabilitiesCache.set(model, catalogCapabilities);
+			return catalogCapabilities;
+		}
+
+		console.warn(
+			`[WARN] Unknown model "${model}" - using default context window of 200000 tokens. ` +
+				"Context limits may be inaccurate. Consider updating the model registry."
+		);
 
 		const capabilities: ModelCapabilities = {
 			modelName: model,
@@ -283,9 +304,11 @@ export class AnthropicProvider implements LLMClient {
 			supportsStreaming: true,
 			supportsSystemPrompt: true,
 			supportsToolStreaming: true,
-			supportsThinking: hasThinking,
-			contextWindow: contextWindow ?? 200000,
+			supportsThinking: false,
+			contextWindow: 200000,
 			maxOutputTokens: 8192,
+			isVerified: false,
+			source: "fallback",
 		};
 
 		this._capabilitiesCache.set(model, capabilities);
