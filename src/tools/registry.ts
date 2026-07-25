@@ -157,13 +157,28 @@ export class ToolRegistry {
 			return { success: false, error: `Tool "${name}" not found` };
 		}
 
-		if (this._dryRun && this.isDangerous(name, args)) {
+		if (this._dryRun) {
 			const dangerLevel = this.getDangerLevel(name, args) ?? `Execute ${name}`;
 			const argsSummary = formatArgsSummary(args);
 			return {
 				success: true,
 				output: `[DRY-RUN] Would execute: ${dangerLevel} (tool=${name}, args=${argsSummary})`,
 			};
+		}
+
+		if (this.isDangerous(name, args)) {
+			const handler = getConfirmationHandler();
+			if (handler) {
+				const dangerLevel = this.getDangerLevel(name, args) ?? `Execute ${name}`;
+				const approved = await handler({
+					actions: [{ tool: name, description: dangerLevel, args }],
+				});
+				if (approved === false) {
+					return { success: false, error: "User declined confirmation" };
+				}
+				// For single calls, `{type: "partial"}` collapses to approved: there is no
+				// batch index to pick from. Callers building batches should use executeBatch.
+			}
 		}
 
 		try {
