@@ -13,6 +13,7 @@ import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
 import { handleSkill } from "./handlers/skill.js";
 import { handleStatus } from "./handlers/status.js";
+import { handleUpgrade } from "./handlers/upgrade.js";
 import { type CliOptions, createLLMClient, parseArgs, setupTools } from "./shared.js";
 
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
@@ -521,6 +522,7 @@ OPTIONS:
     --skills-dir <path>                Add a skill directory (can be used multiple times)
     --no-color                         Disable colored output (for pipes/non-TTY)
     --json                             Output messages as JSON (for programmatic use)
+    --upgrade                          Upgrade to the latest version
     --help, -h                         Show this help message
 
 EXAMPLES:
@@ -531,6 +533,7 @@ EXAMPLES:
     tiny-agent config                  Show current configuration
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
+    tiny-agent --upgrade               Upgrade to the latest version
     tiny-agent --help                  Show this help message
     tiny-agent --no-memory run "Help me"  Run without memory
     tiny-agent --no-track-context run "Help me"  Run without context tracking
@@ -565,6 +568,11 @@ export async function main(): Promise<void> {
 		if (options.help) {
 			showHelp();
 			process.exit(0);
+		}
+
+		if (options.upgrade) {
+			await handleUpgrade();
+			return;
 		}
 
 		const config = loadConfig();
