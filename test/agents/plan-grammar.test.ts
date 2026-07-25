@@ -204,4 +204,13 @@ describe("validate", () => {
 		expect(result.valid).toBe(true);
 		expect(result.errors).toEqual([]);
 	});
+
+	it("flags empty phase titles (regression: permissive parser accepts '## Phase N' alone)", () => {
+		const text = `## Phase 1\n1. Do thing`;
+		const plan = parse(text);
+		expect(plan.phases[0]?.title).toBe("");
+		const result = validate(plan);
+		expect(result.valid).toBe(false);
+		expect(result.errors.some((e) => /phase 1 has empty title/.test(e))).toBe(true);
+	});
 });

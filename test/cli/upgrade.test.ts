@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { parseGitHubRelease } from "../../src/cli/handlers/upgrade.js";
 import { parseArgs } from "../../src/cli/shared.js";
 
 // Helper function for semantic version comparison
@@ -49,6 +50,65 @@ describe("upgrade flag parsing", () => {
 });
 
 describe("upgrade utility functions", () => {
+	describe("parseGitHubRelease", () => {
+		const validRelease = {
+			tag_name: "v1.2.3",
+			name: "Release 1.2.3",
+			assets: [
+				{ name: "tiny-agent-linux-x64", browser_download_url: "https://example.com/linux-x64" },
+				{ name: "tiny-agent-darwin-arm64", browser_download_url: "https://example.com/darwin-arm64" },
+			],
+		};
+
+		it("accepts a well-formed release payload", () => {
+			const parsed = parseGitHubRelease(validRelease);
+			expect(parsed.tag_name).toBe("v1.2.3");
+			expect(parsed.assets.length).toBe(2);
+		});
+
+		it("rejects null payload", () => {
+			expect(() => parseGitHubRelease(null)).toThrow(/Invalid response/);
+		});
+
+		it("rejects non-object payload", () => {
+			expect(() => parseGitHubRelease("not an object")).toThrow(/Invalid response/);
+			expect(() => parseGitHubRelease(42)).toThrow(/Invalid response/);
+		});
+
+		it("rejects payload missing tag_name", () => {
+			const { tag_name: _omit, ...rest } = validRelease;
+			expect(() => parseGitHubRelease(rest)).toThrow(/Invalid response/);
+		});
+
+		it("rejects payload with non-string tag_name", () => {
+			expect(() => parseGitHubRelease({ ...validRelease, tag_name: 123 })).toThrow(/Invalid response/);
+		});
+
+		it("rejects payload missing assets", () => {
+			const { assets: _omit, ...rest } = validRelease;
+			expect(() => parseGitHubRelease(rest)).toThrow(/Invalid response/);
+		});
+
+		it("rejects payload with non-array assets", () => {
+			expect(() => parseGitHubRelease({ ...validRelease, assets: "nope" })).toThrow(/Invalid response/);
+		});
+
+		it("rejects asset missing name", () => {
+			const bad = { ...validRelease, assets: [{ browser_download_url: "x" }] };
+			expect(() => parseGitHubRelease(bad)).toThrow(/Invalid asset shape/);
+		});
+
+		it("rejects asset missing browser_download_url", () => {
+			const bad = { ...validRelease, assets: [{ name: "tiny-agent-linux-x64" }] };
+			expect(() => parseGitHubRelease(bad)).toThrow(/Invalid asset shape/);
+		});
+
+		it("rejects asset with non-string name", () => {
+			const bad = { ...validRelease, assets: [{ name: 123, browser_download_url: "x" }] };
+			expect(() => parseGitHubRelease(bad)).toThrow(/Invalid asset shape/);
+		});
+	});
+
 	describe("version comparison", () => {
 		it("should correctly compare equal versions", () => {
 			expect(compareVersions("1.0.0", "1.0.0")).toBe(0);
