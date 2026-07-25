@@ -417,6 +417,16 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		for (const step of steps) {
 			console.log(`\n--- Step ${step.stepNumber}: ${step.description} ---`);
 
+			state.currentTask = {
+				stepNumber: step.stepNumber,
+				description: step.description,
+				startedAt: new Date().toISOString(),
+				phase: "build",
+			};
+			if (!dryRun) {
+				await writeStateFile(stateFilePath, state);
+			}
+
 			const stepChanges: Array<{
 				type: "create" | "modify" | "delete";
 				path: string;
@@ -520,6 +530,7 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		}
 
 		state.status = "completed";
+		state.currentTask = undefined;
 		await writeStateFile(stateFilePath, state);
 
 		console.log("\n✨ Build completed successfully!");

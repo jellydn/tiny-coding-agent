@@ -52,11 +52,19 @@ export interface Artifact {
 	createdAt: string;
 }
 
+export interface CurrentTask {
+	stepNumber: number;
+	description: string;
+	startedAt: string;
+	phase: AgentPhase;
+}
+
 export interface StateFile {
 	metadata: StateMetadata;
 	phase: AgentPhase;
 	taskDescription: string;
 	status: AgentStatus;
+	currentTask?: CurrentTask;
 	results: AgentResult;
 	errors: StateError[];
 	artifacts: Artifact[];
