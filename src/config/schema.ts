@@ -22,6 +22,23 @@ export interface ToolConfig {
 	options?: Record<string, unknown>;
 }
 
+/**
+ * Observability configuration. All fields optional — observability degrades to
+ * safe defaults (no full prompts, console telemetry, Langfuse off) when unset.
+ */
+export interface ObservabilityConfig {
+	/** Enable OpenTelemetry tracing. Default: true when telemetry is initialized. */
+	telemetryEnabled?: boolean;
+	/** Enable optional Langfuse integration (also requires LANGFUSE_* env vars). Default: false. */
+	langfuseEnabled?: boolean;
+	/** Log full prompt/response text instead of a redacted preview. Default: false. */
+	logFullPrompts?: boolean;
+	/** Max characters of the prompt/response preview. Default: 200. */
+	previewLength?: number;
+	/** Include detailed usage metadata in API/CLI responses in development. Default: true. */
+	detailedResponseMeta?: boolean;
+}
+
 export const providerConfigSchema = z.object({
 	apiKey: z.string().optional(),
 	baseUrl: z.string().optional(),
@@ -66,6 +83,7 @@ export interface Config {
 	mcpServers?: Record<string, McpServerConfig>;
 	tools?: Record<string, ToolConfig>;
 	disabledMcpPatterns?: string[];
+	observability?: ObservabilityConfig;
 }
 
 export interface ConfigValidationError {

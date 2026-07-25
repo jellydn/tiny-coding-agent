@@ -258,6 +258,38 @@ export function loadConfig(): Config {
 		}
 	}
 
+	// Observability env-var overrides. These take precedence over config-file
+	// values so observability can be tuned per-environment without editing the
+	// config file. All are optional and fall back to safe defaults.
+	const observability: Required<NonNullable<Config["observability"]>> = {
+		telemetryEnabled: true,
+		langfuseEnabled: false,
+		logFullPrompts: false,
+		previewLength: 200,
+		detailedResponseMeta: true,
+		...config.observability,
+	};
+	const envBool = (v: string | undefined): boolean | undefined => {
+		if (v === undefined) return undefined;
+		return /^(1|true|yes|on)$/i.test(v.trim());
+	};
+	const envNum = (v: string | undefined): number | undefined => {
+		if (v === undefined) return undefined;
+		const n = Number(v);
+		return Number.isFinite(n) ? n : undefined;
+	};
+	const telemetryEnv = envBool(process.env.TINY_AGENT_TELEMETRY_ENABLED);
+	if (telemetryEnv !== undefined) observability.telemetryEnabled = telemetryEnv;
+	const langfuseEnv = envBool(process.env.TINY_AGENT_LANGFUSE_ENABLED);
+	if (langfuseEnv !== undefined) observability.langfuseEnabled = langfuseEnv;
+	const fullPromptsEnv = envBool(process.env.TINY_AGENT_LOG_FULL_PROMPTS);
+	if (fullPromptsEnv !== undefined) observability.logFullPrompts = fullPromptsEnv;
+	const previewLenEnv = envNum(process.env.TINY_AGENT_PREVIEW_LENGTH);
+	if (previewLenEnv !== undefined && previewLenEnv > 0) observability.previewLength = previewLenEnv;
+	const detailedMetaEnv = envBool(process.env.TINY_AGENT_DETAILED_RESPONSE_META);
+	if (detailedMetaEnv !== undefined) observability.detailedResponseMeta = detailedMetaEnv;
+	config = { ...config, observability };
+
 	if (config.skillDirectories) {
 		config.skillDirectories = config.skillDirectories.map((dir) =>
 			dir.startsWith("~/") ? join(homedir(), dir.slice(2)) : dir

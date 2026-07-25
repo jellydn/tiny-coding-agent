@@ -13,6 +13,7 @@ import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
 import { handleSkill } from "./handlers/skill.js";
 import { handleStatus } from "./handlers/status.js";
+import { handleTrace } from "./handlers/trace.js";
 import { type CliOptions, createLLMClient, parseArgs, setupTools } from "./shared.js";
 
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
@@ -262,6 +263,7 @@ async function handleRun(config: ReturnType<typeof loadConfig>, args: string[], 
 		agentsMdPath,
 		thinking: config.thinking,
 		providerConfigs: config.providers,
+		observability: config.observability,
 		skillDirectories,
 		mcpManager,
 	});
@@ -442,6 +444,7 @@ async function handleInteractiveChat(
 				agentsMdPath,
 				thinking: config.thinking,
 				providerConfigs: config.providers,
+				observability: config.observability,
 				skillDirectories,
 				mcpManager,
 			});
@@ -494,6 +497,8 @@ USAGE:
     tiny-agent [command] [args...]     Run a command
     tiny-agent chat                    Interactive chat mode (default)
     tiny-agent run <prompt>            Run a single prompt
+    tiny-agent trace <prompt>          Run a prompt and show observability metadata
+    tiny-agent trace --mock <prompt>   Run the observability demo with a mock provider (no API key)
     tiny-agent config                  Show current configuration
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
@@ -583,9 +588,11 @@ export async function main(): Promise<void> {
 			await handleSkill(config, args, options);
 		} else if (command === "mcp") {
 			await handleMcp(args);
+		} else if (command === "trace") {
+			await handleTrace(config, args, options);
 		} else {
 			console.error(`Unknown command: ${command}`);
-			console.error("Available commands: chat, run <prompt>, config, status, memory, skill, mcp");
+			console.error("Available commands: chat, run <prompt>, trace <prompt>, config, status, memory, skill, mcp");
 			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --memory, --help");
 			process.exit(1);
 		}

@@ -2,7 +2,16 @@ import OpenAI from "openai";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
 import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
-import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
+import type {
+	ChatOptions,
+	ChatResponse,
+	LLMClient,
+	Message,
+	StreamChunk,
+	TokenUsage,
+	ToolCall,
+	ToolDefinition,
+} from "./types.js";
 
 export interface OpenAIProviderConfig {
 	apiKey: string;
@@ -91,6 +100,27 @@ function mapFinishReason(reason: string | null): ChatResponse["finishReason"] {
 	}
 }
 
+function num(v: unknown): number | undefined {
+	return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** Map an OpenAI usage object into the normalized TokenUsage shape. */
+function extractOpenAIUsage(raw: unknown): TokenUsage | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const u = raw as Record<string, unknown>;
+	const promptDetails = u.prompt_tokens_details as Record<string, unknown> | undefined;
+	const completionDetails = u.completion_tokens_details as Record<string, unknown> | undefined;
+	const usage: TokenUsage = {
+		inputTokens: num(u.prompt_tokens) ?? num(u.input_tokens),
+		outputTokens: num(u.completion_tokens) ?? num(u.output_tokens),
+		totalTokens: num(u.total_tokens),
+		cachedTokens: num(promptDetails?.cached_tokens),
+		reasoningTokens: num(completionDetails?.reasoning_tokens),
+	};
+	const hasAny = usage.inputTokens !== undefined || usage.outputTokens !== undefined || usage.totalTokens !== undefined;
+	return hasAny ? usage : undefined;
+}
+
 export class OpenAIProvider implements LLMClient {
 	private _client: OpenAI;
 	private _capabilitiesCache = new Map<string, ModelCapabilities>();
@@ -123,6 +153,7 @@ export class OpenAIProvider implements LLMClient {
 			content: message?.content ?? "",
 			toolCalls: parseToolCalls(message?.tool_calls),
 			finishReason: mapFinishReason(choice?.finish_reason ?? null),
+			usage: extractOpenAIUsage(response.usage),
 		};
 	}
 
@@ -134,6 +165,7 @@ export class OpenAIProvider implements LLMClient {
 			temperature: options.temperature,
 			max_tokens: options.maxTokens,
 			stream: true,
+			stream_options: { include_usage: true },
 			reasoning_effort: options.thinking?.effort,
 		} as Record<string, unknown>;
 		const stream = await this._client.chat.completions.create(
@@ -142,10 +174,16 @@ export class OpenAIProvider implements LLMClient {
 		);
 
 		const toolCallsBuffer: Map<number, { id: string; name: string; args: string }> = new Map();
+		let lastUsage: TokenUsage | undefined;
 
 		for await (const chunk of stream) {
 			const delta = chunk.choices[0]?.delta;
 			const finishReason = chunk.choices[0]?.finish_reason;
+
+			// OpenAI sends a trailing chunk with usage when include_usage is set.
+			if (chunk.usage) {
+				lastUsage = extractOpenAIUsage(chunk.usage);
+			}
 
 			if (delta?.tool_calls) {
 				for (const tc of delta.tool_calls) {
@@ -187,13 +225,14 @@ export class OpenAIProvider implements LLMClient {
 
 				yield {
 					toolCalls,
+					usage: lastUsage,
 					done: true,
 				};
 				return;
 			}
 		}
 
-		yield { done: true };
+		yield { done: true, usage: lastUsage };
 	}
 
 	async getCapabilities(model: string): Promise<ModelCapabilities> {

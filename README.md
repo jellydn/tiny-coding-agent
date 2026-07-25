@@ -482,6 +482,54 @@ src/
   ui/         # Ink UI components (App, Message, Spinner, ToolOutput)
 ```
 
+## Observability
+
+Every agent run is traced end-to-end so you can debug failures, measure latency, and estimate cost. Trace metadata is emitted as structured JSON logs and OpenTelemetry spans, and the final stream chunk carries an `observability` summary.
+
+### What is captured
+
+- A unique `traceId` per run, propagated through retrieval, tool execution, and the LLM call.
+- Structured JSON logs with `traceId`, `event`, `model`, `provider`, latency, token usage, estimated cost, and sanitized errors.
+- OpenTelemetry spans: `http.request` → `retrieval` / `tool.execution` / `llm.request`, with `ai.*`, `tool.*`, and `retrieval.*` attributes.
+- Normalized token usage (input / output / total / cached / reasoning) across providers. Missing usage is logged as `unavailable`, never fabricated.
+- Estimated USD cost from `src/observability/model-pricing.json`, labeled as an estimate.
+
+### Privacy
+
+- Full prompt/response logging is **off by default**; only a redacted, truncated preview is stored.
+- API keys, authorization headers, passwords, and `sk-…` tokens are redacted from logs and previews.
+- Stack traces are never exposed to clients; only sanitized error type and message are logged.
+
+### Demo
+
+Run the trace demo without any API key:
+
+```bash
+bun run index.ts trace --mock "explain request tracing"
+# or, after building:
+./tiny-agent trace --mock "explain request tracing"
+```
+
+Output shows the trace ID, latency, token counts, and estimated cost. Add `--json` for a machine-readable response including the `meta` block.
+
+### Configuration
+
+Observability can be tuned via environment variables (override config-file values):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TINY_AGENT_TELEMETRY_ENABLED` | `true` | Enable OpenTelemetry tracing (console exporter). |
+| `TINY_AGENT_LANGFUSE_ENABLED` | `false` | Enable optional Langfuse integration (also requires `LANGFUSE_*` env vars). |
+| `TINY_AGENT_LOG_FULL_PROMPTS` | `false` | Log full prompt/response text instead of a redacted preview. |
+| `TINY_AGENT_PREVIEW_LENGTH` | `200` | Max characters of the prompt/response preview. |
+| `TINY_AGENT_DETAILED_RESPONSE_META` | `true` | Include detailed usage metadata in the response `meta` block. |
+| `TINY_AGENT_PRICING_CONFIG` | _embedded_ | Path to an override pricing JSON file. |
+| `LANGFUSE_SECRET_KEY` | _unset_ | Langfuse secret key (enables Langfuse when set with the public key). |
+| `LANGFUSE_PUBLIC_KEY` | _unset_ | Langfuse public key. |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse backend URL. |
+
+The OpenTelemetry exporter is configurable (`src/observability/telemetry.ts`) so an OTLP backend can be added later without changing tracing logic. Langfuse and telemetry failures are isolated and never break a user request.
+
 ## Architecture
 
 See [docs/adr/](docs/adr/) for architectural decisions:

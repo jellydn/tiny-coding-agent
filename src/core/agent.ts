@@ -1,10 +1,28 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { loadAgentsMd } from "../config/loader.js";
-import type { ProviderConfig, ThinkingConfig } from "../config/schema.js";
+import type { ObservabilityConfig, ProviderConfig, ThinkingConfig } from "../config/schema.js";
 import type { McpManager } from "../mcp/manager.js";
+import {
+	configureLogger,
+	estimateCost,
+	initLangfuse,
+	initTelemetry,
+	isLangfuseEnabled,
+	type LogFields,
+	log,
+	makeGenerationInput,
+	mergeUsage,
+	NO_USAGE,
+	recordGeneration,
+	sanitizeError,
+	setUsageAttributes,
+	startSpan,
+	Timer,
+} from "../observability/index.js";
+import { currentTraceId, ensureTraceContext } from "../observability/trace-context.js";
 import { createProvider, detectProvider, parseModelString } from "../providers/factory.js";
-import type { LLMClient, Message, ToolDefinition } from "../providers/types.js";
+import type { LLMClient, Message, TokenUsage, ToolDefinition } from "../providers/types.js";
 import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
 import { discoverSkills, generateSkillsPrompt, getBuiltinSkillsDir, type SkillMetadata } from "../skills/index.js";
 import { parseSkillFrontmatter } from "../skills/parser.js";
@@ -105,6 +123,7 @@ export interface AgentOptions {
 	providerCacheSize?: number;
 	skillDirectories?: string[];
 	mcpManager?: McpManager | null;
+	observability?: ObservabilityConfig;
 }
 
 export interface RuntimeConfig {
@@ -123,6 +142,13 @@ export interface ToolExecution {
 	startTime?: number;
 }
 
+export interface AgentObservabilityMeta {
+	traceId: string;
+	latencyMs: number;
+	usage?: TokenUsage;
+	estimatedCostUsd: number;
+}
+
 export interface AgentStreamChunk {
 	content: string;
 	iterations: number;
@@ -131,6 +157,8 @@ export interface AgentStreamChunk {
 	toolExecutions?: ToolExecution[];
 	contextStats?: ContextStats;
 	maxIterationsReached?: boolean;
+	/** Observability metadata, present on the final (`done`) chunk. */
+	observability?: AgentObservabilityMeta;
 }
 
 export interface AgentResponse {
@@ -209,6 +237,8 @@ export class Agent {
 	private _skillsInitPromise?: Promise<void>;
 	private _activeSkillAllowedTools: string[] | undefined;
 	private _mcpManager?: McpManager;
+	private _observability?: ObservabilityConfig;
+	private _obsInitialized: boolean = false;
 
 	constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
 		this._defaultLlmClient = llmClient;
@@ -223,6 +253,7 @@ export class Agent {
 		this._trackContextUsage = options.trackContextUsage ?? false;
 		this._thinking = options.thinking;
 		this._mcpManager = options.mcpManager ?? undefined;
+		this._observability = options.observability;
 		this._conversationManager = new ConversationManager(options.conversationFile);
 
 		let effectiveSystemPrompt =
@@ -325,6 +356,49 @@ export class Agent {
 		}
 	}
 
+	/** Lazily configure structured logging, OpenTelemetry, and optional Langfuse. */
+	private _initObservability(): void {
+		if (this._obsInitialized) return;
+		this._obsInitialized = true;
+		const obs = this._observability;
+		configureLogger({
+			logFullPrompts: obs?.logFullPrompts ?? false,
+			previewLength: obs?.previewLength ?? 200,
+		});
+		if (obs?.telemetryEnabled !== false) {
+			initTelemetry({ disabled: false });
+		}
+		if (obs?.langfuseEnabled) {
+			// Fire-and-forget; failures degrade silently to disabled.
+			void initLangfuse();
+		}
+	}
+
+	/** Detect the provider name for a model string, for log/span attributes. */
+	private _providerNameFor(model: string): string {
+		try {
+			return detectProvider(model);
+		} catch {
+			return "unknown";
+		}
+	}
+
+	/** Build observability metadata for the final response chunk. */
+	private _obsMeta(
+		traceId: string,
+		latencyMs: number,
+		model: string,
+		usage: TokenUsage | undefined
+	): AgentObservabilityMeta {
+		const cost = estimateCost(usage, model);
+		return {
+			traceId,
+			latencyMs,
+			usage,
+			estimatedCostUsd: cost.estimatedCostUsd,
+		};
+	}
+
 	startChatSession(): void {
 		this._conversationManager.startSession();
 	}
@@ -344,6 +418,29 @@ export class Agent {
 		}
 
 		this._clearSkillRestriction();
+
+		// --- Observability: establish trace context + root span -------------
+		this._initObservability();
+		ensureTraceContext();
+		const traceId = currentTraceId();
+		const providerName = this._providerNameFor(runtimeConfig?.model ?? model);
+		const rootSpan = startSpan("http.request", {
+			"ai.provider": providerName,
+			"ai.model": runtimeConfig?.model ?? model,
+		});
+		const totalTimer = new Timer();
+		let accumulatedUsage: TokenUsage | undefined;
+		const totalRetryCount = 0;
+
+		log.info({
+			event: "request.start",
+			traceId,
+			provider: providerName,
+			model: runtimeConfig?.model ?? model,
+			prompt: userPrompt,
+			promptLength: userPrompt.length,
+		});
+		// -------------------------------------------------------------------
 
 		const effectiveModel = runtimeConfig?.model ?? model;
 		const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
@@ -386,14 +483,34 @@ export class Agent {
 				{ memoryBudgetPercent: this._memoryBudgetPercent }
 			);
 
-			const relevantMemories = this._memoryStore.findRelevant(userPrompt, 10);
-			const result = buildContextWithMemory(
-				this._systemPrompt,
-				relevantMemories,
-				messages,
-				memoryBudget,
-				conversationBudget
-			);
+			// --- Observability: retrieval span ---------------------------------
+			const retrievalSpan = startSpan("retrieval");
+			const retrievalTimer = new Timer();
+			let relevantMemories: ReturnType<MemoryStore["findRelevant"]> = [];
+			let result: { context: Array<{ role: string; content: string }>; stats: ContextStats };
+			try {
+				relevantMemories = this._memoryStore.findRelevant(userPrompt, 10);
+				result = buildContextWithMemory(
+					this._systemPrompt,
+					relevantMemories,
+					messages,
+					memoryBudget,
+					conversationBudget
+				);
+			} catch (err) {
+				retrievalSpan.end(err);
+				throw err;
+			}
+			retrievalSpan.setAttribute("retrieval.result_count", relevantMemories.length);
+			retrievalSpan.setAttribute("ai.latency_ms", Math.round(retrievalTimer.ms));
+			retrievalSpan.end();
+			log.info({
+				event: "retrieval",
+				traceId,
+				latencyMs: Math.round(retrievalTimer.ms),
+				resultCount: relevantMemories.length,
+			});
+			// -------------------------------------------------------------------
 
 			messages = result.context as Message[];
 			contextStats = result.stats;
@@ -446,6 +563,7 @@ export class Agent {
 		let iteration = 0;
 		const recentToolCalls: string[] = [];
 		let loopDetected = false;
+		let requestFailed = false;
 
 		const updateStats = (): ContextStats =>
 			buildStats({
@@ -456,266 +574,406 @@ export class Agent {
 				maxContextTokens,
 			});
 
-		for (iteration = 0; iteration < this._maxIterations; iteration++) {
-			checkAborted(options?.signal);
+		try {
+			for (iteration = 0; iteration < this._maxIterations; iteration++) {
+				checkAborted(options?.signal);
 
-			if (this._verbose) {
-				console.log(`\n[Iteration ${iteration + 1}]`);
-				if (this._trackContextUsage) {
-					console.log(
-						`[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} - ` +
-							`sys: ${contextStats.systemPromptTokens}t, mem: ${contextStats.memoryTokens}t, ` +
-							`conv: ${contextStats.conversationTokens}t]`
-					);
-				}
-			}
-
-			const stream = llmClient.stream({
-				model: modelName,
-				messages: [
-					{
-						role: "system",
-						content: this._systemPrompt,
-					},
-					...messages,
-				],
-				tools: tools.length > 0 ? tools : undefined,
-				thinking: effectiveThinking,
-				signal: options?.signal,
-			});
-
-			let fullContent = "";
-			let responseToolCalls: string[] = [];
-			const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
-
-			for await (const chunk of stream) {
-				if (chunk.content) {
-					if (!isValidToolCall(chunk.content)) {
-						fullContent += chunk.content;
-						yield {
-							content: chunk.content,
-							iterations: iteration + 1,
-							done: false,
-							contextStats,
-						};
+				if (this._verbose) {
+					console.log(`\n[Iteration ${iteration + 1}]`);
+					if (this._trackContextUsage) {
+						console.log(
+							`[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} - ` +
+								`sys: ${contextStats.systemPromptTokens}t, mem: ${contextStats.memoryTokens}t, ` +
+								`conv: ${contextStats.conversationTokens}t]`
+						);
 					}
 				}
 
-				if (chunk.toolCalls) {
-					assistantToolCalls.push(...chunk.toolCalls);
-					responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
+				// --- Observability: LLM request span + timer ------------------------
+				const llmSpan = startSpan("llm.request", {
+					"ai.provider": providerName,
+					"ai.model": modelName,
+				});
+				const llmTimer = new Timer();
+				let llmTimeToFirstToken: number | undefined;
+				let llmUsage: TokenUsage | undefined;
+				let firstChunkSeen = false;
+				// --------------------------------------------------------------------
+
+				const stream = llmClient.stream({
+					model: modelName,
+					messages: [
+						{
+							role: "system",
+							content: this._systemPrompt,
+						},
+						...messages,
+					],
+					tools: tools.length > 0 ? tools : undefined,
+					thinking: effectiveThinking,
+					signal: options?.signal,
+				});
+
+				let fullContent = "";
+				let responseToolCalls: string[] = [];
+				const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
+
+				try {
+					for await (const chunk of stream) {
+						if (!firstChunkSeen && (chunk.content || chunk.toolCalls)) {
+							firstChunkSeen = true;
+							llmTimeToFirstToken = llmTimer.ms;
+						}
+						if (chunk.content) {
+							if (!isValidToolCall(chunk.content)) {
+								fullContent += chunk.content;
+								yield {
+									content: chunk.content,
+									iterations: iteration + 1,
+									done: false,
+									contextStats,
+								};
+							}
+						}
+
+						if (chunk.toolCalls) {
+							assistantToolCalls.push(...chunk.toolCalls);
+							responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
+						}
+
+						if (chunk.usage) {
+							llmUsage = chunk.usage;
+						}
+					}
+				} catch (err) {
+					llmSpan.end(err);
+					throw err;
 				}
-			}
 
-			if (this._verbose) {
-				console.log(`LLM Response: ${fullContent}`);
-				if (responseToolCalls.length > 0) {
-					console.log(`Tool Calls: ${responseToolCalls.join(", ")}`);
+				const llmLatencyMs = Math.round(llmTimer.ms);
+
+				// --- Observability: record LLM call --------------------------------
+				accumulatedUsage = accumulatedUsage || llmUsage ? mergeUsage(accumulatedUsage, llmUsage) : undefined;
+				const costEstimate = estimateCost(llmUsage, modelName);
+				setUsageAttributes(llmSpan, llmUsage, costEstimate.estimatedCostUsd);
+				llmSpan.setAttribute("ai.latency_ms", llmLatencyMs);
+				if (llmTimeToFirstToken !== undefined) {
+					llmSpan.setAttribute("ai.time_to_first_token_ms", Math.round(llmTimeToFirstToken));
 				}
-			}
+				llmSpan.end();
 
-			const assistantMessage: Message = {
-				role: "assistant",
-				content: fullContent,
-			};
+				log.info({
+					event: "llm.request",
+					traceId,
+					provider: providerName,
+					model: modelName,
+					latencyMs: llmLatencyMs,
+					usage: llmUsage ?? NO_USAGE,
+					estimatedCostUsd: costEstimate.estimatedCostUsd,
+					response: fullContent,
+					responseLength: fullContent.length,
+					status: "ok",
+				});
 
-			messages.push(assistantMessage);
+				// Optional Langfuse generation record (no-op when disabled).
+				if (isLangfuseEnabled()) {
+					recordGeneration(
+						makeGenerationInput({
+							traceId,
+							name: "llm.request",
+							model: modelName,
+							input: userPrompt,
+							output: fullContent,
+							usage: llmUsage,
+							latencyMs: llmLatencyMs,
+							estimatedCostUsd: costEstimate.estimatedCostUsd,
+						})
+					);
+				}
+				// --------------------------------------------------------------------
 
-			if (assistantToolCalls.length > 0) {
-				assistantMessage.toolCalls = assistantToolCalls;
-			}
-
-			if (assistantToolCalls.length === 0) {
 				if (this._verbose) {
-					console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
+					console.log(`LLM Response: ${fullContent}`);
+					if (responseToolCalls.length > 0) {
+						console.log(`Tool Calls: ${responseToolCalls.join(", ")}`);
+					}
 				}
 
-				await this._updateConversationHistory(messages);
+				const assistantMessage: Message = {
+					role: "assistant",
+					content: fullContent,
+				};
+
+				messages.push(assistantMessage);
+
+				if (assistantToolCalls.length > 0) {
+					assistantMessage.toolCalls = assistantToolCalls;
+				}
+
+				if (assistantToolCalls.length === 0) {
+					if (this._verbose) {
+						console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
+					}
+
+					await this._updateConversationHistory(messages);
+
+					yield {
+						content: "",
+						iterations: iteration + 1,
+						done: true,
+						contextStats,
+						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+					};
+					return;
+				}
+
+				checkAborted(options?.signal);
+
+				const toolTimer = new Timer();
+				const toolSpan = startSpan("tool.execution");
 
 				yield {
 					content: "",
 					iterations: iteration + 1,
-					done: true,
+					done: false,
+					toolExecutions: assistantToolCalls.map((tc) => ({
+						name: tc.name,
+						status: "running" as const,
+						args: tc.arguments,
+						startTime: Date.now(),
+					})),
 					contextStats,
 				};
-				return;
-			}
 
-			checkAborted(options?.signal);
-
-			const toolStartTime = Date.now();
-
-			yield {
-				content: "",
-				iterations: iteration + 1,
-				done: false,
-				toolExecutions: assistantToolCalls.map((tc) => ({
+				const calls = assistantToolCalls.map((tc) => ({
 					name: tc.name,
-					status: "running" as const,
 					args: tc.arguments,
-					startTime: toolStartTime,
-				})),
-				contextStats,
-			};
-
-			const calls = assistantToolCalls.map((tc) => ({
-				name: tc.name,
-				args: tc.arguments,
-			}));
-			const batchResults = await this._toolRegistry.executeBatch(calls);
-
-			const toolEndTime = Date.now();
-			const toolDuration = toolEndTime - toolStartTime;
-
-			const resultMap = new Map(batchResults.map((br) => [br.name, br]));
-			const getToolResult = (name: string) => resultMap.get(name)?.result;
-			const toolExecutionResults = assistantToolCalls.map((tc) => ({
-				toolCall: tc,
-				result: getToolResult(tc.name) ?? {
-					success: false,
-					error: `Tool "${tc.name}" result not found`,
-				},
-			}));
-
-			yield {
-				content: "",
-				iterations: iteration + 1,
-				done: false,
-				toolExecutions: toolExecutionResults.map(({ toolCall, result }) => ({
-					name: toolCall?.name,
-					status: result.success ? "complete" : "error",
-					args: toolCall?.arguments,
-					output: result.success ? truncateOutput(result.output) : undefined,
-					error: result.error ? truncateOutput(result.error) : undefined,
-					duration: toolDuration,
-				})),
-				contextStats,
-			};
-
-			checkAborted(options?.signal);
-
-			for (const { toolCall, result } of toolExecutionResults) {
-				const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
-				recentToolCalls.push(toolCallSignature);
-
-				messages.push({
-					role: "tool",
-					content: result.error || result.output || "(no output)",
-					toolCallId: toolCall?.id,
-				});
-			}
-
-			const notFoundErrors = toolExecutionResults.filter(
-				({ result }) => !result.success && result.error?.includes("not found")
-			);
-			const declinedErrors = toolExecutionResults.filter(
-				({ result }) => !result.success && result.error?.includes("User declined confirmation")
-			);
-
-			if (notFoundErrors.length > 0) {
-				const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
-				messages.push({
-					role: "system",
-					content: `ERROR: The following tool(s) are not available: ${missingTools}. Please stop and provide your final answer based on the information you have gathered, or ask the user for alternative approaches.`,
-				});
-				if (this._verbose) {
-					console.log(`\n[WARNING] Tool(s) not found: ${missingTools}, breaking loop`);
+				}));
+				let batchResults: Array<{ name: string; result: { success: boolean; output?: string; error?: string } }>;
+				try {
+					batchResults = await this._toolRegistry.executeBatch(calls);
+				} catch (err) {
+					toolSpan.end(err);
+					throw err;
 				}
-				loopDetected = true;
-				break;
-			}
 
-			if (declinedErrors.length > 0) {
-				const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
+				const toolDuration = Math.round(toolTimer.ms);
 
-				if (declinedErrors.length === toolExecutionResults.length) {
+				const resultMap = new Map(batchResults.map((br) => [br.name, br]));
+				const getToolResult = (name: string) => resultMap.get(name)?.result;
+				const toolExecutionResults = assistantToolCalls.map((tc) => ({
+					toolCall: tc,
+					result: getToolResult(tc.name) ?? {
+						success: false,
+						error: `Tool "${tc.name}" result not found`,
+					},
+				}));
+
+				// --- Observability: record tool execution ---------------------------
+				toolSpan.setAttribute("ai.latency_ms", toolDuration);
+				toolSpan.setAttribute("tool.names", assistantToolCalls.map((tc) => tc.name).join(","));
+				toolSpan.end();
+				for (const { toolCall, result } of toolExecutionResults) {
+					const toolName = toolCall?.name ?? "unknown";
+					const toolFields: LogFields = {
+						event: "tool.execution",
+						traceId,
+						toolName,
+						latencyMs: toolDuration,
+						status: result.success ? "ok" : "error",
+					};
+					if (!result.success && result.error) {
+						const { errorType, errorMessage } = sanitizeError(new Error(result.error));
+						toolFields.errorType = errorType;
+						toolFields.errorMessage = errorMessage;
+					}
+					log.info(toolFields);
+				}
+				// --------------------------------------------------------------------
+
+				yield {
+					content: "",
+					iterations: iteration + 1,
+					done: false,
+					toolExecutions: toolExecutionResults.map(({ toolCall, result }) => ({
+						name: toolCall?.name,
+						status: result.success ? "complete" : "error",
+						args: toolCall?.arguments,
+						output: result.success ? truncateOutput(result.output) : undefined,
+						error: result.error ? truncateOutput(result.error) : undefined,
+						duration: toolDuration,
+					})),
+					contextStats,
+				};
+
+				checkAborted(options?.signal);
+
+				for (const { toolCall, result } of toolExecutionResults) {
+					const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
+					recentToolCalls.push(toolCallSignature);
+
+					messages.push({
+						role: "tool",
+						content: result.error || result.output || "(no output)",
+						toolCallId: toolCall?.id,
+					});
+				}
+
+				const notFoundErrors = toolExecutionResults.filter(
+					({ result }) => !result.success && result.error?.includes("not found")
+				);
+				const declinedErrors = toolExecutionResults.filter(
+					({ result }) => !result.success && result.error?.includes("User declined confirmation")
+				);
+
+				if (notFoundErrors.length > 0) {
+					const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
 					messages.push({
 						role: "system",
-						content: `All tool calls (${declinedTools}) were declined by the user. Provide your final answer now without making any more tool calls.`,
+						content: `ERROR: The following tool(s) are not available: ${missingTools}. Please stop and provide your final answer based on the information you have gathered, or ask the user for alternative approaches.`,
 					});
 					if (this._verbose) {
-						console.log(`\n[INFO] All tools declined: ${declinedTools}, requesting final answer`);
+						console.log(`\n[WARNING] Tool(s) not found: ${missingTools}, breaking loop`);
 					}
 					loopDetected = true;
 					break;
 				}
 
-				if (this._verbose) {
-					console.log(`\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`);
+				if (declinedErrors.length > 0) {
+					const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
+
+					if (declinedErrors.length === toolExecutionResults.length) {
+						messages.push({
+							role: "system",
+							content: `All tool calls (${declinedTools}) were declined by the user. Provide your final answer now without making any more tool calls.`,
+						});
+						if (this._verbose) {
+							console.log(`\n[INFO] All tools declined: ${declinedTools}, requesting final answer`);
+						}
+						loopDetected = true;
+						break;
+					}
+
+					if (this._verbose) {
+						console.log(`\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`);
+					}
+					contextStats = updateStats();
+					continue;
 				}
-				contextStats = updateStats();
-				continue;
-			}
 
-			if (recentToolCalls.length >= 3 && isLooping(recentToolCalls)) {
-				const toolName = assistantToolCalls[0]?.name ?? "unknown";
-				messages.push({
-					role: "system",
-					content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
-				});
-				if (this._verbose) {
-					console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
-				}
-				loopDetected = true;
-				break;
-			}
-
-			contextStats = updateStats();
-		}
-
-		if (loopDetected) {
-			if (this._verbose) {
-				console.log(`\n[Loop detected - requesting final answer from LLM]`);
-			}
-
-			const stream = llmClient.stream({
-				model: modelName,
-				messages: [
-					{
+				if (recentToolCalls.length >= 3 && isLooping(recentToolCalls)) {
+					const toolName = assistantToolCalls[0]?.name ?? "unknown";
+					messages.push({
 						role: "system",
-						content: this._systemPrompt,
-					},
-					...messages,
-				],
-				tools: undefined,
-				thinking: effectiveThinking,
-				signal: options?.signal,
-			});
-
-			for await (const chunk of stream) {
-				if (chunk.content) {
-					yield {
-						content: chunk.content,
-						iterations: iteration + 1,
-						done: false,
-						contextStats: updateStats(),
-					};
+						content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
+					});
+					if (this._verbose) {
+						console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
+					}
+					loopDetected = true;
+					break;
 				}
+
+				contextStats = updateStats();
+			}
+
+			if (loopDetected) {
+				if (this._verbose) {
+					console.log(`\n[Loop detected - requesting final answer from LLM]`);
+				}
+
+				const stream = llmClient.stream({
+					model: modelName,
+					messages: [
+						{
+							role: "system",
+							content: this._systemPrompt,
+						},
+						...messages,
+					],
+					tools: undefined,
+					thinking: effectiveThinking,
+					signal: options?.signal,
+				});
+
+				for await (const chunk of stream) {
+					if (chunk.content) {
+						yield {
+							content: chunk.content,
+							iterations: iteration + 1,
+							done: false,
+							contextStats: updateStats(),
+						};
+					}
+				}
+
+				await this._updateConversationHistory(messages);
+				yield {
+					content: "",
+					iterations: iteration + 1,
+					done: true,
+					contextStats: updateStats(),
+					observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+				};
+				return;
+			}
+
+			if (this._verbose) {
+				console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
 			}
 
 			await this._updateConversationHistory(messages);
+
 			yield {
 				content: "",
-				iterations: iteration + 1,
+				iterations: iteration,
 				done: true,
+				maxIterationsReached: true,
 				contextStats: updateStats(),
+				observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
 			};
-			return;
+		} catch (err) {
+			// --- Observability: record failure against the trace --------------
+			requestFailed = true;
+			const { errorType, errorMessage } = sanitizeError(err);
+			const failLatency = Math.round(totalTimer.ms);
+			rootSpan.recordError(err);
+			log.error({
+				event: "request.error",
+				traceId,
+				provider: providerName,
+				model: modelName,
+				latencyMs: failLatency,
+				status: "error",
+				errorType,
+				errorMessage,
+				retryCount: totalRetryCount,
+				usage: accumulatedUsage ?? NO_USAGE,
+			});
+			// ----------------------------------------------------------------
+			throw err;
+		} finally {
+			// --- Observability: close root span + emit request.end -----------
+			const totalLatencyMs = Math.round(totalTimer.ms);
+			const endCost = estimateCost(accumulatedUsage, modelName);
+			rootSpan.setAttributes({
+				"ai.latency_ms": totalLatencyMs,
+				"ai.estimated_cost_usd": endCost.estimatedCostUsd,
+			});
+			setUsageAttributes(rootSpan, accumulatedUsage, endCost.estimatedCostUsd);
+			rootSpan.end();
+			log.info({
+				event: "request.end",
+				traceId,
+				provider: providerName,
+				model: modelName,
+				latencyMs: totalLatencyMs,
+				usage: accumulatedUsage ?? NO_USAGE,
+				estimatedCostUsd: endCost.estimatedCostUsd,
+				status: requestFailed ? "error" : "ok",
+			});
+			// ----------------------------------------------------------------
 		}
-
-		if (this._verbose) {
-			console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
-		}
-
-		await this._updateConversationHistory(messages);
-
-		yield {
-			content: "",
-			iterations: iteration,
-			done: true,
-			maxIterationsReached: true,
-			contextStats: updateStats(),
-		};
 	}
 
 	async run(userPrompt: string, model: string): Promise<AgentResponse> {

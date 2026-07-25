@@ -1,6 +1,15 @@
 import { Ollama } from "ollama";
 import type { ModelCapabilities } from "./capabilities.js";
-import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
+import type {
+	ChatOptions,
+	ChatResponse,
+	LLMClient,
+	Message,
+	StreamChunk,
+	TokenUsage,
+	ToolCall,
+	ToolDefinition,
+} from "./types.js";
 
 export interface OllamaProviderConfig {
 	baseUrl?: string;
@@ -74,6 +83,24 @@ function mapFinishReason(doneReason: string | undefined): ChatResponse["finishRe
 	return "stop";
 }
 
+function num(v: unknown): number | undefined {
+	return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** Map an Ollama response usage into the normalized TokenUsage shape. */
+function extractOllamaUsage(raw: unknown): TokenUsage | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const u = raw as Record<string, unknown>;
+	const input = num(u.prompt_eval_count);
+	const output = num(u.eval_count);
+	if (input === undefined && output === undefined) return undefined;
+	return {
+		inputTokens: input,
+		outputTokens: output,
+		totalTokens: input !== undefined && output !== undefined ? input + output : undefined,
+	};
+}
+
 export class OllamaProvider implements LLMClient {
 	private _client: Ollama;
 	private _baseUrl: string;
@@ -107,6 +134,7 @@ export class OllamaProvider implements LLMClient {
 			content: response.message.content,
 			toolCalls: parseToolCalls(response.message.tool_calls),
 			finishReason: mapFinishReason(response.done_reason),
+			usage: extractOllamaUsage(response),
 		};
 	}
 
@@ -177,6 +205,8 @@ export class OllamaProvider implements LLMClient {
 							content?: string;
 						};
 						done?: boolean;
+						prompt_eval_count?: number;
+						eval_count?: number;
 					};
 
 					try {
@@ -215,6 +245,7 @@ export class OllamaProvider implements LLMClient {
 
 						yield {
 							toolCalls,
+							usage: extractOllamaUsage(chunk),
 							done: true,
 						};
 						return;
