@@ -82,49 +82,64 @@ For dry-run mode:
 - Do not modify any files
 - Do not update the state file`;
 
+type MappedBuildAction = { kind: "call"; call: ToolCall } | { kind: "unmappable"; reason: string };
+
 /**
- * Map a build-time intent (BuildAction) into a registry-shaped ToolCall.
- *
- * Returns `null` for actions whose `path` is missing — build-agent treats those
- * as errors at execution time. Confirmation is handled by the registry, not
- * here; the registry routes dangerous ops through the CLI's confirmation
- * handler with the right danger level (write/edit/delete/bash-destructive).
+ * Map a build-time intent (BuildAction) into a registry-shaped ToolCall, or
+ * report why it can't be mapped. Folding mapping + reason into one exhaustive
+ * function keeps every action variant's translation in a single place, so a
+ * new BuildAction variant only needs one switch arm — not two (mapping +
+ * unmappable-message). Confirmation is handled by the registry, not here;
+ * the registry routes dangerous ops through the CLI's confirmation handler
+ * with the right danger level (write/edit/delete/bash-destructive).
  */
-function buildActionToToolCall(action: BuildAction): ToolCall | null {
+function mapBuildAction(action: BuildAction): MappedBuildAction {
 	switch (action.type) {
 		case "create": {
-			if (!action.path) return null;
+			if (!action.path) return { kind: "unmappable", reason: "create action requires a path" };
 			return {
-				name: "write_file",
-				args: { path: action.path, content: action.content ?? "" },
+				kind: "call",
+				call: {
+					name: "write_file",
+					args: { path: action.path, content: action.content ?? "" },
+				},
 			};
 		}
 		case "modify": {
-			if (!action.path) return null;
+			if (!action.path) return { kind: "unmappable", reason: "modify action requires a path" };
 			if (action.oldContent && action.content) {
 				return {
-					name: "edit_file",
-					args: {
-						path: action.path,
-						old_str: action.oldContent,
-						new_str: action.content,
+					kind: "call",
+					call: {
+						name: "edit_file",
+						args: {
+							path: action.path,
+							old_str: action.oldContent,
+							new_str: action.content,
+						},
 					},
 				};
 			}
 			if (action.content) {
 				return {
-					name: "write_file",
-					args: { path: action.path, content: action.content },
+					kind: "call",
+					call: {
+						name: "write_file",
+						args: { path: action.path, content: action.content },
+					},
 				};
 			}
-			return null;
+			return {
+				kind: "unmappable",
+				reason: "modify action requires both oldContent and content, or just content",
+			};
 		}
 		case "delete": {
-			if (!action.path) return null;
-			return { name: "delete_file", args: { path: action.path } };
+			if (!action.path) return { kind: "unmappable", reason: "delete action requires a path" };
+			return { kind: "call", call: { name: "delete_file", args: { path: action.path } } };
 		}
 		case "execute": {
-			return { name: "bash", args: { command: action.description } };
+			return { kind: "call", call: { name: "bash", args: { command: action.description } } };
 		}
 	}
 }
@@ -219,6 +234,18 @@ function planToBuildSteps(plan: Plan, rawText: string): BuildStep[] {
 function buildFlatFormSteps(rawText: string, flatSteps: GrammarStep[]): BuildStep[] {
 	const result: BuildStep[] = [];
 	const lines = rawText.split("\n");
+	// Index flat steps by (number, text) so the per-line lookup below is O(1)
+	// instead of an O(M) Array.find inside the loop. Keying on the same pair
+	// the original predicate used preserves the exact match semantics: a
+	// grammar step with the same number but different text will NOT match, so
+	// the description correctly falls back to the line text. The `\0` separator
+	// is safe because `text` comes from `.trim()` of a non-greedy `.+?` regex
+	// match that doesn't span lines — `\0` can't appear in any key.
+	const stepByKey = new Map<string, GrammarStep>();
+	for (const s of flatSteps) {
+		const key = `${s.number}\0${s.text}`;
+		if (!stepByKey.has(key)) stepByKey.set(key, s);
+	}
 	let currentBuild: BuildStep | null = null;
 
 	for (const line of lines) {
@@ -226,7 +253,7 @@ function buildFlatFormSteps(rawText: string, flatSteps: GrammarStep[]): BuildSte
 		if (stepMatch) {
 			const n = parseInt(stepMatch[1] ?? "0", 10);
 			const text = (stepMatch[2] ?? "").trim();
-			const grammarStep = flatSteps.find((s) => s.number === n && s.text === text);
+			const grammarStep = stepByKey.get(`${n}\0${text}`);
 			currentBuild = {
 				stepNumber: n,
 				description: grammarStep?.text ?? text,
@@ -262,20 +289,6 @@ function convertStepsToBuildResult(steps: BuildStep[]) {
 			changes: s.changes,
 		})),
 	};
-}
-
-function unmappableActionError(action: BuildAction): string {
-	switch (action.type) {
-		case "create":
-			return "create action requires a path";
-		case "modify":
-			if (!action.path) return "modify action requires a path";
-			return "modify action requires both oldContent and content, or just content";
-		case "delete":
-			return "delete action requires a path";
-		case "execute":
-			return "execute action requires a description (interpreted as the bash command)";
-	}
 }
 
 function createBuildRegistry(): ToolRegistry {
@@ -380,14 +393,13 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 			for (const action of step.actions) {
 				let executionResult: ExecutionOutcome;
 
-				const call = buildActionToToolCall(action);
-				if (!call) {
-					const error = unmappableActionError(action);
-					executionResult = { success: false, error };
+				const mapped = mapBuildAction(action);
+				if (mapped.kind === "unmappable") {
+					executionResult = { success: false, error: mapped.reason };
 				} else {
 					// Confirmation for dangerous ops (create/modify/delete/destructive-bash)
 					// is handled inside registry.execute via the CLI's confirmation handler.
-					executionResult = await registry.execute(call.name, call.args);
+					executionResult = await registry.execute(mapped.call.name, mapped.call.args);
 				}
 
 				if (executionResult.success) {
@@ -431,9 +443,9 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 						break;
 					}
 
-					if (decision.action === "retry" && call) {
+					if (decision.action === "retry" && mapped.kind === "call") {
 						console.log(`  Retrying step ${step.stepNumber}...`);
-						const retryResult = await registry.execute(call.name, call.args);
+						const retryResult = await registry.execute(mapped.call.name, mapped.call.args);
 						if (retryResult.success) {
 							console.log(`  ✓ ${action.description} (retry successful)`);
 							const actionPath = action.path;
