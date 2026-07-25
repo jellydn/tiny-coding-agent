@@ -3,6 +3,25 @@ import type { AnthropicToolDef, OpenAIFunctionDef, Tool } from "./types.js";
 
 export class ToolRegistry {
 	private _tools: Map<string, Tool> = new Map();
+	private _dryRun: boolean = false;
+
+	/**
+	 * Enable or disable dry-run mode. When enabled, `execute` returns a synthetic
+	 * result for any tool flagged as `dangerous`, leaving the rest of the registry's
+	 * behavior (including non-dangerous tools like read_file/list_directory) intact.
+	 *
+	 * Why only dangerous tools: a dry-run that still runs `bash { command: "git status" }`
+	 * or `read_file` is the most useful agent shape — the user wants to see what the
+	 * plan would do, but exploration must continue to work. Mutating ops (write/edit/
+	 * delete/bash-destructive) are the ones that truly need to be simulated.
+	 */
+	setDryRun(enabled: boolean): void {
+		this._dryRun = enabled;
+	}
+
+	isDryRun(): boolean {
+		return this._dryRun;
+	}
 
 	register(tool: Tool): void {
 		if (this._tools.has(tool.name)) {
@@ -138,10 +157,33 @@ export class ToolRegistry {
 			return { success: false, error: `Tool "${name}" not found` };
 		}
 
+		if (this._dryRun && this.isDangerous(name, args)) {
+			const dangerLevel = this.getDangerLevel(name, args) ?? `Execute ${name}`;
+			const argsSummary = formatArgsSummary(args);
+			return {
+				success: true,
+				output: `[DRY-RUN] Would execute: ${dangerLevel} (tool=${name}, args=${argsSummary})`,
+			};
+		}
+
 		try {
 			return await tool.execute(args);
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : String(err) };
 		}
 	}
+}
+
+function formatArgsSummary(args: Record<string, unknown>): string {
+	const entries = Object.entries(args);
+	if (entries.length === 0) return "{}";
+	const maxLen = 80;
+	const rendered = entries
+		.map(([k, v]) => {
+			const valueStr = typeof v === "string" ? v : JSON.stringify(v);
+			const truncated = valueStr.length > maxLen ? `${valueStr.slice(0, maxLen)}…` : valueStr;
+			return `${k}=${truncated}`;
+		})
+		.join(", ");
+	return `{ ${rendered} }`;
 }

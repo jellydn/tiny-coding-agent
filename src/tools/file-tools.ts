@@ -33,6 +33,10 @@ const editFileArgsSchema = z.object({
 	replace_all: z.boolean().optional(),
 });
 
+const deleteFileArgsSchema = z.object({
+	path: z.string(),
+});
+
 const listDirectoryArgsSchema = z.object({
 	path: z.string(),
 	recursive: z.boolean().optional(),
@@ -401,4 +405,45 @@ async function listDir(dirPath: string, recursive: boolean, prefix = ""): Promis
 	return results;
 }
 
-export const fileTools: Tool[] = [readFileTool, writeFileTool, editFileTool, listDirectoryTool];
+export const deleteFileTool: Tool = {
+	name: "delete_file",
+	description:
+		"Delete a file. Refuses to remove sensitive files or paths outside the project root. Returns success if the file was deleted, or failure with a descriptive error otherwise.",
+	dangerous: "Will delete file",
+	parameters: {
+		type: "object",
+		properties: {
+			path: {
+				type: "string",
+				description: "The absolute or relative path to the file to delete",
+			},
+		},
+		required: ["path"],
+	},
+	async execute(args: Record<string, unknown>): Promise<ToolResult> {
+		const parsed = deleteFileArgsSchema.safeParse(args);
+		if (!parsed.success) {
+			return { success: false, error: `Invalid arguments: ${parsed.error.message}` };
+		}
+
+		const filePath = parsed.data.path;
+
+		const pathValidation = await validatePath(filePath, true);
+		if (!pathValidation.valid) {
+			return { success: false, error: pathValidation.error };
+		}
+
+		if (isSensitiveFile(filePath)) {
+			return { success: false, error: `Cannot delete sensitive file: ${filePath}` };
+		}
+
+		try {
+			await fs.unlink(filePath);
+			return { success: true, output: `Deleted ${filePath}` };
+		} catch (err) {
+			return handleFileError(filePath, err, "Failed to delete file");
+		}
+	},
+};
+
+export const fileTools: Tool[] = [readFileTool, writeFileTool, editFileTool, listDirectoryTool, deleteFileTool];
