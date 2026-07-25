@@ -210,6 +210,27 @@ describe("parsePlanToSteps", () => {
 		expect(steps[1]?.description).toBe("Development");
 		expect(steps[1]?.actions.length).toBe(2);
 	});
+
+	it("keeps a single real phase with sequentially-numbered sub-steps as one BuildStep (regression)", () => {
+		// Regression guard for the over-eager AST-shape flat-form detector.
+		// A plan with ONE phase header and SEQUENTIALLY numbered sub-steps
+		// must stay phase-form: one BuildStep with multiple execute actions,
+		// NOT be split into N separate BuildSteps.
+		const plan = `## Phase 1: Setup
+1. Initialize project
+2. Install dependencies
+3. Configure CI`;
+
+		const steps = parsePlanToSteps(plan);
+
+		expect(steps.length).toBe(1);
+		expect(steps[0]?.stepNumber).toBe(1);
+		expect(steps[0]?.description).toBe("Setup");
+		expect(steps[0]?.actions.length).toBe(3);
+		expect(steps[0]?.actions[0]?.description).toBe("Initialize project");
+		expect(steps[0]?.actions[1]?.description).toBe("Install dependencies");
+		expect(steps[0]?.actions[2]?.description).toBe("Configure CI");
+	});
 });
 
 describe("BuildStep type", () => {
