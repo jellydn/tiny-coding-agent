@@ -1,77 +1,89 @@
-# Tiny Coding Agent - Development Commands
-# Run `just` to see available commands
+# Tiny Coding Agent Development Tasks
+# Requires: just (https://github.com/casey/just)
+# Install: cargo install just OR brew install just
 
-# Default: show available commands
+# List available recipes
 default:
     @just --list
 
-# Build dev version as tiny-dev-agent
-build-dev:
-    bun run generate:skills
-    bun build index.ts --compile --outfile=tiny-dev-agent
-
-# Build production version as tiny-agent
-build:
-    bun run build
-
-# Run dev version directly (without compiling)
-dev *ARGS:
-    bun run index.ts {{ARGS}}
-
-# Run dev version in watch mode
-watch:
+# Run in watch mode
+dev:
     bun --watch index.ts
 
-# Run compiled dev agent
-run-dev *ARGS:
-    ./tiny-dev-agent {{ARGS}}
+# Generate embedded skills
+generate-skills:
+    bun run scripts/generate-embedded-skills.ts
 
-# Run compiled production agent
-run *ARGS:
-    ./tiny-agent {{ARGS}}
+# Build the binary
+build: generate-skills
+    bun build index.ts --compile --outfile=tiny-agent
+    ln -sf tiny-agent tiny-agent-dev
 
-# Run tests
-test *ARGS:
-    bun test {{ARGS}}
+# Run all tests
+test:
+    bun test
 
 # Run tests in watch mode
 test-watch:
     bun test --watch
 
+# Run specific test file (e.g., just test-file tools/file.test.ts)
+test-file FILE:
+    bun test {{FILE}}
+
+# Run tests matching pattern (e.g., just test-pattern memory)
+test-pattern PATTERN:
+    bun test {{PATTERN}}
+
 # Type check
 typecheck:
-    bun run typecheck
+    bun run tsc --noEmit
 
 # Lint code
 lint:
-    bun run lint
+    biome check .
 
-# Lint and fix
+# Lint and auto-fix issues
 lint-fix:
-    bun run lint:fix
+    biome check --write --unsafe .
 
 # Format code
 format:
-    bun run format
+    biome format . --write
+
+# Check formatting without modifying files
+format-check:
+    biome format .
+
+# Quick check: lint and type check
+check: lint typecheck
 
 # Run all checks (test, typecheck, lint)
-check:
-    bun run pre
+pre: test check
+
+# Release patch version (bumps x.y.Z)
+release-patch: pre
+    bunx bumpp patch --yes
+
+# Release minor version (bumps x.Y.z)
+release-minor: pre
+    bunx bumpp minor --yes
+
+# Release major version (bumps X.y.z)
+release-major: pre
+    bunx bumpp major --yes
+
+# Install dependencies
+install:
+    bun install
 
 # Clean build artifacts
 clean:
-    rm -f tiny-agent tiny-dev-agent
+    rm -f tiny-agent tiny-agent-dev
 
-# Rebuild dev version and run
-rebuild-dev *ARGS: build-dev
-    ./tiny-dev-agent {{ARGS}}
+# Run the built binary
+run *ARGS:
+    ./tiny-agent {{ARGS}}
 
-# Install to ~/.local/bin (dev version) - uses symlink to avoid macOS code signing issues
-install-dev: build-dev
-    rm -f ~/.local/bin/tiny-dev-agent
-    ln -s "$(pwd)/tiny-dev-agent" ~/.local/bin/tiny-dev-agent
-
-# Install to ~/.local/bin (production) - uses symlink to avoid macOS code signing issues
-install: build
-    rm -f ~/.local/bin/tiny-agent
-    ln -s "$(pwd)/tiny-agent" ~/.local/bin/tiny-agent
+# Full development cycle: clean, install, build, test
+cycle: clean install build test
