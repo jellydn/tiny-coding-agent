@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Orb setup for tiny-coding-agent.
+# Runs once per fresh orb (and after restoring a cached snapshot).
+# Idempotent, non-interactive, reasonably fast.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo "[setup] repo: $REPO_ROOT"
+
+# --- Bun toolchain -----------------------------------------------------------
+# Bun is preinstalled in the base orb, but install it if missing so a bare
+# template still works. Pin to a recent stable line; CI uses "latest".
+if ! command -v bun >/dev/null 2>&1; then
+  echo "[setup] bun not found; installing Bun"
+  curl -fsSL https://bun.sh/install | bash
+  # Source the installer's env so the rest of this script can use bun.
+  # shellcheck disable=SC1091
+  export BUN_INSTALL="$HOME/.bun"
+  # shellcheck disable=SC1091
+  source "$BUN_INSTALL/.bashrc" 2>/dev/null || true
+fi
+
+echo "[setup] bun version: $(bun --version)"
+
+# --- Dependencies ------------------------------------------------------------
+# Install from the committed lockfile so the dependency graph is reproducible.
+echo "[setup] installing dependencies (frozen lockfile)"
+bun install --frozen-lockfile
+
+echo "[setup] done"

@@ -16,6 +16,7 @@ import { handlePlan } from "./handlers/plan.js";
 import { handleSkill } from "./handlers/skill.js";
 import { handleState } from "./handlers/state.js";
 import { handleStatus } from "./handlers/status.js";
+import { handleTrace } from "./handlers/trace.js";
 import { handleUpgrade } from "./handlers/upgrade.js";
 import { type CliOptions, createLLMClient, parseArgs, setupTools } from "./shared.js";
 
@@ -266,6 +267,7 @@ async function handleRun(config: ReturnType<typeof loadConfig>, args: string[], 
 		agentsMdPath,
 		thinking: config.thinking,
 		providerConfigs: config.providers,
+		observability: config.observability,
 		skillDirectories,
 		mcpManager,
 	});
@@ -446,6 +448,7 @@ async function handleInteractiveChat(
 				agentsMdPath,
 				thinking: config.thinking,
 				providerConfigs: config.providers,
+				observability: config.observability,
 				skillDirectories,
 				mcpManager,
 			});
@@ -498,6 +501,8 @@ USAGE:
     tiny-agent [command] [args...]     Run a command
     tiny-agent chat                    Interactive chat mode (default)
     tiny-agent run <prompt>            Run a single prompt
+    tiny-agent trace <prompt>          Run a prompt and show observability metadata
+    tiny-agent trace --mock <prompt>   Run the observability demo with a mock provider (no API key)
     tiny-agent config                  Show current configuration
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
@@ -625,6 +630,8 @@ export async function main(): Promise<void> {
 			await handleAgent(command, args, options);
 		} else if (command === "state") {
 			await handleState(config, args, options);
+		} else if (command === "trace") {
+			await handleTrace(config, args, options);
 		} else if (command === "tasks") {
 			await handlePlan(config, ["tasks"], options);
 		} else if (command === "todo") {
@@ -632,7 +639,7 @@ export async function main(): Promise<void> {
 		} else {
 			console.error(`Unknown command: ${command}`);
 			console.error(
-				"Available commands: chat, run <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
+				"Available commands: chat, run <prompt>, trace <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
 			);
 			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --state-file, --help");
 			process.exit(2);

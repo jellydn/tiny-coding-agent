@@ -23,6 +23,7 @@ export interface CliOptions {
 	json?: boolean;
 	skillsDir?: string[];
 	memoryFile?: string;
+	mock?: boolean;
 	stateFile?: string;
 }
 
@@ -80,6 +81,9 @@ export function parseArgs(args: string[] = process.argv.slice(2)): ParsedArgs {
 				break;
 			case "--json":
 				options.json = true;
+				break;
+			case "--mock":
+				options.mock = true;
 				break;
 			case "--state-file":
 				options.stateFile = args[++i];

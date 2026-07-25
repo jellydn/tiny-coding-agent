@@ -1,0 +1,40 @@
+{
+	"$comment": "Estimated USD pricing per 1,000,000 tokens. Values are approximate and MUST be treated as estimates, not billing data. Update this file without changing tracing logic.",
+	"version": 1,
+	"models": {
+		"gpt-4o": { "inputPerMillionTokens": 2.5, "outputPerMillionTokens": 10, "cachedInputPerMillionTokens": 1.25 },
+		"gpt-4o-mini": {
+			"inputPerMillionTokens": 0.15,
+			"outputPerMillionTokens": 0.6,
+			"cachedInputPerMillionTokens": 0.075
+		},
+		"gpt-4-turbo": { "inputPerMillionTokens": 10, "outputPerMillionTokens": 30 },
+		"gpt-4": { "inputPerMillionTokens": 30, "outputPerMillionTokens": 60 },
+		"gpt-3.5-turbo": { "inputPerMillionTokens": 0.5, "outputPerMillionTokens": 1.5 },
+		"o1": { "inputPerMillionTokens": 15, "outputPerMillionTokens": 60, "cachedInputPerMillionTokens": 7.5 },
+		"o1-mini": { "inputPerMillionTokens": 3, "outputPerMillionTokens": 12 },
+		"o1-preview": { "inputPerMillionTokens": 15, "outputPerMillionTokens": 60 },
+		"o3-mini": { "inputPerMillionTokens": 1.1, "outputPerMillionTokens": 4.4, "cachedInputPerMillionTokens": 0.55 },
+		"claude-opus-4": { "inputPerMillionTokens": 15, "outputPerMillionTokens": 75, "cachedInputPerMillionTokens": 1.5 },
+		"claude-sonnet-4": { "inputPerMillionTokens": 3, "outputPerMillionTokens": 15, "cachedInputPerMillionTokens": 0.3 },
+		"claude-3-5-sonnet": {
+			"inputPerMillionTokens": 3,
+			"outputPerMillionTokens": 15,
+			"cachedInputPerMillionTokens": 0.3
+		},
+		"claude-3-5-haiku": { "inputPerMillionTokens": 0.8, "outputPerMillionTokens": 4 },
+		"claude-3-opus": { "inputPerMillionTokens": 15, "outputPerMillionTokens": 75 },
+		"claude-3-haiku": { "inputPerMillionTokens": 0.25, "outputPerMillionTokens": 1.25 },
+		"glm-4.7": { "inputPerMillionTokens": 0.6, "outputPerMillionTokens": 2.2 },
+		"glm-4.7-flash": { "inputPerMillionTokens": 0.1, "outputPerMillionTokens": 0.4 },
+		"kimi-k2": { "inputPerMillionTokens": 0.6, "outputPerMillionTokens": 2.5 },
+		"qwen3-coder-next": { "inputPerMillionTokens": 0.5, "outputPerMillionTokens": 1.5 },
+		"llama3.2": { "inputPerMillionTokens": 0, "outputPerMillionTokens": 0 },
+		"deepseek-r1": {
+			"inputPerMillionTokens": 0.55,
+			"outputPerMillionTokens": 2.19,
+			"cachedInputPerMillionTokens": 0.14
+		}
+	},
+	"default": { "inputPerMillionTokens": 1, "outputPerMillionTokens": 3 }
+}

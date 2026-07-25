@@ -2,7 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
 import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
-import type { ChatOptions, ChatResponse, LLMClient, Message, StreamChunk, ToolCall, ToolDefinition } from "./types.js";
+import type {
+	ChatOptions,
+	ChatResponse,
+	LLMClient,
+	Message,
+	StreamChunk,
+	TokenUsage,
+	ToolCall,
+	ToolDefinition,
+} from "./types.js";
 
 export interface AnthropicProviderConfig {
 	apiKey: string;
@@ -119,6 +128,30 @@ function mapStopReason(reason: string | null): ChatResponse["finishReason"] {
 	}
 }
 
+function num(v: unknown): number | undefined {
+	return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** Map an Anthropic usage object into the normalized TokenUsage shape. */
+function extractAnthropicUsage(raw: unknown): TokenUsage | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const u = raw as Record<string, unknown>;
+	const input = num(u.input_tokens);
+	const output = num(u.output_tokens);
+	const cachedRead = num(u.cache_read_input_tokens) ?? 0;
+	const cachedCreate = num(u.cache_creation_input_tokens) ?? 0;
+	const cached = cachedRead + cachedCreate;
+	const usage: TokenUsage = {
+		inputTokens: input,
+		outputTokens: output,
+		totalTokens: input !== undefined && output !== undefined ? input + output : undefined,
+		cachedTokens: cached > 0 ? cached : undefined,
+		reasoningTokens: num(u.reasoning_tokens),
+	};
+	const hasAny = usage.inputTokens !== undefined || usage.outputTokens !== undefined;
+	return hasAny ? usage : undefined;
+}
+
 export function buildThinkingConfig(enabled: boolean, budgetTokens?: number) {
 	return enabled
 		? {
@@ -162,6 +195,7 @@ export class AnthropicProvider implements LLMClient {
 			content: text,
 			toolCalls,
 			finishReason: mapStopReason(response.stop_reason),
+			usage: extractAnthropicUsage(response.usage),
 		};
 	}
 
@@ -192,18 +226,27 @@ export class AnthropicProvider implements LLMClient {
 		try {
 			const toolCallsBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
 			let currentBlockIndex = -1;
+			let streamUsage: TokenUsage | undefined;
+			let streamOutputTokens: number | undefined;
 
 			for await (const event of stream) {
 				// Backpressure check: pause if we've yielded too many chunks
 				if (chunkCount >= maxChunks) {
 					yield {
 						content: "",
+						usage: streamUsage ? { ...streamUsage, outputTokens: streamOutputTokens } : undefined,
 						done: false,
 					};
 					return;
 				}
 
-				if (event.type === "content_block_start") {
+				if (event.type === "message_start") {
+					const startUsage = (event as unknown as { message?: { usage?: Record<string, unknown> } }).message?.usage;
+					if (startUsage) {
+						const base = extractAnthropicUsage(startUsage);
+						if (base) streamUsage = base;
+					}
+				} else if (event.type === "content_block_start") {
 					currentBlockIndex = event.index;
 					if (event.content_block.type === "tool_use") {
 						toolCallsBuffer.set(currentBlockIndex, {
@@ -226,6 +269,12 @@ export class AnthropicProvider implements LLMClient {
 							existing.input += delta.delta.partial_json;
 						}
 					}
+				} else if (event.type === "message_delta") {
+					const deltaUsage = (event as unknown as { usage?: Record<string, unknown> }).usage;
+					if (deltaUsage) {
+						const out = num(deltaUsage.output_tokens);
+						if (out !== undefined) streamOutputTokens = out;
+					}
 				} else if (event.type === "message_stop") {
 					chunkCount++;
 					const toolCalls: ToolCall[] | undefined =
@@ -237,15 +286,19 @@ export class AnthropicProvider implements LLMClient {
 								}))
 							: undefined;
 
+					const finalUsage = streamUsage
+						? { ...streamUsage, outputTokens: streamOutputTokens ?? streamUsage.outputTokens }
+						: undefined;
 					yield {
 						toolCalls,
+						usage: finalUsage,
 						done: true,
 					};
 					return;
 				}
 			}
 
-			yield { done: true };
+			yield { done: true, usage: streamUsage ? { ...streamUsage, outputTokens: streamOutputTokens } : undefined };
 		} finally {
 			options.signal?.removeEventListener("abort", abortHandler);
 		}
