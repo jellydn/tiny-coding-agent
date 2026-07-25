@@ -1,10 +1,9 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
-import { findGitignorePatterns, isIgnored } from "../tools/gitignore.js";
-import { fileTools, ToolRegistry } from "../tools/index.js";
+import { bashTool } from "../tools/bash-tool.js";
+import { fileTools } from "../tools/file-tools.js";
+import { ToolRegistry } from "../tools/registry.js";
 import { readStateFile, writeStateFile } from "./state.js";
 import type { StateFile } from "./types.js";
 
@@ -45,6 +44,13 @@ interface ExecutionDecision {
 	action: "retry" | "skip" | "abort";
 }
 
+interface ToolCall {
+	name: string;
+	args: Record<string, unknown>;
+}
+
+type ExecutionOutcome = { success: boolean; output?: string; error?: string };
+
 const BUILD_SYSTEM_PROMPT = `You are a build executor. Your task is to parse a plan and execute the steps to implement the solution.
 
 For each step in the plan:
@@ -75,161 +81,73 @@ For dry-run mode:
 - Do not modify any files
 - Do not update the state file`;
 
-async function confirmAction(prompt: string, options: string[]): Promise<string> {
-	const readline = await import("node:readline");
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
+/**
+ * Map a build-time intent (BuildAction) into a registry-shaped ToolCall.
+ *
+ * Returns `null` for actions whose `path` is missing — build-agent treats those
+ * as errors at execution time. Confirmation is handled by the registry, not
+ * here; the registry routes dangerous ops through the CLI's confirmation
+ * handler with the right danger level (write/edit/delete/bash-destructive).
+ */
+function buildActionToToolCall(action: BuildAction): ToolCall | null {
+	switch (action.type) {
+		case "create": {
+			if (!action.path) return null;
+			return {
+				name: "write_file",
+				args: { path: action.path, content: action.content ?? "" },
+			};
+		}
+		case "modify": {
+			if (!action.path) return null;
+			if (action.oldContent && action.content) {
+				return {
+					name: "edit_file",
+					args: {
+						path: action.path,
+						old_str: action.oldContent,
+						new_str: action.content,
+					},
+				};
+			}
+			if (action.content) {
+				return {
+					name: "write_file",
+					args: { path: action.path, content: action.content },
+				};
+			}
+			return null;
+		}
+		case "delete": {
+			if (!action.path) return null;
+			return { name: "delete_file", args: { path: action.path } };
+		}
+		case "execute": {
+			return { name: "bash", args: { command: action.description } };
+		}
+	}
+}
+
+/**
+ * Tiny readline-based prompt for retry/skip/abort decisions after a failed action.
+ *
+ * This is intentionally NOT a parallel confirmation funnel — it's a recovery
+ * decision only. Dangerous-op confirmation lives entirely in ToolRegistry via
+ * confirmation.ts. Maintained in build-agent because the recovery path is
+ * unique to build-time execution flow.
+ */
+async function promptRecoveryDecision(prompt: string, options: string[]): Promise<string> {
+	const { createInterface } = await import("node:readline");
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
 
 	return new Promise((resolve) => {
 		rl.question(`${prompt}\nOptions: ${options.join(", ")}: `, (answer) => {
 			rl.close();
 			const normalized = answer.toLowerCase().trim();
-			let matchedOption: string = options[0] ?? "y";
-			for (const option of options) {
-				if (option.toLowerCase() === normalized) {
-					matchedOption = option;
-					break;
-				}
-			}
-			resolve(matchedOption);
+			const matched = options.find((option) => option.toLowerCase() === normalized);
+			resolve(matched ?? options[0] ?? "y");
 		});
 	});
-}
-
-async function confirmBuildAction(action: BuildAction, stepNumber: number): Promise<boolean> {
-	let prompt = "";
-	let requiresConfirmation = false;
-
-	switch (action.type) {
-		case "create": {
-			prompt = `\n⚠️  Step ${stepNumber}: Create new file\n  Path: ${action.path ?? "unknown"}\n  Description: ${action.description}`;
-			requiresConfirmation = true;
-			break;
-		}
-		case "delete": {
-			prompt = `\n⚠️  Step ${stepNumber}: Delete file\n  Path: ${action.path ?? "unknown"}\n  Description: ${action.description}`;
-			requiresConfirmation = true;
-			break;
-		}
-		case "modify": {
-			if (action.oldContent && action.content) {
-				const lineDiff = action.content.split("\n").length - action.oldContent.split("\n").length;
-				if (Math.abs(lineDiff) > 50) {
-					prompt = `\n⚠️  Step ${stepNumber}: Large refactor (${Math.abs(lineDiff)} lines changed)\n  Path: ${action.path ?? "unknown"}\n  Description: ${action.description}`;
-					requiresConfirmation = true;
-				}
-			}
-			break;
-		}
-		case "execute": {
-			prompt = `\n⚠️  Step ${stepNumber}: Execute command\n  Command: ${action.description}`;
-			requiresConfirmation = true;
-			break;
-		}
-	}
-
-	if (!requiresConfirmation) {
-		return true;
-	}
-
-	const answer = await confirmAction(prompt, ["y", "n"]);
-	return answer.toLowerCase() === "y";
-}
-
-async function checkGitignore(filePath: string): Promise<boolean> {
-	try {
-		const gitignorePatterns = await findGitignorePatterns(filePath);
-		if (gitignorePatterns.length === 0) {
-			return false;
-		}
-		return isIgnored(filePath, gitignorePatterns, false);
-	} catch {
-		return false;
-	}
-}
-
-async function executeBuildAction(
-	action: BuildAction,
-	registry: ToolRegistry,
-	dryRun: boolean
-): Promise<{ success: boolean; output?: string; error?: string }> {
-	if (dryRun) {
-		return {
-			success: true,
-			output: `[DRY-RUN] Would execute: ${action.type} - ${action.description}`,
-		};
-	}
-	{
-		const actionType = action.type;
-		switch (actionType) {
-			case "create": {
-				const createPath: string = action.path ?? "";
-				if (!createPath) {
-					return { success: false, error: "Create action requires path" };
-				}
-
-				const isPathIgnored = await checkGitignore(createPath);
-				if (isPathIgnored) {
-					return { success: false, error: `Path ${createPath} is ignored by .gitignore` };
-				}
-
-				const dir = path.dirname(createPath);
-				await fs.mkdir(dir, { recursive: true });
-				await fs.writeFile(createPath, action.content || "", "utf-8");
-				return { success: true, output: `Created ${createPath}` };
-			}
-			case "modify": {
-				const modifyPath: string = action.path ?? "";
-				if (!modifyPath) {
-					return { success: false, error: "Modify action requires path" };
-				}
-
-				const readResult = await registry.execute("read_file", { path: modifyPath });
-				if (!readResult.success) {
-					return { success: false, error: `Failed to read file for modification: ${readResult.error}` };
-				}
-
-				if (action.oldContent && action.content) {
-					const editResult = await registry.execute("edit_file", {
-						path: modifyPath,
-						old_str: action.oldContent,
-						new_str: action.content,
-					});
-					return editResult;
-				} else if (action.content) {
-					const writeResult = await registry.execute("write_file", {
-						path: modifyPath,
-						content: action.content,
-					});
-					return writeResult;
-				}
-				return { success: false, error: "Modify action requires oldContent or content" };
-			}
-			case "delete": {
-				const deletePath: string = action.path ?? "";
-				if (!deletePath) {
-					return { success: false, error: "Delete action requires path" };
-				}
-
-				try {
-					await fs.unlink(deletePath);
-					return { success: true, output: `Deleted ${deletePath}` };
-				} catch (err) {
-					return { success: false, error: `Failed to delete ${deletePath}: ${(err as Error).message}` };
-				}
-			}
-			case "execute": {
-				const bashToolModule = await import("../tools/bash-tool.js");
-				const bashTool = bashToolModule.bashTool;
-				const result = await bashTool.execute({ command: action.description });
-				return result;
-			}
-		}
-	}
-
-	return { success: false, error: `Unknown action type: ${action.type}` };
 }
 
 async function handleExecutionError(
@@ -240,7 +158,7 @@ async function handleExecutionError(
 ): Promise<ExecutionDecision> {
 	console.error(`\n❌ Error in step ${stepNumber}: ${error}`);
 
-	const decision = await confirmAction(`\nWhat would you like to do?`, ["retry", "skip", "abort"]);
+	const decision = await promptRecoveryDecision(`\nWhat would you like to do?`, ["retry", "skip", "abort"]);
 
 	const stateError = {
 		timestamp: new Date().toISOString(),
@@ -343,10 +261,31 @@ function convertStepsToBuildResult(steps: BuildStep[]) {
 	};
 }
 
+function unmappableActionError(action: BuildAction): string {
+	switch (action.type) {
+		case "create":
+			return "create action requires a path";
+		case "modify":
+			if (!action.path) return "modify action requires a path";
+			return "modify action requires both oldContent and content, or just content";
+		case "delete":
+			return "delete action requires a path";
+		case "execute":
+			return "execute action requires a description (interpreted as the bash command)";
+	}
+}
+
+function createBuildRegistry(): ToolRegistry {
+	const registry = new ToolRegistry();
+	registry.registerMany(fileTools);
+	registry.register(bashTool);
+	return registry;
+}
+
 export async function buildAgent(planContent: string, options?: BuildAgentOptions): Promise<BuildAgentResult> {
 	const stateFilePath = options?.stateFilePath || ".tiny-state.json";
-	const dryRun = options?.dryRun || false;
-	const verbose = options?.verbose || false;
+	const dryRun = options?.dryRun ?? false;
+	const verbose = options?.verbose ?? false;
 
 	if (verbose) {
 		console.log("Starting build agent...");
@@ -354,8 +293,8 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		console.log(`State file: ${stateFilePath}`);
 	}
 
-	const registry = new ToolRegistry();
-	registry.registerMany(fileTools);
+	const registry = createBuildRegistry();
+	registry.setDryRun(dryRun);
 
 	try {
 		const stateResult = await readStateFile(stateFilePath, { ignoreMissing: true });
@@ -437,26 +376,23 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 			let _stepError: string | undefined;
 
 			for (const action of step.actions) {
-				let confirmed = false;
-				let executionResult: { success: boolean; output?: string; error?: string };
+				let executionResult: ExecutionOutcome;
 
-				if (dryRun) {
-					confirmed = true;
-					executionResult = await executeBuildAction(action, registry, true);
+				const call = buildActionToToolCall(action);
+				if (!call) {
+					const error = unmappableActionError(action);
+					executionResult = { success: false, error };
 				} else {
-					confirmed = await confirmBuildAction(action, step.stepNumber);
-					if (confirmed) {
-						executionResult = await executeBuildAction(action, registry, false);
-					} else {
-						executionResult = { success: false, error: "User declined confirmation" };
-					}
+					// Confirmation for dangerous ops (create/modify/delete/destructive-bash)
+					// is handled inside registry.execute via the CLI's confirmation handler.
+					executionResult = await registry.execute(call.name, call.args);
 				}
 
 				if (executionResult.success) {
 					console.log(`  ✓ ${action.description}`);
 
 					const actionPath = action.path;
-					if (actionPath) {
+					if (actionPath && (action.type === "create" || action.type === "modify" || action.type === "delete")) {
 						stepChanges.push({
 							type: action.type as "create" | "modify" | "delete",
 							path: actionPath,
@@ -494,13 +430,13 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 						break;
 					}
 
-					if (decision.action === "retry") {
+					if (decision.action === "retry" && call) {
 						console.log(`  Retrying step ${step.stepNumber}...`);
-						const retryResult = await executeBuildAction(action, registry, dryRun);
+						const retryResult = await registry.execute(call.name, call.args);
 						if (retryResult.success) {
 							console.log(`  ✓ ${action.description} (retry successful)`);
 							const actionPath = action.path;
-							if (actionPath) {
+							if (actionPath && (action.type === "create" || action.type === "modify" || action.type === "delete")) {
 								stepChanges.push({
 									type: action.type as "create" | "modify" | "delete",
 									path: actionPath,
