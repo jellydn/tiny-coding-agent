@@ -4,6 +4,7 @@ import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { globTool, ToolRegistry } from "../tools/index.js";
+import { exampleOutput } from "./plan-grammar.js";
 import { readStateFile, writeStateFile } from "./state.js";
 import type { StateFile } from "./types.js";
 
@@ -32,39 +33,9 @@ For each task, you should:
    - Success criteria to verify completion
 4. Identify potential risks or considerations
 
-Output your plan as structured markdown with the following format:
+Output your plan as structured markdown in the canonical PlanGrammar format. Canonical example:
 
-# Implementation Plan: [Task Title]
-
-## Overview
-[Brief summary of what will be built]
-
-## Phase 1: [Phase Title]
-**Dependencies:** None (or list phase numbers)
-**Success Criteria:**
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-
-### Steps:
-1. [Step description]
-2. [Step description]
-
-## Phase 2: [Phase Title]
-**Dependencies:** Phase 1
-**Success Criteria:**
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-
-### Steps:
-1. [Step description]
-2. [Step description]
-
-## [Additional phases as needed...]
-
-## Technical Considerations
-- [Any architectural decisions or considerations]
-- [Dependencies or libraries needed]
-- [Testing strategy]
+${exampleOutput()}
 
 When exploring the codebase:
 - Use glob to find relevant files (e.g., **/*.ts, **/*.json)
