@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Orb resume for tiny-coding-agent.
+# Runs every time an existing paused orb wakes. Fast, idempotent, no installs.
+# Target completion well under 10 seconds.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Reinstall dependencies only if the lockfile changed while the orb was paused
+# or node_modules is missing. `bun install` is a no-op when already in sync.
+if [ ! -d node_modules ] || [ bun.lock -nt node_modules ]; then
+  echo "[resume] refreshing dependencies"
+  bun install --frozen-lockfile
+else
+  echo "[resume] dependencies up to date"
+fi
+
+echo "[resume] done"
