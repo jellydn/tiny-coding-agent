@@ -223,7 +223,7 @@ describe("handlePlan", () => {
 		consoleLogSpy.mockRestore();
 	});
 
-	it("should show only pending tasks with todo command", async () => {
+	it("should show current active task with todo command", async () => {
 		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(stateModule, "readStateFile").mockResolvedValue({
 			success: true,
@@ -236,7 +236,13 @@ describe("handlePlan", () => {
 				},
 				phase: "build",
 				taskDescription: "Test task",
-				status: "completed",
+				status: "in_progress",
+				currentTask: {
+					stepNumber: 2,
+					description: "Update file",
+					phase: "build",
+					startedAt: new Date().toISOString(),
+				},
 				results: {
 					build: {
 						steps: [
@@ -253,10 +259,9 @@ describe("handlePlan", () => {
 
 		await handlePlan({}, ["todo"], { stateFile: "/tmp/test-state.json" });
 
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("TODO"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("CURRENT TASK"));
 		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Update file"));
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Delete file"));
-		expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining("Create file"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Step:"));
 
 		consoleLogSpy.mockRestore();
 	});
@@ -290,7 +295,8 @@ describe("handlePlan", () => {
 
 		await handlePlan({}, ["todo"], { stateFile: "/tmp/test-state.json" });
 
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("No pending tasks"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("No active task"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("All tasks completed"));
 
 		consoleLogSpy.mockRestore();
 	});
@@ -308,7 +314,13 @@ describe("handlePlan", () => {
 				},
 				phase: "build",
 				taskDescription: "Test task",
-				status: "completed",
+				status: "in_progress",
+				currentTask: {
+					stepNumber: 1,
+					description: "Create file",
+					phase: "build",
+					startedAt: new Date().toISOString(),
+				},
 				results: {
 					build: {
 						steps: [{ stepNumber: 1, description: "Create file", status: "pending" }],
@@ -321,7 +333,7 @@ describe("handlePlan", () => {
 
 		await handlePlan({}, ["todo"], { stateFile: "/tmp/test-state.json", json: true });
 
-		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('"todos"'));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('"currentTask"'));
 
 		consoleLogSpy.mockRestore();
 	});
