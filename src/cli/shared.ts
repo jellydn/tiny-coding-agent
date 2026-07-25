@@ -23,6 +23,7 @@ export interface CliOptions {
 	json?: boolean;
 	skillsDir?: string[];
 	memoryFile?: string;
+	stateFile?: string;
 }
 
 export interface ParsedArgs {
@@ -79,6 +80,9 @@ export function parseArgs(args: string[] = process.argv.slice(2)): ParsedArgs {
 				break;
 			case "--json":
 				options.json = true;
+				break;
+			case "--state-file":
+				options.stateFile = args[++i];
 				break;
 			case "--skills-dir": {
 				const dirValue = args[++i];

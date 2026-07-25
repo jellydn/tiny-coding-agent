@@ -470,41 +470,55 @@ export class Agent {
 				}
 			}
 
-			const stream = llmClient.stream({
-				model: modelName,
-				messages: [
-					{
-						role: "system",
-						content: this._systemPrompt,
-					},
-					...messages,
-				],
-				tools: tools.length > 0 ? tools : undefined,
-				thinking: effectiveThinking,
-				signal: options?.signal,
-			});
-
 			let fullContent = "";
 			let responseToolCalls: string[] = [];
 			const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
 
-			for await (const chunk of stream) {
-				if (chunk.content) {
-					if (!isValidToolCall(chunk.content)) {
-						fullContent += chunk.content;
-						yield {
-							content: chunk.content,
-							iterations: iteration + 1,
-							done: false,
-							contextStats,
-						};
+			try {
+				const stream = llmClient.stream({
+					model: modelName,
+					messages: [
+						{
+							role: "system",
+							content: this._systemPrompt,
+						},
+						...messages,
+					],
+					tools: tools.length > 0 ? tools : undefined,
+					thinking: effectiveThinking,
+					signal: options?.signal,
+				});
+
+				for await (const chunk of stream) {
+					if (chunk.content) {
+						if (!isValidToolCall(chunk.content)) {
+							fullContent += chunk.content;
+							yield {
+								content: chunk.content,
+								iterations: iteration + 1,
+								done: false,
+								contextStats,
+							};
+						}
+					}
+
+					if (chunk.toolCalls) {
+						assistantToolCalls.push(...chunk.toolCalls);
+						responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
 					}
 				}
-
-				if (chunk.toolCalls) {
-					assistantToolCalls.push(...chunk.toolCalls);
-					responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
+			} catch (streamError) {
+				if (streamError instanceof DOMException && streamError.name === "AbortError") {
+					throw streamError;
 				}
+				const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+				yield {
+					content: `\n\nError during LLM stream: ${errorMessage}`,
+					iterations: iteration + 1,
+					done: true,
+					contextStats,
+				};
+				return;
 			}
 
 			if (this._verbose) {
@@ -668,29 +682,43 @@ export class Agent {
 				console.log(`\n[Loop detected - requesting final answer from LLM]`);
 			}
 
-			const stream = llmClient.stream({
-				model: modelName,
-				messages: [
-					{
-						role: "system",
-						content: this._systemPrompt,
-					},
-					...messages,
-				],
-				tools: undefined,
-				thinking: effectiveThinking,
-				signal: options?.signal,
-			});
+			try {
+				const stream = llmClient.stream({
+					model: modelName,
+					messages: [
+						{
+							role: "system",
+							content: this._systemPrompt,
+						},
+						...messages,
+					],
+					tools: undefined,
+					thinking: effectiveThinking,
+					signal: options?.signal,
+				});
 
-			for await (const chunk of stream) {
-				if (chunk.content) {
-					yield {
-						content: chunk.content,
-						iterations: iteration + 1,
-						done: false,
-						contextStats: updateStats(),
-					};
+				for await (const chunk of stream) {
+					if (chunk.content) {
+						yield {
+							content: chunk.content,
+							iterations: iteration + 1,
+							done: false,
+							contextStats: updateStats(),
+						};
+					}
 				}
+			} catch (streamError) {
+				if (streamError instanceof DOMException && streamError.name === "AbortError") {
+					throw streamError;
+				}
+				const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+				yield {
+					content: `\n\nError during LLM stream: ${errorMessage}`,
+					iterations: iteration + 1,
+					done: true,
+					contextStats: updateStats(),
+				};
+				return;
 			}
 
 			await this._updateConversationHistory(messages);

@@ -1,61 +1,176 @@
-## Sat Jan 25 2026 - US-015
-[Session: https://opncd.ai/s/ralph-session-004]
-- Added /skill chat command for skill invocation
-- Updated CommandMenu.tsx to support dynamic skill name completion
-- Added skillItems prop to CommandMenu and ChatLayout for skill autocomplete
-- Updated useCommandHandler.ts to handle /skill commands with agent access
-- Added agent to ChatContext for access in UI components
-- Files changed: src/ui/App.tsx, src/ui/components/ChatLayout.tsx, src/ui/components/CommandMenu.tsx, src/ui/contexts/ChatContext.tsx, src/ui/hooks/useCommandHandler.ts, scripts/ralph/prd.json
-- **Learnings for future iterations:**
-  - React hooks cannot be unit tested directly - need to test through integration or use @testing-library/react
-  - Adding new context values requires updating both the interface and the provider value
-  - Dynamic command filtering in CommandMenu requires handling both static commands and dynamic items
-  - Tab completion for skill names works by filtering skills when filter starts with "skill "
+# Ralph Progress Log
+Started: Mon Jan 26 08:10:48 +08 2026
 ---
 
-## Codebase Patterns
-- Skills complement AGENTS.md - both can be active simultaneously
-- Skill metadata parsing is lightweight for fast startup (only frontmatter parsed during discovery)
-- Skills are filesystem-based with SKILL.md files in directories
-- The yaml package is used for frontmatter parsing (already in dependencies)
+## Tue Jan 28 2026 - US-013
+[Session: https://opncd.ai/s/session-013]
+- Added /plan, /tasks, /todo slash commands to useCommandHandler.ts
+- Implemented handlePlanCommand function to read state file and display plan/tasks/todo
+- Added new commands to STATIC_COMMANDS in CommandMenu.tsx
+- Updated /help output to include new commands
+- All 838 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-013 as passes: true
 
-## [Date/Time] - US-007
-[Session: https://opncd.ai/s/ralph-session-001]
-- Implemented `--skills-dir` CLI option to add custom skill directories
-- Added `skillsDir?: string[]` to CliOptions interface
-- Updated argument parsing to handle multiple `--skills-dir` flags
-- Merged CLI-provided directories with config directories (CLI dirs appended after config dirs)
-- Added help text for the new option
-- Files changed: src/cli/main.tsx
-- **Learnings for future iterations:**
-  - When adding CLI options, need to update: interface, parseArgs(), help text, AND any functions that use the config
-  - TypeScript strict mode requires null checks even after length checks
-  - The pattern of merging CLI and config values works well: `options.x ? [...(config.x || []), ...options.x] : config.x`
-  - There are two places where Agent is instantiated: handleRun and handleInteractiveChat - both need to be updated
+**Learnings for future iterations:**
+  - Patterns discovered: Chat UI commands use useCallback hooks with onAddMessage to display results
+  - Gotchas encountered: readStateFile returns a Result object with success/data/error properties - must handle all cases
+  - Useful context: Commands read DEFAULT_STATE_FILE = ".tiny-state.json" which must exist from CLI usage
+  - Useful context: The command handler supports subcommands (e.g., /plan show) via the args parameter
+
+**Learnings for future iterations:**
+  - Patterns discovered: Switch cases with "pending" followed by "default" are flagged as redundant by biome lint - remove the pending case and let default handle it
+  - Gotchas encountered: Build step status only supports "pending", "completed", "failed", "skipped" - not "in_progress" for individual steps
+  - Useful context: The plan handler reads state using readStateFile from src/agents/state.js with ignoreMissing: true option
+  - Useful context: Commands use DEFAULT_STATE_FILE = ".tiny-state.json" if --state-file not specified
+
+## Mon Jan 26 08:12:00 +08 2026 - US-001
+[Session: https://opncd.ai/s/NzqM]
+- Created src/agents/types.ts with StateFile interface and all supporting types
+- Implemented types: StateMetadata, StateFile, AgentPhase, AgentStatus, PlanResult, BuildResult, ExplorationResult, AgentResult, StateError, Artifact
+- Added agents directory to project structure in AGENTS.md
+- Fixed lint errors in prd.json files (trailing newline)
+- All tests pass (762 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: This codebase uses `export interface` for types, `import type` for type-only imports, `Record<string, unknown>` for flexible object types
+  - Gotchas encountered: biome lint requires trailing newlines in JSON files
+  - Useful context: The src/agents/ directory is now ready for state.ts and agent implementations
+
+## Mon Jan 26 09:30:00 +08 2026 - US-003
+- Created src/cli/handlers/agent.ts with handler for plan, build, explore, run-plan-build, run-all commands
+- Created src/cli/handlers/state.ts with handler for state show and state clear commands
+- Added --state-file flag to CliOptions in shared.ts
+- Updated main.tsx to dispatch new agent commands
+- Updated showHelp() to document new commands
+- Created unit tests for agent and state handlers
+- All tests pass (786 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: CLI handlers return void and use process.exit() for error codes
+  - Gotchas encountered: biome lint flags unused imports, must remove them
+  - Useful context: New agent commands (plan, build, explore, run-plan-build, run-all) are now registered in main.tsx dispatch
+
+## Mon Jan 26 10:30:00 +08 2026 - US-004
+- Created src/agents/plan-agent.ts with planAgent(taskDescription, options) function
+- Implemented exploreCodebase() function that uses glob tool to explore project structure
+- Created LLM-based plan generation using createProvider and chat API
+- Added support for --prd flag to generate PRD alongside plan
+- Updated CLI handler to use planAgent function
+- Created unit tests in src/agents/plan-agent.test.ts
+- All tests pass (795 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: ToolRegistry.execute() should be used instead of calling tool.execute() directly to avoid TypeScript type issues with ToolParameters schema
+  - Gotchas encountered: The Tool interface's execute function takes Record<string, unknown> but the parameters schema causes type inference issues; using ToolRegistry bypasses this
+  - Useful context: The glob tool requires a ToolRegistry wrapper for proper type handling in agent code
+
+## Mon Jan 26 11:30:00 +08 2026 - US-005
+- Created src/agents/build-agent.ts with buildAgent(plan, options) function
+- Implemented parsePlanToSteps() to parse plan markdown and extract build steps
+- Added interactive confirmation for dangerous operations (file creation, deletion, large refactors)
+- Implemented executeBuildAction() with support for create, modify, delete, and execute operations
+- Added checkGitignore() to respect .gitignore when creating artifacts
+- Implemented dry-run mode to preview changes without executing
+- Added error handling with retry/skip/abort options
+- Created unit tests in src/agents/build-agent.test.ts (14 tests)
+- Updated src/cli/handlers/agent.ts to use build agent
+- Updated src/cli/handlers/agent.test.ts with new tests for build command
+- All tests pass (811 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: Regex match results need explicit null checks (match[1], match[2] can be undefined)
+  - Gotchas encountered: Switch case variable declarations can leak to other cases - wrap switch in block `{}` or use explicit types
+  - Gotchas encountered: Use existing `findGitignorePatterns` from gitignore.ts instead of implementing custom logic
+  - Useful context: The confirmAction function uses readline interface for user input - tests need mocking for interactive operations
+  - Useful context: Build steps are stored in state.results.build.steps array with status field
+
+## Mon Jan 26 14:00:00 +08 2026 - US-006
+[Session: https://opncd.ai/s/abc123]
+- Created src/agents/explore-agent.ts with exploreAgent(taskDescription, options) function
+- Implemented shallow and deep exploration modes for codebase analysis
+- Added functions: getFileCount, getProjectStructure, getPackageInfo, getTsConfigInfo, getGitInfo, getDependencyAnalysis
+- Created helper functions for extracting findings and recommendations from LLM output
+- Updated CLI handler in src/cli/handlers/agent.ts to use explore agent
+- Updated run-all command to properly chain plan → build → explore
+- Created unit tests in src/agents/explore-agent.test.ts (15 tests)
+- Updated src/cli/handlers/agent.test.ts with mocks for explore and run-all tests
+- All tests pass (826 tests)
+- Typecheck passes
+- Lint passes
+
+**Learnings for future iterations:**
+  - Patterns discovered: Optional chaining (`match?.[1]`) is preferred over explicit null checks for regex match results
+  - Gotchas encountered: Private helper functions (getFileCount, exploreShallow, etc.) cannot be exported for testing; test them indirectly or use inline test functions
+  - Gotchas encountered: Tests for CLI handlers need to mock all agent functions (planAgent, buildAgent, exploreAgent) to avoid real LLM calls
+  - Useful context: The explore agent writes results to state.results.exploration with findings, recommendations, and metrics
+  - Useful context: Run-all workflow now properly chains all three phases with proper error handling
+
 ---
-## Sat Jan 25 2026 - US-012
-[Session: https://opncd.ai/s/ralph-session-002]
-- Added unit tests for allowed-tools frontmatter parsing in skill-tool.test.ts
-- Added unit tests for agent tool filtering with skill restrictions in agent.test.ts
-- Fixed parser to handle hyphenated YAML keys (allowed-tools vs allowedTools)
-- Files changed: src/skills/parser.ts, src/tools/skill-tool.test.ts, src/core/agent.test.ts, scripts/ralph/prd.json
-- **Learnings for future iterations:**
-  - YAML keys with hyphens (e.g., `allowed-tools`) are parsed literally - need to handle both hyphenated and camelCase versions
-  - TypeScript `ReturnType<typeof import(...)>` pattern is useful for testing private methods with complex return types
-  - Agent's `_getToolDefinitions()` method already handles tool filtering based on `_activeSkillAllowedTools`
-  - The skill tool's `onSkillLoaded` callback pattern integrates well with the agent's restriction system
+## Mon Jan 26 15:00:00 +08 2026 - US-007, US-008, US-009
+[Session: https://opncd.ai/s/verify]
+- Verified US-007 (run-plan-build) implementation: Phase 1/2 plan, Phase 2/2 build, proper error handling
+- Verified US-008 (run-all) implementation: Phase 1/3 plan, Phase 2/3 build, Phase 3/3 explore
+- Verified US-009 (state inspection) implementation: state show with pretty-print, state clear, --json flag support
+- All 826 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-007, US-008, US-009 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: All agent commands use shared state file path from CliOptions
+  - Gotchas encountered: The --json flag is passed through CliOptions to handlers
+  - Useful context: Phase transitions are printed to console.log with "Phase X/Y" format
+  - Useful context: State file defaults to ".tiny-state.json" if not specified
+
 ---
 
-## Sat Jan 24 2026 - US-014
-[Session: https://opncd.ai/s/ralph-session-003]
-- Added isBuiltin field to SkillMetadata type
-- Updated discoverSkills to accept builtinDir parameter and mark skills as builtin
-- Added getBuiltinSkillsDir function using import.meta.url to resolve built-in path
-- Updated Agent class to pass builtin directory to discoverSkills
-- Updated CLI skill list to show [builtin] indicator
-- Added unit tests for builtin skills discovery with deduplication
-- Files changed: src/skills/types.ts, src/skills/loader.ts, src/skills/index.ts, src/skills/loader.test.ts, src/core/agent.ts, src/cli/main.tsx, scripts/ralph/prd.json
-- **Learnings for future iterations:**
-  - When builtin directory is nested inside user directories, skills get discovered twice - use deduplication by path
-  - TypeScript import.meta.url requires fileURLToPath and __dirname pattern for ESM
-  - Tests with overlapping directory structures need careful isolation
+## Mon Jan 27 2026 - US-010
+[Session: https://opncd.ai/s/session-010]
+- Added AgentType enum to src/ui/types/enums.ts (default, plan, build, explore)
+- Added currentAgent field to StatusLineState in status-line-manager.ts
+- Added setCurrentAgent method to StatusLineManager and StatusLineContext
+- Updated StatusLine.tsx to display current agent with color-coding (blue=plan, green=build, magenta=explore)
+- Added AGENT_CONFIG with labels and colors in constants.ts
+- Updated ChatLayout.tsx to pass currentAgent prop to StatusLine
+- All 826 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-010 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: Use color-coded agent indicators in status bar for clear visual feedback
+  - Gotchas encountered: Don't display agent when it's "default" to keep UI clean
+  - Useful context: Agent display is placed between model and context info in status line
+ ---
+
+## Tue Jan 27 2026 - US-011
+[Session: https://opncd.ai/s/session-011]
+- Created AgentSwitcher.tsx component with tabs: Default, Plan, Build, Explore
+- Added keyboard navigation (←/→ to navigate, Enter to select)
+- Added Ctrl+1/2/3/4 shortcuts for quick agent switching
+- Integrated AgentSwitcher into ChatLayout above input area
+- Added /agent command to command handler
+- Updated App.tsx to manage showAgentSwitcher state
+- Updated ChatContext to handle agent selection messages
+- All 826 tests pass
+- Typecheck passes
+- Lint passes
+- Updated prd.json to mark US-011 as passes: true
+
+**Learnings for future iterations:**
+  - Patterns discovered: useInput hook in Ink handles keyboard events; use state to track selected index for tab navigation
+  - Gotchas encountered: Duplicate import declarations cause TypeScript errors - must ensure clean imports
+  - Useful context: AgentSwitcher uses AGENT_CONFIG from constants.ts for labels and colors
+  - Useful context: Agent switching shows confirmation message and updates status line context
+ ---
+
