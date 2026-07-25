@@ -2,21 +2,38 @@ import { describe, expect, it } from "bun:test";
 import { ClinePassProvider } from "../../src/providers/clinepass.js";
 import { OpenAIProvider } from "../../src/providers/openai.js";
 
+const DEFAULT_BASE_URL = "https://api.cline.bot/v1";
+const CUSTOM_BASE_URL = "https://custom.example.com/v1";
+
 describe("ClinePassProvider", () => {
 	describe("constructor", () => {
-		it("should default baseUrl to https://api.cline.bot/v1", () => {
+		it("should default baseUrl to https://api.cline.bot/v1 and forward it to the parent", () => {
 			const provider = new ClinePassProvider({ apiKey: "test-key" });
 			expect(provider).toBeInstanceOf(ClinePassProvider);
 			// Inherits from OpenAIProvider so it satisfies the LLMClient contract.
 			expect(provider).toBeInstanceOf(OpenAIProvider);
+			// Asserts the resolved baseUrl actually flows into the provider, not just
+			// that construction accepts the config surface.
+			expect(provider.getResolvedBaseUrl()).toBe(DEFAULT_BASE_URL);
 		});
 
-		it("should accept a custom baseUrl", () => {
+		it("should accept and forward a custom baseUrl", () => {
 			const provider = new ClinePassProvider({
 				apiKey: "test-key",
-				baseUrl: "https://custom.example.com/v1",
+				baseUrl: CUSTOM_BASE_URL,
 			});
 			expect(provider).toBeInstanceOf(ClinePassProvider);
+			expect(provider.getResolvedBaseUrl()).toBe(CUSTOM_BASE_URL);
+		});
+
+		it("should retain the custom baseUrl even when it equals the upstream default", () => {
+			// Defends against an accidental `||` short-circuit that drops an
+			// explicit-but-equal baseUrl.
+			const provider = new ClinePassProvider({
+				apiKey: "test-key",
+				baseUrl: DEFAULT_BASE_URL,
+			});
+			expect(provider.getResolvedBaseUrl()).toBe(DEFAULT_BASE_URL);
 		});
 	});
 
@@ -55,15 +72,26 @@ describe("ClinePassProvider", () => {
 			}
 		});
 
-		it("should fall through to OpenAIProvider defaults for unknown model ids", async () => {
-			const caps = await provider.getCapabilities("cline-pass/some-unknown-model");
-			// The inherited OpenAIProvider.getCapabilities returns a
-			// ModelCapabilities object (it does not throw for unknown ids).
-			// Verify the shape rather than exact values, since the upstream
-			// defaults may evolve.
-			expect(caps.modelName).toBe("cline-pass/some-unknown-model");
-			expect(typeof caps.supportsTools).toBe("boolean");
-			expect(typeof caps.supportsStreaming).toBe("boolean");
+		it("should fall through to OpenAIProvider defaults (not the ClinePass hardcoded entry) for unknown model ids", async () => {
+			// Marker id chosen deliberately so the test deterministically
+			// exercises OpenAIProvider's hardcoded fallback path:
+			//   1. CLINEPASS_MODEL_IDS contains no entry matching this id
+			//      (no underscores, no `__definitely-not-in-catalog__` pattern).
+			//   2. models.dev has no entry for it under the "openai" provider
+			//      either, so the parent's catalog lookup returns null and
+			//      control reaches the bottom hardcoded-fallback block.
+			const unknownId = "cline-pass/__definitely-not-in-catalog__";
+			const caps = await provider.getCapabilities(unknownId);
+			expect(caps.modelName).toBe(unknownId);
+			// The ClinePass hardcoded entry reports supportsThinking=true,
+			// contextWindow=128000, maxOutputTokens=8192. The OpenAI-parent
+			// fallback returns the contrasting values below, so a regression
+			// that always returned the ClinePass default would fail at least
+			// one of these assertions.
+			expect(caps.supportsThinking).toBe(false);
+			expect(caps.contextWindow).toBe(16385);
+			expect(caps.maxOutputTokens).toBe(4096);
+			expect(caps.source).toBe("fallback");
 		});
 
 		it("should cache capabilities across calls", async () => {
