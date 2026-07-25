@@ -53,8 +53,8 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 		console.error("Error: plan command requires a subcommand (show, tasks, todo)");
 		console.error("");
 		console.error("  show   - Display the full plan");
-		console.error("  tasks  - Show build step progress (after running build)");
-		console.error("  todo   - Show pending build steps");
+		console.error("  tasks  - List all tasks with status");
+		console.error("  todo   - Show current active task");
 		process.exit(2);
 	}
 
@@ -168,76 +168,37 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 			);
 		}
 	} else if (subcommand === "todo") {
-		const pendingTasks: TaskStatus[] = [];
+		const currentTask = state.currentTask;
 
-		if (state.results?.build?.steps) {
-			for (const step of state.results.build.steps) {
-				if (step.status === "pending") {
-					pendingTasks.push({
-						stepNumber: step.stepNumber,
-						description: step.description,
-						status: step.status,
-					});
-				}
-			}
-		}
-
-		if (pendingTasks.length === 0) {
-			if (state.results?.plan?.plan) {
-				const phases = extractPhasesFromPlan(state.results.plan.plan);
-				const allTasks = phases.flatMap((p) => p.tasks);
-
-				if (allTasks.length > 0) {
-					if (options.json) {
-						console.log(JSON.stringify({ todos: allTasks, source: "plan" }, null, 2));
-					} else {
-						console.log("=".repeat(60));
-						console.log("📝 TODO (from plan - not yet executed)");
-						console.log("=".repeat(60));
-						console.log();
-
-						let taskNum = 1;
-						for (const phase of phases) {
-							if (phase.tasks.length > 0) {
-								console.log(`📁 ${phase.name}`);
-								for (const task of phase.tasks) {
-									console.log(`   ${taskNum}. ${task}`);
-									taskNum++;
-								}
-								console.log();
-							}
-						}
-
-						console.log("─".repeat(60));
-						console.log(`Total: ${allTasks.length} task${allTasks.length === 1 ? "" : "s"} to do`);
-						console.log("Run 'tiny-agent build' to start executing.");
-					}
-					return;
-				}
-			}
-
+		if (!currentTask) {
 			if (options.json) {
-				console.log(JSON.stringify({ todos: [], message: "No pending tasks" }, null, 2));
+				console.log(JSON.stringify({ currentTask: null, message: "No active task" }, null, 2));
 			} else {
-				console.log("✓ No pending tasks. All tasks are completed!");
+				console.log("No active task.");
+				console.log("");
+				if (state.status === "completed") {
+					console.log("✓ All tasks completed!");
+				} else if (state.status === "pending") {
+					console.log("Run 'tiny-agent build' to start executing tasks.");
+				} else if (state.status === "failed") {
+					console.log("Last execution failed. Check 'tiny-agent tasks' for details.");
+				}
 			}
 			return;
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify({ todos: pendingTasks, source: "build" }, null, 2));
+			console.log(JSON.stringify({ currentTask }, null, 2));
 		} else {
 			console.log("=".repeat(60));
-			console.log("📝 TODO (pending build steps)");
+			console.log("🎯 CURRENT TASK");
 			console.log("=".repeat(60));
 			console.log();
-
-			for (const task of pendingTasks) {
-				console.log(`  ○ [${task.stepNumber}] ${task.description}`);
-			}
-
+			console.log(`  Step:    ${currentTask.stepNumber}`);
+			console.log(`  Task:    ${currentTask.description}`);
+			console.log(`  Phase:   ${currentTask.phase}`);
+			console.log(`  Started: ${currentTask.startedAt}`);
 			console.log();
-			console.log(`Total: ${pendingTasks.length} pending task${pendingTasks.length === 1 ? "" : "s"}`);
 		}
 	} else {
 		console.error(`Unknown plan subcommand: ${subcommand}`);

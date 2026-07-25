@@ -512,7 +512,7 @@ USAGE:
     tiny-agent state clear             Clear/reset state file
     tiny-agent plan show               Show the current plan
     tiny-agent tasks                   List all tasks with status
-    tiny-agent todo                    Show only pending tasks
+    tiny-agent todo                    Show current active task
 
 COMMANDS:
     memory list                        List all stored memories
@@ -530,7 +530,7 @@ COMMANDS:
     state clear                        Clear/reset state file
     plan show                          Show the current plan
     tasks                              List all tasks with status
-    todo                               Show only pending tasks
+    todo                               Show current active task
 
 OPTIONS:
     --model <model>                    Override default model
