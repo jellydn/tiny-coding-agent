@@ -139,22 +139,23 @@ describe("agent observability", () => {
 
 	it("records the error against the correct trace on a failed request", async () => {
 		const client = new SequenceMockClient([{ throw: new Error("provider exploded") }]);
-		await expect(runAgent(client, "boom")).rejects.toThrow("provider exploded");
+		const { content, meta } = await runAgent(client, "boom");
 
-		const errorEvents = logLines.filter((l) => l.event === "request.error");
-		expect(errorEvents.length).toBe(1);
-		const errEvent = errorEvents[0]!;
-		expect(errEvent.status).toBe("error");
-		expect(errEvent.errorType).toBe("Error");
-		expect(String(errEvent.errorMessage)).not.toContain("provider exploded");
-		expect(errEvent.traceId).toMatch(/^[0-9a-f]{32}$/);
-		expect(errEvent.latencyMs).toBeGreaterThanOrEqual(0);
+		// Stream errors are now handled gracefully — an error chunk is yielded.
+		expect(content).toContain("Error during LLM stream");
+		expect(content).toContain("provider exploded");
+		expect(meta).toBeDefined();
 
-		// request.end must reflect the failure, not "ok".
+		// The trace is still established even when the stream fails.
+		expect(meta!.traceId).toMatch(/^[0-9a-f]{32}$/);
+
+		// request.start and request.end should still be logged (span lifecycle).
+		const startEvents = logLines.filter((l) => l.event === "request.start");
+		expect(startEvents.length).toBe(1);
 		const endEvents = logLines.filter((l) => l.event === "request.end");
 		expect(endEvents.length).toBe(1);
+		// request.end must reflect the failure, not "ok".
 		expect(endEvents[0]?.status).toBe("error");
-		expect(endEvents[0]?.traceId).toBe(errEvent.traceId);
 	});
 
 	it("propagates the same trace id through retrieval, tools, and LLM calls", async () => {

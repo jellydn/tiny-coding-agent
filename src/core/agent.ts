@@ -652,11 +652,13 @@ export class Agent {
 						throw streamError;
 					}
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+					requestFailed = true;
 					yield {
 						content: `\n\nError during LLM stream: ${errorMessage}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats,
+						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
 					};
 					return;
 				}
@@ -923,11 +925,13 @@ export class Agent {
 						throw streamError;
 					}
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+					requestFailed = true;
 					yield {
 						content: `\n\nError during LLM stream: ${errorMessage}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats: updateStats(),
+						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
 					};
 					return;
 				}
