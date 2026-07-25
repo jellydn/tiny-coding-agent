@@ -105,6 +105,7 @@ export interface ProviderConfigs {
 	openrouter?: ProviderConfig;
 	opencode?: ProviderConfig;
 	zai?: ProviderConfig;
+	clinepass?: ProviderConfig;
 }
 
 export interface AgentOptions {

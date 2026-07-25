@@ -81,6 +81,8 @@ providers:
   #   apiKey: \${OPENCODE_API_KEY}
   # zai:
   #   apiKey: \${ZAI_API_KEY}
+  # clinepass:
+  #   apiKey: \${CLINE_API_KEY}
 
 # MCP servers for extended capabilities
 mcpServers:
@@ -143,7 +145,9 @@ function interpolateEnvVars(value: string, keyPath: string = ""): string {
 			envVar.startsWith("OLLAMA") ||
 			envVar.startsWith("OPENROUTER") ||
 			envVar.startsWith("OPENCODE") ||
-			envVar.startsWith("ZAI");
+			envVar.startsWith("ZAI") ||
+			envVar.startsWith("CLINEPASS") ||
+			envVar.startsWith("CLINE");
 
 		if (!isWhitelistedProvider && containsSensitivePattern(keyPath)) {
 			console.warn(

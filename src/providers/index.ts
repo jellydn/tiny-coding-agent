@@ -1,5 +1,7 @@
 export type { AnthropicProviderConfig } from "./anthropic.js";
 export { AnthropicProvider } from "./anthropic.js";
+export type { ClinePassProviderConfig } from "./clinepass.js";
+export { ClinePassProvider } from "./clinepass.js";
 export { type CreateProviderOptions, createProvider } from "./factory.js";
 export type { OllamaProviderConfig } from "./ollama.js";
 export { OllamaProvider } from "./ollama.js";
