@@ -1,7 +1,7 @@
 # ADR-003: MCP Client Implementation
 
-**Status:** Accepted  
-**Date:** 2026-01-13  
+**Status:** Accepted
+**Date:** 2026-01-13
 **Deciders:** huynhdung
 
 ## Context

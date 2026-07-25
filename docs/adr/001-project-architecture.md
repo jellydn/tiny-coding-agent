@@ -1,7 +1,7 @@
 # ADR-001: Project Architecture
 
-**Status:** Accepted  
-**Date:** 2026-01-13  
+**Status:** Accepted
+**Date:** 2026-01-13
 **Deciders:** huynhdung
 
 ## Context

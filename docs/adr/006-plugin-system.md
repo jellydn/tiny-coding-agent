@@ -1,7 +1,7 @@
 # ADR-006: Plugin System
 
-**Status:** Accepted  
-**Date:** 2026-01-13  
+**Status:** Accepted
+**Date:** 2026-01-13
 **Deciders:** huynhdung
 
 ## Context
