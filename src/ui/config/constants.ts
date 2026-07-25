@@ -33,3 +33,18 @@ export const STATUS_CONFIG = {
 		error: "red",
 	} as const,
 } as const;
+
+export const AGENT_CONFIG = {
+	LABELS: {
+		default: "Default",
+		plan: "Plan",
+		build: "Build",
+		explore: "Explore",
+	} as const,
+	COLORS: {
+		default: "white",
+		plan: "blue",
+		build: "green",
+		explore: "magenta",
+	} as const,
+} as const;

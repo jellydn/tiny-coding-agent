@@ -1,3 +1,4 @@
+export { AgentSwitcher } from "./AgentSwitcher.js";
 export { ChatLayout } from "./ChatLayout.js";
 export { type Command, CommandMenu } from "./CommandMenu.js";
 export { ContextStatus } from "./ContextStatus.js";

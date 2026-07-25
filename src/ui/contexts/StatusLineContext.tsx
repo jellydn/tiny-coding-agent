@@ -1,6 +1,6 @@
 import React, { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { type StatusLineState, statusLineManager } from "../status-line-manager.js";
-import type { StatusType } from "../types/enums.js";
+import type { AgentType, StatusType } from "../types/enums.js";
 
 export type StatusLineStatus = StatusType;
 
@@ -11,6 +11,7 @@ interface StatusLineContextValue extends StatusLineState {
 	setTool: (tool?: string) => void;
 	clearTool: () => void;
 	setMcpServerCount: (count?: number) => void;
+	setCurrentAgent: (agent?: AgentType) => void;
 	showStatusLine: boolean;
 }
 
@@ -46,6 +47,7 @@ export function StatusLineProvider({ children }: StatusLineProviderProps): React
 			setTool: statusLineManager.setTool.bind(statusLineManager),
 			clearTool: statusLineManager.clearTool.bind(statusLineManager),
 			setMcpServerCount: statusLineManager.setMcpServerCount.bind(statusLineManager),
+			setCurrentAgent: statusLineManager.setCurrentAgent.bind(statusLineManager),
 			showStatusLine: statusLineManager.showStatusLine,
 		}),
 		[state]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkAborted, isLooping, isValidToolCall, redactApiKey, truncateOutput } from "./agent.js";
+import { checkAborted, isLooping, isValidToolCall, redactApiKey, truncateOutput } from "../../src/core/agent.js";
 
 describe("agent.ts helper functions", () => {
 	describe("isLooping", () => {

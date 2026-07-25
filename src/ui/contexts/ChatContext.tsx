@@ -265,6 +265,7 @@ export function ChatProvider({
 				}
 				setThinking(false);
 				setStreamingText("");
+				statusLineManager.setStatus(StatusType.READY);
 			}
 		},
 		[agent, currentModel, addMessage, handleChatError]

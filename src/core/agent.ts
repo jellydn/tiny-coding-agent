@@ -647,7 +647,18 @@ export class Agent {
 					}
 				} catch (err) {
 					llmSpan.end(err);
-					throw err;
+					const streamError = err as Error | DOMException;
+					if (streamError instanceof DOMException && streamError.name === "AbortError") {
+						throw streamError;
+					}
+					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+					yield {
+						content: `\n\nError during LLM stream: ${errorMessage}`,
+						iterations: iteration + 1,
+						done: true,
+						contextStats,
+					};
+					return;
 				}
 
 				const llmLatencyMs = Math.round(llmTimer.ms);
@@ -882,29 +893,43 @@ export class Agent {
 					console.log(`\n[Loop detected - requesting final answer from LLM]`);
 				}
 
-				const stream = llmClient.stream({
-					model: modelName,
-					messages: [
-						{
-							role: "system",
-							content: this._systemPrompt,
-						},
-						...messages,
-					],
-					tools: undefined,
-					thinking: effectiveThinking,
-					signal: options?.signal,
-				});
+				try {
+					const stream = llmClient.stream({
+						model: modelName,
+						messages: [
+							{
+								role: "system",
+								content: this._systemPrompt,
+							},
+							...messages,
+						],
+						tools: undefined,
+						thinking: effectiveThinking,
+						signal: options?.signal,
+					});
 
-				for await (const chunk of stream) {
-					if (chunk.content) {
-						yield {
-							content: chunk.content,
-							iterations: iteration + 1,
-							done: false,
-							contextStats: updateStats(),
-						};
+					for await (const chunk of stream) {
+						if (chunk.content) {
+							yield {
+								content: chunk.content,
+								iterations: iteration + 1,
+								done: false,
+								contextStats: updateStats(),
+							};
+						}
 					}
+				} catch (streamError) {
+					if (streamError instanceof DOMException && streamError.name === "AbortError") {
+						throw streamError;
+					}
+					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+					yield {
+						content: `\n\nError during LLM stream: ${errorMessage}`,
+						iterations: iteration + 1,
+						done: true,
+						contextStats: updateStats(),
+					};
+					return;
 				}
 
 				await this._updateConversationHistory(messages);
