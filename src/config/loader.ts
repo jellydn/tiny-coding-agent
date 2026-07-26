@@ -117,7 +117,12 @@ skillDirectories:
 #   - "mcp_serena_*onboarding*"  # Disable Serena onboarding tools
 `;
 
-	writeFileSync(YAML_PATH, configTemplate, "utf-8");
+	// Write with owner-only permissions (0o600) so the config file — which
+	// may later hold literal API keys after `tiny-agent login` — is not
+	// world-readable. The default template only has commented-out env-var
+	// references, but writing secure-by-default means the permissions are
+	// correct from the moment the file is created.
+	writeFileSync(YAML_PATH, configTemplate, { mode: 0o600, encoding: "utf-8" });
 }
 
 const SENSITIVE_KEY_PATTERNS = [

@@ -1036,6 +1036,12 @@ export class Agent {
 		return this._toolRegistry.list().length;
 	}
 
+	/** Returns the provider configs the agent was constructed with.
+	 *  Used by the `/login` chat command to display connection status. */
+	getProviderConfigs(): ProviderConfigs | undefined {
+		return this._providerConfigs;
+	}
+
 	async getMcpServerStatus(): Promise<Array<{ name: string; connected: boolean; toolCount: number }>> {
 		if (this._mcpManager) {
 			return this._mcpManager.getServerStatus();

@@ -12,7 +12,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 - **Rich Terminal UI**: Ink-powered CLI with components for messages, spinners, and tool output
 - **TTY Detection**: Automatically adapts to terminal capabilities with plain text fallback
-- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, and OpenCode
+- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, and ClinePass
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
 - **Memory System**: User-initiated persistent storage with relevance-based retrieval
@@ -64,6 +64,39 @@ bun run build
 | Linux        | glibc 2.28+     |
 | Architecture | x64 or arm64    |
 
+## Provider Login (Onboarding)
+
+Connect an LLM provider so you can start chatting. The `login` command walks you through picking a provider and entering your API key — no manual config editing required.
+
+```bash
+tiny-agent login            # Interactive provider picker (recommended for first run)
+tiny-agent login openai     # Connect OpenAI directly
+tiny-agent login anthropic  # Connect Anthropic directly
+tiny-agent login ollama     # Configure local Ollama (no API key needed)
+tiny-agent login status     # Show which providers are connected
+```
+
+**What it does:**
+
+1. Shows your current provider connection status.
+2. Lets you pick a provider (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, ClinePass).
+3. Prompts for your API key with **masked input** (typed characters show as `*`).
+4. Saves the key to `~/.tiny-agent/config.yaml` and suggests a default model for that provider.
+
+Get an API key from your provider:
+
+| Provider   | Where to get an API key                          |
+| ---------- | ------------------------------------------------ |
+| OpenAI     | <https://platform.openai.com/api-keys>           |
+| Anthropic  | <https://console.anthropic.com/settings/keys>    |
+| OpenRouter | <https://openrouter.ai/keys>                     |
+| OpenCode   | <https://opencode.ai>                            |
+| Z.AI       | <https://open.bigmodel.cn/usercenter/apikeys>    |
+| ClinePass  | <https://cline.bot>                              |
+| Ollama     | No key needed — runs locally. Install from <https://ollama.com> |
+
+> **Tip:** For better security, store the key in an environment variable instead of the config file. After running `login`, replace `apiKey: sk-...` with `apiKey: ${OPENAI_API_KEY}` and `export OPENAI_API_KEY=your-key` in your shell profile.
+
 ## Troubleshooting
 
 ### "command not found: tiny-agent"
@@ -80,7 +113,14 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
 ### API key errors
 
-Set your API key as an environment variable:
+The quickest fix is to run the login command, which prompts for your key with masked input and writes it to the config file:
+
+```bash
+tiny-agent login        # Interactive picker
+tiny-agent login openai # Or connect a specific provider directly
+```
+
+Alternatively, set your API key as an environment variable:
 
 ```bash
 export OPENAI_API_KEY="your-key"
@@ -95,6 +135,8 @@ providers:
   openai:
     apiKey: ${OPENAI_API_KEY}
 ```
+
+Check which providers are connected at any time with `tiny-agent login status`.
 
 ## Uninstallation
 
@@ -288,15 +330,17 @@ tiny-agent --provider opencode --model opencode/gpt-5.2-codex "write a function"
 
 ## CLI Commands
 
-| Command                   | Description               |
-| ------------------------- | ------------------------- |
-| `tiny-agent chat`         | Interactive chat session  |
-| `tiny-agent run "prompt"` | Single prompt, then exit  |
-| `tiny-agent config`       | Show current config       |
-| `tiny-agent status`       | Show provider, MCP, tools |
-| `tiny-agent mcp`          | Manage MCP servers        |
-| `tiny-agent memory`       | Manage memories           |
-| `tiny-agent skill`        | Manage skills             |
+| Command                     | Description                          |
+| --------------------------- | ------------------------------------ |
+| `tiny-agent chat`           | Interactive chat session             |
+| `tiny-agent run "prompt"`   | Single prompt, then exit             |
+| `tiny-agent login`          | Connect a provider (onboarding)      |
+| `tiny-agent login status`   | Show provider connection status      |
+| `tiny-agent config`         | Show current config                  |
+| `tiny-agent status`         | Show provider, MCP, tools            |
+| `tiny-agent mcp`            | Manage MCP servers                   |
+| `tiny-agent memory`         | Manage memories                      |
+| `tiny-agent skill`          | Manage skills                        |
 
 ### MCP Server Management
 
@@ -432,17 +476,18 @@ Skills are automatically discovered from `SKILL.md` files in your configured ski
 
 ### Chat Commands
 
-| Command         | Description                               |
-| --------------- | ----------------------------------------- |
-| `/help`         | Show available commands                   |
-| `/clear`        | Clear conversation history                |
-| `/model <name>` | Switch model                              |
-| `/tools`        | View tool execution history               |
-| `/mcp`          | Show MCP server status                    |
-| `/memory`       | List stored memories                      |
-| `/skill [name]` | List all skills, or load a specific skill |
-| `@<skill-name>` | Load a skill (type @ to see picker)       |
-| `/exit`         | Exit chat (Ctrl+D also works)             |
+| Command         | Description                                            |
+| --------------- | ------------------------------------------------------ |
+| `/help`         | Show available commands                                |
+| `/clear`        | Clear conversation history                             |
+| `/model <name>` | Switch model                                           |
+| `/login`        | Show provider connection status + onboarding guidance  |
+| `/tools`        | View tool execution history                            |
+| `/mcp`          | Show MCP server status                                 |
+| `/memory`       | List stored memories                                   |
+| `/skill [name]` | List all skills, or load a specific skill              |
+| `@<skill-name>` | Load a skill (type @ to see picker)                    |
+| `/exit`         | Exit chat (Ctrl+D also works)                          |
 
 ## Custom Plugins
 
