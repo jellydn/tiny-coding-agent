@@ -201,7 +201,13 @@ async function loginProvider(provider: LoginProviderInfo): Promise<void> {
 			console.log(`Get your API key at: ${provider.getKeyUrl}\n`);
 		}
 
-		const apiKey = await promptHidden(`Enter your ${provider.name} API key: `);
+		let apiKey: string;
+		try {
+			apiKey = await promptHidden(`Enter your ${provider.name} API key: `);
+		} catch {
+			console.log("\n✗ Login cancelled.");
+			process.exit(1);
+		}
 		if (!apiKey) {
 			console.log("\n✗ No API key entered. Login cancelled.");
 			process.exit(1);
