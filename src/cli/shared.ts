@@ -1,9 +1,12 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { Config, McpServerConfig } from "../config/schema.js";
+import { Agent } from "../core/agent.js";
 import { MemoryStore } from "../core/memory.js";
 import { globToRegex, McpManager } from "../mcp/manager.js";
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
-import { bashTool, fileTools, loadPlugins, searchTools, webSearchTool } from "../tools/index.js";
+import { bashTool, createSkillTool, fileTools, loadPlugins, searchTools, webSearchTool } from "../tools/index.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { statusLineManager } from "../ui/index.js";
 
@@ -184,6 +187,66 @@ export async function setupTools(
 	}
 
 	return { registry, mcpManager };
+}
+
+/**
+ * Create a fully-wired Agent from the loaded config + CLI options.
+ *
+ * This consolidates the ~30-line construction sequence that was duplicated
+ * between handleRun() and handleInteractiveChat() in main.tsx:
+ * createLLMClient → setupTools → derive options → new Agent(...) →
+ * createSkillTool → register → waitForSkills.
+ *
+ * Returns the agent plus the tool registry and MCP manager so callers can
+ * display initialization info (tool count, MCP status) before using the agent.
+ */
+export async function createAgent(
+	config: Config,
+	options: CliOptions
+): Promise<{
+	agent: Agent;
+	mcpManager: McpManager | undefined;
+	toolRegistry: ToolRegistry;
+	agentsMdPath: string | undefined;
+}> {
+	const llmClient = await createLLMClient(config, options);
+	const { registry: toolRegistry, mcpManager } = await setupTools(config);
+
+	const enableMemory = !options.noMemory || config.memoryFile !== undefined;
+	const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
+
+	const agentsMdPath =
+		options.agentsMd ?? (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
+
+	const skillDirectories = options.skillsDir
+		? [...(config.skillDirectories || []), ...options.skillsDir]
+		: config.skillDirectories;
+
+	const agent = new Agent(llmClient, toolRegistry, {
+		verbose: options.verbose,
+		systemPrompt: config.systemPrompt,
+		conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
+		maxContextTokens,
+		memoryFile: enableMemory ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json` : undefined,
+		maxMemoryTokens: config.maxMemoryTokens,
+		trackContextUsage: !options.noTrackContext || config.trackContextUsage,
+		agentsMdPath,
+		thinking: config.thinking,
+		providerConfigs: config.providers,
+		observability: config.observability,
+		skillDirectories,
+		mcpManager,
+	});
+
+	const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
+		agent._setSkillRestriction(allowedTools);
+	});
+	toolRegistry.register(skillTool);
+
+	// Wait for skills to be initialized before returning
+	await agent.waitForSkills();
+
+	return { agent, mcpManager, toolRegistry, agentsMdPath };
 }
 
 export async function openEditor(): Promise<void> {
