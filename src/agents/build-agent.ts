@@ -1,3 +1,4 @@
+import { promptChoice } from "../cli/prompt.js";
 import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
@@ -152,18 +153,8 @@ function mapBuildAction(action: BuildAction): MappedBuildAction {
  * confirmation.ts. Maintained in build-agent because the recovery path is
  * unique to build-time execution flow.
  */
-async function promptRecoveryDecision(prompt: string, options: string[]): Promise<string> {
-	const { createInterface } = await import("node:readline");
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-	return new Promise((resolve) => {
-		rl.question(`${prompt}\nOptions: ${options.join(", ")}: `, (answer) => {
-			rl.close();
-			const normalized = answer.toLowerCase().trim();
-			const matched = options.find((option) => option.toLowerCase() === normalized);
-			resolve(matched ?? options[0] ?? "y");
-		});
-	});
+async function promptRecoveryDecision(promptText: string, options: string[]): Promise<string> {
+	return promptChoice(promptText, options);
 }
 
 async function handleExecutionError(
