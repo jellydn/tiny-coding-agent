@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { existsSync, unlinkSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import * as readline from "node:readline";
 import {
 	applyProviderToConfig,
 	findProvider,
@@ -352,5 +353,140 @@ providers: {}
 
 		consoleErrorSpy.mockRestore();
 		processExitSpy.mockRestore();
+	});
+
+	// ===== Interactive picker smoke tests =====
+	// These mock readline.createInterface so that prompt() and promptHidden()
+	// (non-TTY fallback) return predetermined answers from a queue.
+	// stdin.isTTY is forced to false so promptHidden takes the readline path.
+
+	it("should complete interactive picker login for OpenAI (provider 1)", async () => {
+		const answers = ["1", "sk-test-key-123", "y"];
+		let answerIndex = 0;
+
+		// Force non-TTY so promptHidden uses the readline fallback
+		const originalIsTTY = process.stdin.isTTY;
+		process.stdin.isTTY = false;
+
+		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit");
+		});
+		const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
+			() =>
+				({
+					question: (_q: string, cb: (answer: string) => void) => {
+						queueMicrotask(() => cb(answers[answerIndex++] ?? ""));
+					},
+					close: () => {},
+				}) as unknown as readline.Interface
+		);
+
+		await expect(handleLogin([])).rejects.toThrow("exit");
+
+		// Should have shown the picker header and provider list
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Provider Login"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Select a provider"));
+		// Should have shown the OpenAI login header
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("OpenAI Login"));
+		// Should have saved the key and set the default model
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Saved OpenAI API key"));
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Default model set to: gpt-4o"));
+		// Should have printed the env-var security tip (OpenAI has envVar: OPENAI_API_KEY)
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("OPENAI_API_KEY"));
+		expect(processExitSpy).toHaveBeenCalledWith(0);
+
+		// Verify the config file was actually written with the API key
+		const written = await readFile(TEMP_CONFIG_FILE, "utf-8");
+		expect(written).toContain("sk-test-key-123");
+		expect(written).toContain("gpt-4o");
+
+		process.stdin.isTTY = originalIsTTY;
+		consoleLogSpy.mockRestore();
+		stdoutWriteSpy.mockRestore();
+		processExitSpy.mockRestore();
+		createInterfaceSpy.mockRestore();
+	});
+
+	it("should complete interactive picker login for Ollama local (provider 3)", async () => {
+		// Ollama (Local) is index 2 (choice "3"). It requires no API key,
+		// so the flow is: pick → accept default base URL → save.
+		const answers = ["3", ""];
+		let answerIndex = 0;
+
+		const originalIsTTY = process.stdin.isTTY;
+		process.stdin.isTTY = false;
+
+		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit");
+		});
+		const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
+			() =>
+				({
+					question: (_q: string, cb: (answer: string) => void) => {
+						queueMicrotask(() => cb(answers[answerIndex++] ?? ""));
+					},
+					close: () => {},
+				}) as unknown as readline.Interface
+		);
+
+		await expect(handleLogin([])).rejects.toThrow("exit");
+
+		// Should have shown the Ollama note (no API key needed)
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("no API key needed"));
+		// Should have saved the configuration
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Saved Ollama (Local) configuration"));
+		// Should auto-set the default model (no existing default in empty config)
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Default model set to: qwen3-coder"));
+		expect(processExitSpy).toHaveBeenCalledWith(0);
+
+		// Verify the config file was written with the base URL and default model
+		const written = await readFile(TEMP_CONFIG_FILE, "utf-8");
+		expect(written).toContain("http://localhost:11434");
+		expect(written).toContain("qwen3-coder");
+
+		process.stdin.isTTY = originalIsTTY;
+		consoleLogSpy.mockRestore();
+		stdoutWriteSpy.mockRestore();
+		processExitSpy.mockRestore();
+		createInterfaceSpy.mockRestore();
+	});
+
+	it("should exit with error for an invalid picker choice", async () => {
+		const answers = ["99"];
+		let answerIndex = 0;
+
+		const originalIsTTY = process.stdin.isTTY;
+		process.stdin.isTTY = false;
+
+		const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit");
+		});
+		const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
+			() =>
+				({
+					question: (_q: string, cb: (answer: string) => void) => {
+						queueMicrotask(() => cb(answers[answerIndex++] ?? ""));
+					},
+					close: () => {},
+				}) as unknown as readline.Interface
+		);
+
+		await expect(handleLogin([])).rejects.toThrow("exit");
+
+		expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid choice"));
+		expect(processExitSpy).toHaveBeenCalledWith(1);
+
+		// Config file should NOT have been written
+		expect(existsSync(TEMP_CONFIG_FILE)).toBe(false);
+
+		process.stdin.isTTY = originalIsTTY;
+		consoleLogSpy.mockRestore();
+		processExitSpy.mockRestore();
+		createInterfaceSpy.mockRestore();
 	});
 });
