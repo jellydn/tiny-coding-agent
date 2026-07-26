@@ -20,6 +20,7 @@ const STATIC_COMMANDS: Command[] = [
 	{ name: "/clear", description: "Clear the conversation" },
 	{ name: "/model", description: "Switch the model" },
 	{ name: "/agent", description: "Switch agent" },
+	{ name: "/login", description: "Show provider connection status" },
 	{ name: "/tools", description: "View tool executions" },
 	{ name: "/mcp", description: "Show MCP server status" },
 	{ name: "/memory", description: "List memories" },

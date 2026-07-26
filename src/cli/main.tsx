@@ -10,6 +10,7 @@ import { StatusType } from "../ui/types/enums.js";
 import { isJsonMode, setJsonMode, setNoColor, shouldUseInk } from "../ui/utils.js";
 import { handleAgent } from "./handlers/agent.js";
 import { handleConfig } from "./handlers/config.js";
+import { handleLogin } from "./handlers/login.js";
 import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
 import { handlePlan } from "./handlers/plan.js";
@@ -506,6 +507,7 @@ USAGE:
     tiny-agent config                  Show current configuration
     tiny-agent config open             Open config file in editor
     tiny-agent status                  Show provider and model capabilities
+    tiny-agent login [provider]        Connect an LLM provider (onboarding)
     tiny-agent memory [command]        Manage memories
     tiny-agent skill [command]         Manage skills
     tiny-agent mcp [command]           Manage MCP servers
@@ -562,6 +564,9 @@ EXAMPLES:
     tiny-agent run --model claude-3-5-sonnet "Help me"  Use specific model
     tiny-agent config                  Show current configuration
     tiny-agent config open             Open config in editor
+    tiny-agent login                   Connect a provider interactively
+    tiny-agent login openai            Connect OpenAI directly
+    tiny-agent login status            Show provider connection status
     tiny-agent status                  Show provider and model capabilities
     tiny-agent --upgrade               Upgrade to the latest version
     tiny-agent --help                  Show this help message
@@ -608,6 +613,13 @@ export async function main(): Promise<void> {
 			return;
 		}
 
+		// `login` runs before loadConfig() because the user may be onboarding
+		// and have no valid provider configured yet.
+		if (command === "login") {
+			await handleLogin(args);
+			return;
+		}
+
 		const config = loadConfig();
 
 		if (command === "chat") {
@@ -639,7 +651,7 @@ export async function main(): Promise<void> {
 		} else {
 			console.error(`Unknown command: ${command}`);
 			console.error(
-				"Available commands: chat, run <prompt>, trace <prompt>, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
+				"Available commands: chat, run <prompt>, trace <prompt>, login, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
 			);
 			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --state-file, --help");
 			process.exit(2);

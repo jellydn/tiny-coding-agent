@@ -19,6 +19,9 @@ ADRs capture *why* a decision was made, what alternatives were considered, and w
 | 009 | [Tool confirmation](adr/009-tool-confirmation.md) | How dangerous ops get user confirmation before execution. |
 | 010 | [Ink CLI integration](adr/010-ink-cli-integration.md) | Why the CLI UI is React/Ink and how state flows. |
 | 011 | [Multi-agent system](adr/011-multi-agent-system.md) | plan / build / explore agents sharing a state file and `PlanGrammar`. |
+| 012 | [GatewayOpenAIProvider base class](adr/012-gateway-openai-provider-base.md) | Held back by the 30% duplication threshold — keep providers inline. |
+| 013 | [ClinePass live model lookup](adr/013-clinepass-live-model-lookup.md) | Replace baked capability table with a live `GET /api/v1/models` fetch. |
+| 014 | [Login command onboarding design](adr/014-login-command.md) | Top-level command before `loadConfig`; chat `/login` status-only; literal key storage with env-var tip. |
 
 ## Other Docs
 

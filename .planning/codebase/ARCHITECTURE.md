@@ -55,7 +55,7 @@ Layered, dependency-inverted architecture. The CLI is the outermost layer; every
 
 ### 2. CLI Dispatcher (`src/cli/`, `src/cli/handlers/`)
 - `src/cli/main.tsx` mounts the Ink UI.
-- `src/cli/chat-commands.ts` and the per-feature handlers (`plan.ts`, `agent.ts`, `state.ts`, `memory.ts`, `config.ts`, `mcp.ts`, `skill.ts`, `trace.ts`, `status.ts`, `upgrade.ts`) implement each subcommand.
+- `src/cli/chat-commands.ts` and the per-feature handlers (`plan.ts`, `agent.ts`, `state.ts`, `memory.ts`, `config.ts`, `mcp.ts`, `skill.ts`, `trace.ts`, `status.ts`, `upgrade.ts`, `login.ts`) implement each subcommand.
 - Handlers return structured results; the CLI layer never throws to the user.
 
 ### 3. Agent Loop (`src/core/agent.ts`)

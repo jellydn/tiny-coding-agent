@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { readStateFile } from "../../agents/state.js";
+import { formatProviderStatus } from "../../cli/handlers/login.js";
 import type { Agent } from "../../core/agent.js";
 import type { McpManager } from "../../mcp/manager.js";
 import type { Command } from "../components/CommandMenu.js";
@@ -198,6 +199,29 @@ export function useCommandHandler({
 		[onAddMessage]
 	);
 
+	const handleLoginCommand = useCallback(() => {
+		if (!agent) {
+			onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized. Cannot show provider status.");
+			return;
+		}
+
+		// Show current provider connection status + onboarding guidance.
+		// The actual key entry happens via the top-level `tiny-agent login`
+		// command, because the Ink chat UI does not have a secure (masked)
+		// text input for secrets.
+		const providerConfigs = agent.getProviderConfigs();
+		const status = formatProviderStatus(providerConfigs);
+
+		onAddMessage(
+			MessageRole.ASSISTANT,
+			`${status}\n\n` +
+				`To connect a provider, exit and run:\n` +
+				`  tiny-agent login          Interactive provider picker\n` +
+				`  tiny-agent login openai    Connect a specific provider\n` +
+				`  tiny-agent login status    Show this status again`
+		);
+	}, [agent, onAddMessage]);
+
 	const handleMemoryCommand = useCallback(() => {
 		if (!agent) {
 			onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
@@ -237,6 +261,7 @@ export function useCommandHandler({
   /clear   - Clear conversation
   /model   - Switch model
   /agent   - Switch agent
+  /login   - Show provider connection status
   /tools   - View tool executions
   /mcp     - Show MCP server status
   /memory  - List memories
@@ -265,6 +290,9 @@ export function useCommandHandler({
 Use ←/→ to navigate, Enter to select.`
 						);
 					}
+					break;
+				case "/login":
+					handleLoginCommand();
 					break;
 				case "/mcp":
 					handleMcpCommand();
@@ -299,6 +327,7 @@ Use ←/→ to navigate, Enter to select.`
 			onSetShowToolsPanel,
 			onExit,
 			handleSkillCommand,
+			handleLoginCommand,
 			handleMcpCommand,
 			handleMemoryCommand,
 			handlePlanCommand,
