@@ -62,7 +62,9 @@ function getModelsListUrl(baseUrl: string): string {
 }
 
 interface ClinePassModelListResponse {
-	data?: Array<{ id?: unknown }>;
+	// Honest type: the upstream may mis-shape `data` (object/string/null),
+	// so we runtime-narrow via `Array.isArray(payload.data)` before iterating.
+	data?: unknown;
 }
 
 /**
@@ -185,7 +187,14 @@ export class ClinePassProvider extends OpenAIProvider {
 			throw new Error(`ClinePass /api/v1/models responded ${response.status}`);
 		}
 		const payload = (await response.json()) as ClinePassModelListResponse;
-		const ids = (payload.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === "string");
+		// `Array.isArray` guards against upstream proxies that return
+		// `data` as a JSON object/string instead of an array — in that
+		// case we treat the list as empty and fall through to the
+		// OpenAI-derived defaults (caught by `_isModelInLiveList`'s try).
+		const data = Array.isArray(payload.data) ? payload.data : [];
+		// Optional-chaining on `m?.id` handles null/undefined entries
+		// inside the array without killing the whole list.
+		const ids = data.map((m) => m?.id).filter((id): id is string => typeof id === "string");
 		return new Set(ids);
 	}
 }

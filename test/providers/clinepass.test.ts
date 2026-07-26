@@ -189,6 +189,52 @@ describe("ClinePassProvider", () => {
 			expect(caps.source).toBe("fallback");
 		});
 
+		it("should fall through to OpenAI defaults when the `data` field is not an array", async () => {
+			// Defensive guard: some upstream proxies mis-shape the response
+			// (e.g. `{ data: { error: ... } }`). The hardening treats
+			// non-array `data` as an empty list instead of throwing inside
+			// `.map()`. End behaviour: fall through to OpenAI defaults.
+			fetchSpy.mockImplementation(async () => {
+				return new Response(JSON.stringify({ data: { error: "unexpected" } }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			});
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			const caps = await provider.getCapabilities("cline-pass/glm-5.2");
+			expect(caps.source).toBe("fallback");
+		});
+
+		it("should fall through to OpenAI defaults when `data` is null", async () => {
+			// `null` exercises a different `Array.isArray(null) === false`
+			// branch than the missing-key (`undefined`) path in the test above.
+			fetchSpy.mockImplementation(async () => {
+				return new Response(JSON.stringify({ data: null }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			});
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			const caps = await provider.getCapabilities("cline-pass/glm-5.2");
+			expect(caps.source).toBe("fallback");
+		});
+
+		it("should skip null entries inside the `data` array", async () => {
+			// Defensive guard: a null entry inside the array must not kill
+			// the whole list. The hardening uses optional-chaining on
+			// `m?.id` so the surviving entries still get extracted.
+			fetchSpy.mockImplementation(async () => {
+				return new Response(JSON.stringify({ data: [null, null, { id: "cline-pass/glm-5.2" }] }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			});
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			const caps = await provider.getCapabilities("cline-pass/glm-5.2");
+			expect(caps.source).toBe("api");
+			expect(caps.isVerified).toBe(true);
+		});
+
 		// ─── Caching behaviour ──────────────────────────────────────────────
 
 		it("should memoize per-id (same model returns the same reference on repeat)", async () => {
