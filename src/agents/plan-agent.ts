@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { prompt } from "../cli/prompt.js";
 import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
@@ -235,19 +236,8 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 }
 
 export async function confirmMajorDecision(decision: string): Promise<boolean> {
-	const readline = await import("node:readline");
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-
-	return new Promise((resolve) => {
-		rl.question(
-			`⚠️  Major architectural decision detected:\n\n${decision}\n\nDo you want to proceed? (y/n): `,
-			(answer) => {
-				rl.close();
-				resolve(answer.toLowerCase().startsWith("y"));
-			}
-		);
-	});
+	const answer = await prompt(
+		`⚠️  Major architectural decision detected:\n\n${decision}\n\nDo you want to proceed? (y/n): `
+	);
+	return answer.toLowerCase().startsWith("y");
 }

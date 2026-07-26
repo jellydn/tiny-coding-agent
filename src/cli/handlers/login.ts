@@ -2,6 +2,7 @@ import { readConfigFile, writeConfigFile } from "../../config/config-io.js";
 import { getConfigPath } from "../../config/loader.js";
 import type { Config } from "../../config/schema.js";
 import { detectProvider } from "../../providers/model-registry.js";
+import { prompt, promptHidden } from "../prompt.js";
 
 // Re-export for backward compatibility — tests import containsLiteralApiKey
 // from login.ts. The canonical home is now config-io.ts.
@@ -185,84 +186,6 @@ export function formatProviderStatus(providers: Config["providers"] | undefined)
 	}
 
 	return lines.join("\n");
-}
-
-// ===== Prompt Helpers (readline-based, matching build-agent.ts pattern) =====
-
-async function prompt(question: string): Promise<string> {
-	const { createInterface } = await import("node:readline");
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
-	return new Promise((resolve) => {
-		rl.question(question, (answer) => {
-			rl.close();
-			resolve(answer.trim());
-		});
-	});
-}
-
-/**
- * Read a line from stdin with masked input (echoes `*` for each character).
- * Falls back to plain readline when stdin is not a TTY (e.g. piped input).
- */
-async function promptHidden(promptText: string): Promise<string> {
-	process.stdout.write(promptText);
-
-	const stdin = process.stdin;
-
-	// Non-TTY fallback: use plain readline (input will be visible)
-	if (!stdin.isTTY || typeof stdin.setRawMode !== "function") {
-		const { createInterface } = await import("node:readline");
-		const rl = createInterface({ input: stdin, output: process.stdout });
-		return new Promise((resolve) => {
-			rl.question("", (answer) => {
-				rl.close();
-				resolve(answer.trim());
-			});
-		});
-	}
-
-	// TTY: read character-by-character with masking
-	return new Promise((resolve) => {
-		let input = "";
-		stdin.setRawMode(true);
-		stdin.resume();
-		stdin.setEncoding("utf8");
-
-		const onData = (char: string): void => {
-			const code = char.charCodeAt(0);
-			switch (char) {
-				case "\r":
-				case "\n":
-					stdin.removeListener("data", onData);
-					stdin.setRawMode(false);
-					stdin.pause();
-					process.stdout.write("\n");
-					resolve(input.trim());
-					break;
-				case "\u0003": // Ctrl+C
-					stdin.setRawMode(false);
-					stdin.pause();
-					process.stdout.write("\n");
-					process.exit(0);
-					break;
-				case "\u007f": // Delete
-				case "\b": // Backspace
-					if (input.length > 0) {
-						input = input.slice(0, -1);
-						process.stdout.write("\b \b");
-					}
-					break;
-				default:
-					// Only store printable characters (code >= 32)
-					if (code >= 32) {
-						input += char;
-						process.stdout.write("*");
-					}
-			}
-		};
-
-		stdin.on("data", onData);
-	});
 }
 
 // ===== Interactive Flows =====
