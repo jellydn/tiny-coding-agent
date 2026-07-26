@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readConfigFile, writeConfigFile } from "../../config/config-io.js";
 import { getConfigPath } from "../../config/loader.js";
 import { isCommandAvailable } from "../../utils/command.js";
 
@@ -26,21 +25,8 @@ export async function handleMcp(args: string[]): Promise<void> {
 		},
 	};
 
-	// Helper to read/write config
-	const readConfig = async (): Promise<Record<string, unknown>> => {
-		if (!existsSync(configPath)) return {};
-		const content = await readFile(configPath, "utf-8");
-		const { parse: parseYaml } = await import("yaml");
-		return (parseYaml(content) as Record<string, unknown>) || {};
-	};
-
-	const writeConfig = async (config: Record<string, unknown>): Promise<void> => {
-		const { stringify: stringifyYaml } = await import("yaml");
-		await writeFile(configPath, stringifyYaml(config), "utf-8");
-	};
-
 	// Read config once for all operations
-	const fileConfig = await readConfig();
+	const fileConfig = await readConfigFile(configPath);
 	const userServers = ((fileConfig.mcpServers || {}) as Record<string, unknown>) || {};
 	const enabledServers = Object.keys(userServers);
 
@@ -110,7 +96,7 @@ export async function handleMcp(args: string[]): Promise<void> {
 
 		if (!fileConfig.mcpServers) fileConfig.mcpServers = {};
 		(fileConfig.mcpServers as Record<string, unknown>)[name] = { command, args: serverArgs };
-		await writeConfig(fileConfig);
+		await writeConfigFile(configPath, fileConfig);
 		console.log(`Added MCP server: ${name}`);
 		console.log(`  Command: ${command} ${serverArgs.join(" ")}`);
 		process.exit(0);
@@ -142,7 +128,7 @@ export async function handleMcp(args: string[]): Promise<void> {
 
 		if (!fileConfig.mcpServers) fileConfig.mcpServers = {};
 		(fileConfig.mcpServers as Record<string, unknown>)[name] = serverConfig;
-		await writeConfig(fileConfig);
+		await writeConfigFile(configPath, fileConfig);
 		console.log(`Enabled MCP server: ${name}`);
 		process.exit(0);
 	}
@@ -162,7 +148,7 @@ export async function handleMcp(args: string[]): Promise<void> {
 
 		delete userServers[name];
 		fileConfig.mcpServers = userServers;
-		await writeConfig(fileConfig);
+		await writeConfigFile(configPath, fileConfig);
 		console.log(`Disabled MCP server: ${name}`);
 		process.exit(0);
 	}
