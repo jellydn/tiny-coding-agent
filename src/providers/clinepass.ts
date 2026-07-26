@@ -128,15 +128,8 @@ export class ClinePassProvider extends OpenAIProvider {
 		// fallback for no benefit.
 		const caps = isInLiveList ? defaultClineCapabilities(model) : await super.getCapabilities(model);
 
-		// Cache the result only if the list fetch SUCCEEDED. If the list
-		// fetch failed, `_modelsListPromise` was reset to `null` by the
-		// `.catch()` handler in `_getModelsList` (registered before
-		// `_isModelInLiveList`'s await registers its own catch, so the
-		// null-clearing one runs first). We use the post-await state of
-		// `_modelsListPromise` as a sentinel: a successful fetch leaves
-		// a non-null promise, a failed fetch leaves null. We do NOT cache
-		// the OpenAI-default fallback when the list fetch failed, so the
-		// next call will retry the fetch.
+		// Only cache on list-fetch success — see `_getModelsList` for
+		// why a post-await null `_modelsListPromise` means "retry the fetch".
 		if (this._modelsListPromise !== null) {
 			this._capabilitiesByModelId.set(model, caps);
 		}
