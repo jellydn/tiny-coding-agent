@@ -1,4 +1,3 @@
-import { promptChoice } from "../cli/prompt.js";
 import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
@@ -7,6 +6,7 @@ import { fileTools } from "../tools/file-tools.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { type Step as GrammarStep, type Plan, parse as parsePlanGrammar } from "./plan-grammar.js";
 import { readStateFile, writeStateFile } from "./state.js";
+import { StepExecutor } from "./step-executor.js";
 import type { StateFile } from "./types.js";
 
 export interface BuildAgentOptions {
@@ -42,17 +42,6 @@ export interface BuildAgentResult {
 	steps?: BuildStep[];
 }
 
-interface ExecutionDecision {
-	action: "retry" | "skip" | "abort";
-}
-
-interface ToolCall {
-	name: string;
-	args: Record<string, unknown>;
-}
-
-type ExecutionOutcome = { success: boolean; output?: string; error?: string };
-
 const BUILD_SYSTEM_PROMPT = `You are a build executor. Your task is to parse a plan and execute the steps to implement the solution.
 
 For each step in the plan:
@@ -83,102 +72,10 @@ For dry-run mode:
 - Do not modify any files
 - Do not update the state file`;
 
-type MappedBuildAction = { kind: "call"; call: ToolCall } | { kind: "unmappable"; reason: string };
-
-/**
- * Map a build-time intent (BuildAction) into a registry-shaped ToolCall, or
- * report why it can't be mapped. Folding mapping + reason into one exhaustive
- * function keeps every action variant's translation in a single place, so a
- * new BuildAction variant only needs one switch arm — not two (mapping +
- * unmappable-message). Confirmation is handled by the registry, not here;
- * the registry routes dangerous ops through the CLI's confirmation handler
- * with the right danger level (write/edit/delete/bash-destructive).
- */
-function mapBuildAction(action: BuildAction): MappedBuildAction {
-	switch (action.type) {
-		case "create": {
-			if (!action.path) return { kind: "unmappable", reason: "create action requires a path" };
-			return {
-				kind: "call",
-				call: {
-					name: "write_file",
-					args: { path: action.path, content: action.content ?? "" },
-				},
-			};
-		}
-		case "modify": {
-			if (!action.path) return { kind: "unmappable", reason: "modify action requires a path" };
-			if (action.oldContent && action.content) {
-				return {
-					kind: "call",
-					call: {
-						name: "edit_file",
-						args: {
-							path: action.path,
-							old_str: action.oldContent,
-							new_str: action.content,
-						},
-					},
-				};
-			}
-			if (action.content) {
-				return {
-					kind: "call",
-					call: {
-						name: "write_file",
-						args: { path: action.path, content: action.content },
-					},
-				};
-			}
-			return {
-				kind: "unmappable",
-				reason: "modify action requires both oldContent and content, or just content",
-			};
-		}
-		case "delete": {
-			if (!action.path) return { kind: "unmappable", reason: "delete action requires a path" };
-			return { kind: "call", call: { name: "delete_file", args: { path: action.path } } };
-		}
-		case "execute": {
-			return { kind: "call", call: { name: "bash", args: { command: action.description } } };
-		}
-	}
-}
-
-/**
- * Tiny readline-based prompt for retry/skip/abort decisions after a failed action.
- *
- * This is intentionally NOT a parallel confirmation funnel — it's a recovery
- * decision only. Dangerous-op confirmation lives entirely in ToolRegistry via
- * confirmation.ts. Maintained in build-agent because the recovery path is
- * unique to build-time execution flow.
- */
-async function promptRecoveryDecision(promptText: string, options: string[]): Promise<string> {
-	return promptChoice(promptText, options);
-}
-
-async function handleExecutionError(
-	error: string,
-	stepNumber: number,
-	stateFilePath: string,
-	state: StateFile
-): Promise<ExecutionDecision> {
-	console.error(`\n❌ Error in step ${stepNumber}: ${error}`);
-
-	const decision = await promptRecoveryDecision(`\nWhat would you like to do?`, ["retry", "skip", "abort"]);
-
-	const stateError = {
-		timestamp: new Date().toISOString(),
-		phase: "build" as const,
-		message: error,
-		details: { step: stepNumber },
-	};
-
-	state.errors = [...state.errors, stateError];
-	await writeStateFile(stateFilePath, state);
-
-	return { action: decision.toLowerCase() as "retry" | "skip" | "abort" };
-}
+// Re-export mapBuildAction and MappedBuildAction from step-executor.ts for
+// backward compatibility. The canonical home is now step-executor.ts
+// (extracted to break the build-agent.ts ↔ step-executor.ts runtime cycle).
+export { type MappedBuildAction, mapBuildAction, type ToolCall } from "./step-executor.js";
 
 /**
  * Convert a Plan returned by `PlanGrammar.parse` into the build-agent's
@@ -357,7 +254,7 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		if (verbose) {
 			console.log(`Found ${steps.length} steps to execute`);
 		}
-
+		const stepExecutor = new StepExecutor(registry);
 		const executedSteps: BuildStep[] = [];
 
 		for (const step of steps) {
@@ -373,91 +270,36 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 				await writeStateFile(stateFilePath, state);
 			}
 
-			const stepChanges: Array<{
-				type: "create" | "modify" | "delete";
-				path: string;
-				diff?: string;
-			}> = [];
+			const stepResult = await stepExecutor.executeStep(step);
 
-			let stepSuccess = true;
+			// Log step errors to state file (the executor handles the prompt + retry)
+			if (stepResult.error) {
+				state.errors = [
+					...state.errors,
+					{
+						timestamp: new Date().toISOString(),
+						phase: "build" as const,
+						message: stepResult.error,
+						details: { step: step.stepNumber },
+					},
+				];
+			}
 
-			for (const action of step.actions) {
-				let executionResult: ExecutionOutcome;
+			if (stepResult.shouldAbort) {
+				state.status = "failed";
+				await writeStateFile(stateFilePath, state);
 
-				const mapped = mapBuildAction(action);
-				if (mapped.kind === "unmappable") {
-					executionResult = { success: false, error: mapped.reason };
-				} else {
-					// Confirmation for dangerous ops (create/modify/delete/destructive-bash)
-					// is handled inside registry.execute via the CLI's confirmation handler.
-					executionResult = await registry.execute(mapped.call.name, mapped.call.args);
-				}
-
-				if (executionResult.success) {
-					console.log(`  ✓ ${action.description}`);
-
-					const actionPath = action.path;
-					if (actionPath && (action.type === "create" || action.type === "modify" || action.type === "delete")) {
-						stepChanges.push({
-							type: action.type as "create" | "modify" | "delete",
-							path: actionPath,
-						});
-					}
-				} else {
-					console.error(`  ✗ ${action.description}: ${executionResult.error}`);
-					stepSuccess = false;
-
-					const decision = await handleExecutionError(
-						executionResult.error || "Unknown error",
-						step.stepNumber,
-						stateFilePath,
-						state
-					);
-
-					if (decision.action === "abort") {
-						state.status = "failed";
-						await writeStateFile(stateFilePath, state);
-
-						return {
-							success: false,
-							error: `Build aborted at step ${step.stepNumber}`,
-							steps: executedSteps,
-						};
-					}
-
-					if (decision.action === "skip") {
-						console.log(`  Skipping step ${step.stepNumber}`);
-						executedSteps.push({
-							...step,
-							status: "skipped",
-						});
-						break;
-					}
-
-					if (decision.action === "retry" && mapped.kind === "call") {
-						console.log(`  Retrying step ${step.stepNumber}...`);
-						const retryResult = await registry.execute(mapped.call.name, mapped.call.args);
-						if (retryResult.success) {
-							console.log(`  ✓ ${action.description} (retry successful)`);
-							const actionPath = action.path;
-							if (actionPath && (action.type === "create" || action.type === "modify" || action.type === "delete")) {
-								stepChanges.push({
-									type: action.type as "create" | "modify" | "delete",
-									path: actionPath,
-								});
-							}
-							stepSuccess = true;
-						} else {
-							stepSuccess = false;
-						}
-					}
-				}
+				return {
+					success: false,
+					error: `Build aborted at step ${step.stepNumber}`,
+					steps: executedSteps,
+				};
 			}
 
 			executedSteps.push({
 				...step,
-				status: stepSuccess ? "completed" : "failed",
-				changes: stepChanges.length > 0 ? stepChanges : undefined,
+				status: stepResult.status,
+				changes: stepResult.changes.length > 0 ? stepResult.changes : undefined,
 			});
 
 			state.results.build = convertStepsToBuildResult(executedSteps);
