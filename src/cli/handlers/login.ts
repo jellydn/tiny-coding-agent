@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { CONFIG_DIR, getConfigPath } from "../../config/loader.js";
 import type { Config } from "../../config/schema.js";
+import { detectProvider } from "../../providers/model-registry.js";
 
 // ===== Types & Constants =====
 
@@ -453,7 +454,211 @@ async function showLoginStatus(): Promise<void> {
 	process.exit(0);
 }
 
-// ===== Main Handler =====
+// ===== Logout: Pure Helper =====
+
+/**
+ * Remove the `apiKey` from a provider's config entry, preserving `baseUrl`
+ * and any other fields. Does NOT delete the provider entry itself — the
+ * provider stays "configured" (e.g. with a custom baseUrl) but is
+ * "disconnected" (no key). Does NOT mutate the input.
+ *
+ * If the provider has no apiKey or no entry at all, the config is returned
+ * unchanged (idempotent for the "already logged out" state).
+ */
+export function removeApiKeyFromConfig(
+	fileConfig: Record<string, unknown>,
+	providerKey: string
+): Record<string, unknown> {
+	const result: Record<string, unknown> = { ...fileConfig };
+
+	const existingProviders =
+		result.providers && typeof result.providers === "object"
+			? { ...(result.providers as Record<string, unknown>) }
+			: {};
+	result.providers = existingProviders;
+
+	const providers = existingProviders as Record<string, Record<string, unknown>>;
+	const existing = providers[providerKey];
+	if (!existing || typeof existing !== "object") {
+		return result;
+	}
+
+	// Shallow-copy and delete the apiKey key
+	const updated: Record<string, unknown> = { ...existing };
+	delete updated.apiKey;
+	providers[providerKey] = updated;
+
+	return result;
+}
+
+// ===== Logout: Interactive Flows =====
+
+/**
+ * Check if the given provider key matches the provider that the current
+ * `defaultModel` auto-detects to. Returns false if no defaultModel is set
+ * or if detectProvider throws.
+ */
+function isActiveProvider(providerKey: string, defaultModel: unknown): boolean {
+	if (typeof defaultModel !== "string" || !defaultModel) return false;
+	try {
+		return detectProvider(defaultModel) === providerKey;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Prompt the user to pick a new default model from the remaining configured
+ * providers. If no other providers are configured, falls back to the Ollama
+ * local default (qwen3-coder).
+ */
+async function promptNewDefaultModel(
+	fileConfig: Record<string, unknown>,
+	loggedOutProviderKey: string
+): Promise<string | undefined> {
+	// Find providers that still have an apiKey (or don't require one)
+	const providers = (fileConfig.providers ?? {}) as Record<string, Record<string, unknown>>;
+	const candidates = LOGIN_PROVIDERS.filter((p) => {
+		if (p.key === loggedOutProviderKey) return false;
+		const cfg = providers[p.key];
+		if (!cfg) return false;
+		if (p.requiresApiKey) return !!cfg.apiKey;
+		return true; // no-key providers like Ollama local are always "ready"
+	});
+
+	if (candidates.length === 0) {
+		// No other providers configured — fall back to Ollama local default
+		const fallback = "qwen3-coder";
+		console.log(`\nNo other providers configured. Falling back to: ${fallback}`);
+		return fallback;
+	}
+
+	if (candidates.length === 1) {
+		const only = candidates[0];
+		if (only?.defaultModel) {
+			console.log(`\nSwitching default model to ${only.name}: ${only.defaultModel}`);
+			return only.defaultModel;
+		}
+	}
+
+	// Multiple candidates — show a picker
+	console.log("\nSelect a new default model:\n");
+	candidates.forEach((p, i) => {
+		const num = `${i + 1}.`.padStart(4);
+		const model = p.defaultModel ?? "(unknown)";
+		console.log(`  ${num} ${p.name.padEnd(16)} ${model}`);
+	});
+	console.log();
+
+	const choice = await prompt(`Enter choice (1-${candidates.length}): `);
+	const index = parseInt(choice, 10) - 1;
+
+	if (Number.isNaN(index) || index < 0 || index >= candidates.length) {
+		console.log("\n✗ Invalid choice. Keeping current default model.");
+		return undefined;
+	}
+
+	const selected = candidates[index];
+	return selected?.defaultModel;
+}
+
+async function logoutProvider(provider: LoginProviderInfo): Promise<void> {
+	// Refuse for providers that don't have an API key (e.g. Ollama local)
+	if (!provider.requiresApiKey) {
+		console.log(`\n${provider.name} has no API key to remove.`);
+		console.log(`Use 'tiny-agent login ${provider.key}' to reconfigure the base URL.\n`);
+		process.exit(0);
+	}
+
+	const configPath = getConfigPath();
+	const fileConfig = await readConfigFile(configPath);
+
+	// Check if the provider has an apiKey to remove
+	const providerConfig = (fileConfig.providers as Record<string, Record<string, unknown>>)?.[provider.key];
+	const hasApiKey = !!providerConfig?.apiKey;
+
+	if (!providerConfig) {
+		console.log(`\n${provider.name} is not configured. Nothing to log out.\n`);
+		process.exit(0);
+	}
+
+	if (!hasApiKey) {
+		console.log(`\n${provider.name} is configured but has no API key set. Already logged out.\n`);
+		process.exit(0);
+	}
+
+	// Remove the apiKey
+	let updatedConfig = removeApiKeyFromConfig(fileConfig, provider.key);
+
+	// Check if the logged-out provider was the active default model
+	const currentDefault = fileConfig.defaultModel;
+	if (isActiveProvider(provider.key, currentDefault)) {
+		console.log(`\n⚠️  The default model (${currentDefault}) uses ${provider.name}.`);
+		const newModel = await promptNewDefaultModel(updatedConfig, provider.key);
+		if (newModel) {
+			updatedConfig = { ...updatedConfig, defaultModel: newModel };
+			console.log(`✓ Default model set to: ${newModel}`);
+		}
+	}
+
+	await writeConfigFile(configPath, updatedConfig);
+
+	console.log(`\n✓ Removed ${provider.name} API key from ${configPath}`);
+	console.log(
+		`\nLogout complete! The ${provider.name} provider entry is preserved (baseUrl, etc.) but has no API key.\n`
+	);
+	process.exit(0);
+}
+
+async function logoutInteractive(): Promise<void> {
+	console.log("\n🔒 Tiny Agent — Provider Logout\n");
+
+	const configPath = getConfigPath();
+	const fileConfig = await readConfigFile(configPath);
+	const providers = fileConfig.providers as Config["providers"] | undefined;
+
+	// Show current status
+	console.log(formatProviderStatus(providers));
+	console.log();
+
+	// Filter to providers that have an API key set (can be logged out)
+	const providersWithKeys = LOGIN_PROVIDERS.filter((p) => {
+		if (!p.requiresApiKey) return false;
+		const cfg = providers?.[p.key as keyof NonNullable<typeof providers>];
+		return !!cfg?.apiKey;
+	});
+
+	if (providersWithKeys.length === 0) {
+		console.log("No providers have an API key set. Nothing to log out.\n");
+		process.exit(0);
+	}
+
+	// Show picker
+	console.log("Select a provider to log out:\n");
+	providersWithKeys.forEach((p, i) => {
+		const num = `${i + 1}.`.padStart(4);
+		console.log(`  ${num} ${p.name}`);
+	});
+	console.log();
+
+	const choice = await prompt(`Enter choice (1-${providersWithKeys.length}): `);
+	const index = parseInt(choice, 10) - 1;
+
+	if (Number.isNaN(index) || index < 0 || index >= providersWithKeys.length) {
+		console.log("\n✗ Invalid choice. Logout cancelled.");
+		process.exit(1);
+	}
+
+	const provider = providersWithKeys[index];
+	if (!provider) {
+		console.log("\n✗ Invalid choice. Logout cancelled.");
+		process.exit(1);
+	}
+
+	await logoutProvider(provider);
+}
+
+// ===== Main Handlers =====
 
 export async function handleLogin(args: string[]): Promise<void> {
 	const subCommand = args[0];
@@ -477,4 +682,41 @@ export async function handleLogin(args: string[]): Promise<void> {
 
 	// Interactive picker
 	await loginInteractive();
+}
+
+// ===== Logout: Status & Main Handler =====
+
+async function showLogoutStatus(): Promise<void> {
+	const configPath = getConfigPath();
+	const fileConfig = await readConfigFile(configPath);
+	const providers = fileConfig.providers as Config["providers"] | undefined;
+
+	console.log(`\n${formatProviderStatus(providers)}\n`);
+	console.log("Run `tiny-agent logout` to remove a provider's API key interactively.");
+	console.log("Run `tiny-agent logout <provider>` to log out a specific provider directly.\n");
+	process.exit(0);
+}
+
+export async function handleLogout(args: string[]): Promise<void> {
+	const subCommand = args[0];
+
+	if (subCommand === "status") {
+		await showLogoutStatus();
+		return;
+	}
+
+	// If a provider key was given as arg, go straight to it
+	if (subCommand) {
+		const provider = findProvider(subCommand);
+		if (provider) {
+			await logoutProvider(provider);
+			return;
+		}
+		console.error(`Unknown provider: ${subCommand}`);
+		console.error(`Available: ${LOGIN_PROVIDERS.map((p) => p.key).join(", ")}`);
+		process.exit(1);
+	}
+
+	// Interactive picker
+	await logoutInteractive();
 }
