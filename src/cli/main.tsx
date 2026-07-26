@@ -1,9 +1,5 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { render } from "ink";
 import { loadConfig } from "../config/loader.js";
-import { Agent } from "../core/agent.js";
-import { createSkillTool } from "../tools/index.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
@@ -19,7 +15,7 @@ import { handleState } from "./handlers/state.js";
 import { handleStatus } from "./handlers/status.js";
 import { handleTrace } from "./handlers/trace.js";
 import { handleUpgrade } from "./handlers/upgrade.js";
-import { type CliOptions, createLLMClient, parseArgs, setupTools } from "./shared.js";
+import { type CliOptions, createAgent, parseArgs } from "./shared.js";
 
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
 
@@ -223,14 +219,17 @@ async function handleRun(config: ReturnType<typeof loadConfig>, args: string[], 
 		console.log("Initializing...");
 	}
 
-	const llmClient = await createLLMClient(config, options);
+	const { agent, mcpManager, toolRegistry, agentsMdPath } = await createAgent(config, options);
+
+	const model = options.model || config.defaultModel;
+
+	// Derive display-only values (the actual config is already in the agent)
+	const enableMemory = !options.noMemory || config.memoryFile !== undefined;
+	const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
+
 	if (!jsonMode && !useInk) {
 		const providerName = getProviderDisplayName(config.providers);
 		console.log(`  Provider: ${providerName}`);
-	}
-
-	const { registry: toolRegistry, mcpManager } = await setupTools(config);
-	if (!jsonMode && !useInk) {
 		const toolCount = toolRegistry.list().length;
 		console.log(`  Tools: ${toolCount} loaded`);
 
@@ -244,42 +243,6 @@ async function handleRun(config: ReturnType<typeof loadConfig>, args: string[], 
 			}
 		}
 	}
-
-	const model = options.model || config.defaultModel;
-
-	const enableMemory = !options.noMemory || config.memoryFile !== undefined;
-	const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
-
-	const agentsMdPath =
-		options.agentsMd ?? (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
-
-	const skillDirectories = options.skillsDir
-		? [...(config.skillDirectories || []), ...options.skillsDir]
-		: config.skillDirectories;
-
-	const agent = new Agent(llmClient, toolRegistry, {
-		verbose: options.verbose,
-		systemPrompt: config.systemPrompt,
-		conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-		maxContextTokens,
-		memoryFile: enableMemory ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json` : undefined,
-		maxMemoryTokens: config.maxMemoryTokens,
-		trackContextUsage: !options.noTrackContext || config.trackContextUsage,
-		agentsMdPath,
-		thinking: config.thinking,
-		providerConfigs: config.providers,
-		observability: config.observability,
-		skillDirectories,
-		mcpManager,
-	});
-
-	const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
-		agent._setSkillRestriction(allowedTools);
-	});
-	toolRegistry.register(skillTool);
-
-	// Wait for skills to be initialized before getting the count
-	await agent.waitForSkills();
 
 	const skillCount = agent.getSkillRegistry().size;
 
@@ -406,13 +369,6 @@ async function handleInteractiveChat(
 	const enableMemory = !options.noMemory || config.memoryFile !== undefined;
 	const maxContextTokens = config.maxContextTokens ?? (enableMemory ? 32000 : undefined);
 
-	const agentsMdPath =
-		options.agentsMd ?? (existsSync(join(process.cwd(), "AGENTS.md")) ? join(process.cwd(), "AGENTS.md") : undefined);
-
-	const skillDirectories = options.skillsDir
-		? [...(config.skillDirectories || []), ...options.skillsDir]
-		: config.skillDirectories;
-
 	// Initialize status line with model immediately
 	statusLineManager.setModel(initialModel.replace(/^opencode\//, ""));
 	const contextMax = maxContextTokens ?? 32000;
@@ -435,32 +391,7 @@ async function handleInteractiveChat(
 	// Do full initialization in background
 	const initBackground = async () => {
 		try {
-			const llmClient = await createLLMClient(config, options);
-			const { registry: toolRegistry, mcpManager } = await setupTools(config);
-
-			const agent = new Agent(llmClient, toolRegistry, {
-				verbose: options.verbose,
-				systemPrompt: config.systemPrompt,
-				conversationFile: options.save ? config.conversationFile || "conversation.json" : undefined,
-				maxContextTokens,
-				memoryFile: enableMemory ? config.memoryFile || `${process.env.HOME}/.tiny-agent/memories.json` : undefined,
-				maxMemoryTokens: config.maxMemoryTokens,
-				trackContextUsage: !options.noTrackContext || config.trackContextUsage,
-				agentsMdPath,
-				thinking: config.thinking,
-				providerConfigs: config.providers,
-				observability: config.observability,
-				skillDirectories,
-				mcpManager,
-			});
-
-			const skillTool = createSkillTool(agent.getSkillRegistry(), (allowedTools) => {
-				agent._setSkillRestriction(allowedTools);
-			});
-			toolRegistry.register(skillTool);
-
-			// Wait for skills to be initialized
-			await agent.waitForSkills();
+			const { agent } = await createAgent(config, options);
 
 			// Re-render with the fully initialized agent
 			rerender(
