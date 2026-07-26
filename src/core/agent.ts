@@ -31,17 +31,12 @@ import { escapeXml } from "../utils/xml.js";
 import { ConversationManager } from "./conversation.js";
 import { buildContextWithMemory, type ContextStats, calculateContextBudget, MemoryStore } from "./memory.js";
 import { countTokensSync, truncateMessages } from "./tokens.js";
+import { TurnExecutor } from "./turn-executor.js";
 
-const MAX_OUTPUT_LENGTH = 500;
-
-// Loop detection thresholds
-const LOOP_DETECTION = {
-	MIN_RECENT_CALLS: 3,
-	IDENTICAL_REPEAT: 3,
-	SAME_TOOL_THRESHOLD: 5,
-	DOMINANT_TOOL_THRESHOLD: 8,
-	LOOKBACK_WINDOW: 10,
-} as const;
+// Re-export for backward compatibility — other modules and tests import
+// isLooping and truncateOutput from agent.ts. The canonical home is now
+// agent-utils.ts (extracted to break the agent.ts ↔ turn-executor.ts cycle).
+export { isLooping, truncateOutput } from "./agent-utils.js";
 
 export function checkAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) {
@@ -49,48 +44,10 @@ export function checkAborted(signal?: AbortSignal): void {
 	}
 }
 
-export function isLooping(recentToolCalls: string[]): boolean {
-	if (recentToolCalls.length < LOOP_DETECTION.MIN_RECENT_CALLS) return false;
-
-	const extractTool = (call: string): string => call.match(/^([^:]+):/)?.[1] ?? "";
-	const lastCall = recentToolCalls[recentToolCalls.length - 1] ?? "";
-	const lastTool = extractTool(lastCall);
-
-	if (recentToolCalls.slice(-LOOP_DETECTION.IDENTICAL_REPEAT).every((c) => c === lastCall)) return true;
-
-	if (recentToolCalls.length >= LOOP_DETECTION.SAME_TOOL_THRESHOLD) {
-		const lastFive = recentToolCalls.slice(-LOOP_DETECTION.SAME_TOOL_THRESHOLD);
-		if (lastFive.every((c) => extractTool(c) === lastTool)) return true;
-	}
-
-	if (recentToolCalls.length >= LOOP_DETECTION.LOOKBACK_WINDOW) {
-		const counts: Record<string, number> = {};
-		for (const call of recentToolCalls.slice(-LOOP_DETECTION.LOOKBACK_WINDOW)) {
-			const tool = extractTool(call);
-			counts[tool] = (counts[tool] ?? 0) + 1;
-		}
-		if (Math.max(...Object.values(counts), 0) >= LOOP_DETECTION.DOMINANT_TOOL_THRESHOLD) return true;
-	}
-
-	return false;
-}
-
 export function redactApiKey(key?: string): string {
 	if (!key) return "(not set)";
 	if (key.length <= 8) return "****";
 	return `${key.slice(0, 4)}...REDACTED`;
-}
-
-export function truncateOutput(output: string | undefined): string | undefined {
-	if (!output) return output;
-	const lines = output.split("\n");
-	if (lines.length > 10) {
-		return `${lines.slice(0, 10).join("\n")}\n... (${lines.length - 10} more lines)`;
-	}
-	if (output.length > MAX_OUTPUT_LENGTH) {
-		return `${output.slice(0, MAX_OUTPUT_LENGTH)}\n... (${output.length - MAX_OUTPUT_LENGTH} more chars)`;
-	}
-	return output;
 }
 
 function calculateMessageTokens(messages: Message[]): number {
@@ -240,6 +197,7 @@ export class Agent {
 	private _mcpManager?: McpManager;
 	private _observability?: ObservabilityConfig;
 	private _obsInitialized: boolean = false;
+	private _turnExecutor: TurnExecutor;
 
 	constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
 		this._defaultLlmClient = llmClient;
@@ -256,6 +214,7 @@ export class Agent {
 		this._mcpManager = options.mcpManager ?? undefined;
 		this._observability = options.observability;
 		this._conversationManager = new ConversationManager(options.conversationFile);
+		this._turnExecutor = new TurnExecutor(toolRegistry, { verbose: options.verbose });
 
 		let effectiveSystemPrompt =
 			options.systemPrompt ??
@@ -562,9 +521,10 @@ export class Agent {
 		}
 
 		let iteration = 0;
-		const recentToolCalls: string[] = [];
 		let loopDetected = false;
 		let requestFailed = false;
+
+		this._turnExecutor.reset();
 
 		const updateStats = (): ContextStats =>
 			buildStats({
@@ -743,61 +703,36 @@ export class Agent {
 
 				checkAborted(options?.signal);
 
-				const toolTimer = new Timer();
+				// --- Tool execution via TurnExecutor --------------------------------
 				const toolSpan = startSpan("tool.execution");
+				const toolTimer = new Timer();
 
+				// Yield "running" display objects
 				yield {
 					content: "",
 					iterations: iteration + 1,
 					done: false,
-					toolExecutions: assistantToolCalls.map((tc) => ({
-						name: tc.name,
-						status: "running" as const,
-						args: tc.arguments,
-						startTime: Date.now(),
-					})),
+					toolExecutions: TurnExecutor.runningDisplay(assistantToolCalls),
 					contextStats,
 				};
 
-				const calls = assistantToolCalls.map((tc) => ({
-					name: tc.name,
-					args: tc.arguments,
-				}));
-				let batchResults: Array<{ name: string; result: { success: boolean; output?: string; error?: string } }>;
-				try {
-					batchResults = await this._toolRegistry.executeBatch(calls);
-				} catch (err) {
-					toolSpan.end(err);
-					throw err;
-				}
-
+				const turnResult = await this._turnExecutor.executeTurn(assistantToolCalls);
 				const toolDuration = Math.round(toolTimer.ms);
-
-				const resultMap = new Map(batchResults.map((br) => [br.name, br]));
-				const getToolResult = (name: string) => resultMap.get(name)?.result;
-				const toolExecutionResults = assistantToolCalls.map((tc) => ({
-					toolCall: tc,
-					result: getToolResult(tc.name) ?? {
-						success: false,
-						error: `Tool "${tc.name}" result not found`,
-					},
-				}));
 
 				// --- Observability: record tool execution ---------------------------
 				toolSpan.setAttribute("ai.latency_ms", toolDuration);
 				toolSpan.setAttribute("tool.names", assistantToolCalls.map((tc) => tc.name).join(","));
 				toolSpan.end();
-				for (const { toolCall, result } of toolExecutionResults) {
-					const toolName = toolCall?.name ?? "unknown";
+				for (const exec of turnResult.toolExecutions) {
 					const toolFields: LogFields = {
 						event: "tool.execution",
 						traceId,
-						toolName,
+						toolName: exec.name,
 						latencyMs: toolDuration,
-						status: result.success ? "ok" : "error",
+						status: exec.status === "complete" ? "ok" : "error",
 					};
-					if (!result.success && result.error) {
-						const { errorType, errorMessage } = sanitizeError(new Error(result.error));
+					if (exec.status === "error" && exec.error) {
+						const { errorType, errorMessage } = sanitizeError(new Error(exec.error));
 						toolFields.errorType = errorType;
 						toolFields.errorMessage = errorMessage;
 					}
@@ -805,85 +740,29 @@ export class Agent {
 				}
 				// --------------------------------------------------------------------
 
+				// Yield "complete/error" display objects
 				yield {
 					content: "",
 					iterations: iteration + 1,
 					done: false,
-					toolExecutions: toolExecutionResults.map(({ toolCall, result }) => ({
-						name: toolCall?.name,
-						status: result.success ? "complete" : "error",
-						args: toolCall?.arguments,
-						output: result.success ? truncateOutput(result.output) : undefined,
-						error: result.error ? truncateOutput(result.error) : undefined,
-						duration: toolDuration,
-					})),
+					toolExecutions: turnResult.toolExecutions.map((te) => ({ ...te, duration: toolDuration })),
 					contextStats,
 				};
 
 				checkAborted(options?.signal);
 
-				for (const { toolCall, result } of toolExecutionResults) {
-					const toolCallSignature = `${toolCall?.name}:${JSON.stringify(toolCall?.arguments)}`;
-					recentToolCalls.push(toolCallSignature);
-
-					messages.push({
-						role: "tool",
-						content: result.error || result.output || "(no output)",
-						toolCallId: toolCall?.id,
-					});
+				// Append tool result messages to the conversation
+				for (const msg of turnResult.toolResultMessages) {
+					messages.push(msg);
 				}
 
-				const notFoundErrors = toolExecutionResults.filter(
-					({ result }) => !result.success && result.error?.includes("not found")
-				);
-				const declinedErrors = toolExecutionResults.filter(
-					({ result }) => !result.success && result.error?.includes("User declined confirmation")
-				);
-
-				if (notFoundErrors.length > 0) {
-					const missingTools = notFoundErrors.map(({ toolCall }) => toolCall?.name).join(", ");
-					messages.push({
-						role: "system",
-						content: `ERROR: The following tool(s) are not available: ${missingTools}. Please stop and provide your final answer based on the information you have gathered, or ask the user for alternative approaches.`,
-					});
-					if (this._verbose) {
-						console.log(`\n[WARNING] Tool(s) not found: ${missingTools}, breaking loop`);
-					}
-					loopDetected = true;
-					break;
+				// Append system messages (error recovery instructions)
+				for (const msg of turnResult.systemMessages) {
+					messages.push(msg);
 				}
 
-				if (declinedErrors.length > 0) {
-					const declinedTools = declinedErrors.map(({ toolCall }) => toolCall?.name).join(", ");
-
-					if (declinedErrors.length === toolExecutionResults.length) {
-						messages.push({
-							role: "system",
-							content: `All tool calls (${declinedTools}) were declined by the user. Provide your final answer now without making any more tool calls.`,
-						});
-						if (this._verbose) {
-							console.log(`\n[INFO] All tools declined: ${declinedTools}, requesting final answer`);
-						}
-						loopDetected = true;
-						break;
-					}
-
-					if (this._verbose) {
-						console.log(`\n[INFO] User declined confirmation: ${declinedTools}, continuing with remaining tools`);
-					}
-					contextStats = updateStats();
-					continue;
-				}
-
-				if (recentToolCalls.length >= 3 && isLooping(recentToolCalls)) {
-					const toolName = assistantToolCalls[0]?.name ?? "unknown";
-					messages.push({
-						role: "system",
-						content: `STOP: You have called ${toolName} repeatedly with the same arguments. Please stop and use the results you already have, or try a different approach. Provide your final answer now based on the information you have gathered.`,
-					});
-					if (this._verbose) {
-						console.log(`\n[WARNING] Detected tool call loop for ${toolName}, breaking loop`);
-					}
+				// Handle loop break reasons
+				if (turnResult.loopBreakReason) {
 					loopDetected = true;
 					break;
 				}
