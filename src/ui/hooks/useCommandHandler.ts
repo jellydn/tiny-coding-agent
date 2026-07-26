@@ -222,6 +222,28 @@ export function useCommandHandler({
 		);
 	}, [agent, onAddMessage]);
 
+	const handleLogoutCommand = useCallback(() => {
+		if (!agent) {
+			onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized. Cannot show provider status.");
+			return;
+		}
+
+		// Show current provider connection status + logout guidance.
+		// The actual key removal happens via the top-level `tiny-agent logout`
+		// command, because it writes to the config file on disk.
+		const providerConfigs = agent.getProviderConfigs();
+		const status = formatProviderStatus(providerConfigs);
+
+		onAddMessage(
+			MessageRole.ASSISTANT,
+			`${status}\n\n` +
+				`To remove a provider's API key, exit and run:\n` +
+				`  tiny-agent logout          Interactive provider picker\n` +
+				`  tiny-agent logout openai   Log out a specific provider\n` +
+				`  tiny-agent logout status   Show this status again`
+		);
+	}, [agent, onAddMessage]);
+
 	const handleMemoryCommand = useCallback(() => {
 		if (!agent) {
 			onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized.");
@@ -262,6 +284,7 @@ export function useCommandHandler({
   /model   - Switch model
   /agent   - Switch agent
   /login   - Show provider connection status
+  /logout  - Show provider logout status
   /tools   - View tool executions
   /mcp     - Show MCP server status
   /memory  - List memories
@@ -293,6 +316,9 @@ Use ←/→ to navigate, Enter to select.`
 					break;
 				case "/login":
 					handleLoginCommand();
+					break;
+				case "/logout":
+					handleLogoutCommand();
 					break;
 				case "/mcp":
 					handleMcpCommand();
@@ -328,6 +354,7 @@ Use ←/→ to navigate, Enter to select.`
 			onExit,
 			handleSkillCommand,
 			handleLoginCommand,
+			handleLogoutCommand,
 			handleMcpCommand,
 			handleMemoryCommand,
 			handlePlanCommand,
