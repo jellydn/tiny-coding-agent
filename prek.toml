@@ -1,0 +1,33 @@
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v6.0.0"
+
+[[repos.hooks]]
+id = "trailing-whitespace"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "biome-check"
+name = "Biome lint & format"
+entry = "bunx biome check --write"
+language = "system"
+types = ["text"]
+
+[[repos.hooks]]
+id = "typecheck"
+name = "TypeScript typecheck"
+entry = "bunx --bun tsc --noEmit"
+language = "system"
+types = ["text"]
+pass_filenames = false

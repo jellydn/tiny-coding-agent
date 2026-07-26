@@ -1,7 +1,7 @@
 # ADR-005: Tool System Design
 
-**Status:** Accepted  
-**Date:** 2026-01-13  
+**Status:** Accepted
+**Date:** 2026-01-13
 **Deciders:** huynhdung
 
 ## Context

@@ -52,6 +52,87 @@ const SUCCESS_HEADER_RE = /^\*\*Success\s+Criteria:\*\*\s*$/i;
 const STEPS_HEADER_RE = /^###\s+Steps:?\s*$/i;
 const TECH_HEADER_RE = /^##\s+Technical\s+Considerations\s*$/i;
 
+type PhaseLineResult = { consumed: true; next: ParseSection } | { consumed: false };
+
+/**
+ * Try to consume a line as part of the current phase's body. Returns
+ * `{ consumed: true, next }` if a pattern matched (the caller should
+ * `continue` with `section = result.next`), or `{ consumed: false }` if the
+ * line did not belong to any phase-body pattern (the caller then falls
+ * through to the overview / technical / none handlers).
+ *
+ * `next` may equal the current section (e.g. a `- **` line still consumes
+ * the line but does not flip section), preserving the original control flow.
+ */
+function consumePhaseLine(line: string, phase: Phase, currentSection: ParseSection): PhaseLineResult {
+	const depsMatch = line.match(DEPS_RE);
+	if (
+		depsMatch &&
+		(currentSection === "phaseDeps" || currentSection === "phaseSuccess" || currentSection === "phaseSteps")
+	) {
+		const depText = (depsMatch[1] ?? "").trim();
+		if (depText && !/^none$/i.test(depText)) {
+			const numbers: number[] = [];
+			const re = /\b(?:Phase\s+)?(\d+)\b/g;
+			let m: RegExpExecArray | null;
+			while ((m = re.exec(depText)) !== null) {
+				const n = parseInt(m[1] ?? "0", 10);
+				if (!Number.isNaN(n) && n > 0 && !numbers.includes(n)) {
+					numbers.push(n);
+				}
+			}
+			phase.dependencies = numbers;
+		}
+		return { consumed: true, next: "phaseSuccess" };
+	}
+
+	if (SUCCESS_HEADER_RE.test(line) && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
+		return { consumed: true, next: "phaseSuccess" };
+	}
+
+	const checkboxMatch = line.match(CHECKBOX_RE);
+	if (checkboxMatch && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
+		phase.successCriteria.push((checkboxMatch[1] ?? "").trim());
+		return { consumed: true, next: "phaseSuccess" };
+	}
+
+	const stepsHeader = line.match(STEPS_HEADER_RE);
+	if (stepsHeader && (currentSection === "phaseSuccess" || currentSection === "phaseDeps")) {
+		return { consumed: true, next: "phaseSteps" };
+	}
+
+	const stepMatch = line.match(STEP_RE);
+	if (
+		stepMatch &&
+		(currentSection === "phaseSteps" || currentSection === "phaseSuccess" || currentSection === "phaseDeps")
+	) {
+		phase.steps.push({
+			number: parseInt(stepMatch[1] ?? "0", 10),
+			text: (stepMatch[2] ?? "").trim(),
+		});
+		return { consumed: true, next: "phaseSteps" };
+	}
+
+	// Bold-style `- text` lines (success criteria without checkbox) within Success-Criteria section.
+	// A `- **` (or empty) line still consumes the line, but does NOT flip section,
+	// matching the original control flow where `mode = "phaseSuccess"` only ran
+	// when text was non-empty and did not start with `**`.
+	const dashMatch = line.match(FYI_DASH_RE);
+	if (dashMatch && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
+		const text = (dashMatch[1] ?? "").trim();
+		if (text && !text.startsWith("**")) {
+			phase.successCriteria.push(text);
+			return { consumed: true, next: "phaseSuccess" };
+		}
+		// Line consumed (matched dashMatch), but section stays put because the
+		// content was empty or bold-only — would have been a no-op push in the
+		// original control flow.
+		return { consumed: true, next: currentSection };
+	}
+
+	return { consumed: false };
+}
+
 /**
  * Serialize a Plan into canonical markdown.
  *
@@ -106,7 +187,7 @@ export function serialize(plan: Plan): string {
 	return lines.join("\n");
 }
 
-type ParseMode = "none" | "overview" | "phaseDeps" | "phaseSuccess" | "phaseSteps" | "technical";
+type ParseSection = "none" | "overview" | "phaseDeps" | "phaseSuccess" | "phaseSteps" | "technical";
 
 /**
  * Parse markdown into a Plan. Forgiving by design: LLM output is messy.
@@ -130,7 +211,7 @@ export function parse(text: string): Plan {
 	const technicalConsiderations: string[] = [];
 
 	let currentPhase: Phase | null = null;
-	let mode: ParseMode = "none";
+	let section: ParseSection = "none";
 	let overviewBuffer: string[] = [];
 
 	const finalizeCurrentPhase = (): void => {
@@ -158,15 +239,15 @@ export function parse(text: string): Plan {
 
 		// Pre-check: if we're in overview mode and this line is a `##` header,
 		// finalize the overview buffer before any section header handler runs.
-		if (mode === "overview" && /^##\s/.test(line.trim())) {
+		if (section === "overview" && /^##\s/.test(line.trim())) {
 			finalizeOverview();
-			mode = "none";
+			section = "none";
 		}
 
 		const titleMatch = line.match(TITLE_RE);
 		if (titleMatch && title === "") {
 			title = (titleMatch[1] ?? "").trim();
-			mode = "overview";
+			section = "overview";
 			continue;
 		}
 
@@ -180,87 +261,33 @@ export function parse(text: string): Plan {
 				successCriteria: [],
 				steps: [],
 			};
-			mode = "phaseDeps";
+			section = "phaseDeps";
 			continue;
 		}
 
 		if (OVERVIEW_HEADER_RE.test(line)) {
 			finalizeCurrentPhase();
 			finalizeOverview();
-			mode = "overview";
+			section = "overview";
 			continue;
 		}
 
 		if (TECH_HEADER_RE.test(line)) {
 			finalizeCurrentPhase();
 			finalizeOverview();
-			mode = "technical";
+			section = "technical";
 			continue;
 		}
 
 		if (currentPhase) {
-			const depsMatch = line.match(DEPS_RE);
-			if (depsMatch && (mode === "phaseDeps" || mode === "phaseSuccess" || mode === "phaseSteps")) {
-				const depText = (depsMatch[1] ?? "").trim();
-				if (depText && !/^none$/i.test(depText)) {
-					const numbers: number[] = [];
-					const re = /\b(?:Phase\s+)?(\d+)\b/g;
-					let m: RegExpExecArray | null;
-					while ((m = re.exec(depText)) !== null) {
-						const n = parseInt(m[1] ?? "0", 10);
-						if (!Number.isNaN(n) && n > 0 && !numbers.includes(n)) {
-							numbers.push(n);
-						}
-					}
-					currentPhase.dependencies = numbers;
-				}
-				mode = "phaseSuccess";
-				continue;
-			}
-
-			if (SUCCESS_HEADER_RE.test(line) && (mode === "phaseDeps" || mode === "phaseSuccess")) {
-				mode = "phaseSuccess";
-				continue;
-			}
-
-			const checkboxMatch = line.match(CHECKBOX_RE);
-			if (checkboxMatch && currentPhase && (mode === "phaseDeps" || mode === "phaseSuccess")) {
-				currentPhase.successCriteria.push((checkboxMatch[1] ?? "").trim());
-				mode = "phaseSuccess";
-				continue;
-			}
-
-			const stepsHeader = line.match(STEPS_HEADER_RE);
-			if (stepsHeader && (mode === "phaseSuccess" || mode === "phaseDeps")) {
-				mode = "phaseSteps";
-				continue;
-			}
-
-			const stepMatch = line.match(STEP_RE);
-			if (stepMatch && (mode === "phaseSteps" || mode === "phaseSuccess" || mode === "phaseDeps")) {
-				currentPhase.steps.push({
-					number: parseInt(stepMatch[1] ?? "0", 10),
-					text: (stepMatch[2] ?? "").trim(),
-				});
-				mode = "phaseSteps";
-				continue;
-			}
-
-			// Bold-style `- text` lines (success criteria without checkbox) within Success-Criteria section.
-			const dashMatch = line.match(FYI_DASH_RE);
-			if (dashMatch && (mode === "phaseDeps" || mode === "phaseSuccess")) {
-				const text = (dashMatch[1] ?? "").trim();
-				if (text && !text.startsWith("**")) {
-					if (currentPhase) {
-						currentPhase.successCriteria.push(text);
-					}
-					mode = "phaseSuccess";
-				}
+			const result = consumePhaseLine(line, currentPhase, section);
+			if (result.consumed) {
+				section = result.next;
 				continue;
 			}
 		}
 
-		if (mode === "overview") {
+		if (section === "overview") {
 			const trimmed = line.trim();
 			if (trimmed === "") {
 				// Paragraph separator: push empty marker so join yields "\n\n" between paragraphs.
@@ -273,7 +300,7 @@ export function parse(text: string): Plan {
 			continue;
 		}
 
-		if (mode === "technical") {
+		if (section === "technical") {
 			const dashMatch = line.match(FYI_DASH_RE);
 			if (dashMatch) {
 				const text = (dashMatch[1] ?? "").trim();
@@ -282,7 +309,7 @@ export function parse(text: string): Plan {
 				}
 			}
 		}
-		// mode === "none": ignore stray content.
+		// section === "none": ignore stray content.
 	}
 
 	finalizeCurrentPhase();

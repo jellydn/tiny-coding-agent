@@ -79,6 +79,7 @@ export interface Config {
 		openrouter?: ProviderConfig;
 		opencode?: ProviderConfig;
 		zai?: ProviderConfig;
+		clinepass?: ProviderConfig;
 	};
 	mcpServers?: Record<string, McpServerConfig>;
 	tools?: Record<string, ToolConfig>;

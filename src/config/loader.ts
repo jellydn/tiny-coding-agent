@@ -81,6 +81,8 @@ providers:
   #   apiKey: \${OPENCODE_API_KEY}
   # zai:
   #   apiKey: \${ZAI_API_KEY}
+  # clinepass:
+  #   apiKey: \${CLINE_API_KEY}
 
 # MCP servers for extended capabilities
 mcpServers:
@@ -133,6 +135,14 @@ function containsSensitivePattern(key: string): boolean {
 	return SENSITIVE_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+/**
+ * Provider-specific env vars allowed outside the prefix-based whitelist.
+ * Each entry is matched exactly (no prefix), so a future addition requires
+ * an explicit `ALLOWED_PROVIDER_ENV_VARS` row rather than a blanket prefix
+ * that would whitelisten unrelated env vars.
+ */
+const ALLOWED_PROVIDER_ENV_VARS: readonly string[] = ["CLINE_API_KEY", "CLINEPASS_API_KEY"];
+
 function interpolateEnvVars(value: string, keyPath: string = ""): string {
 	return value.replace(/\$\{([^}]+)\}/g, (_, envVar: string) => {
 		const envValue = process.env[envVar];
@@ -143,7 +153,8 @@ function interpolateEnvVars(value: string, keyPath: string = ""): string {
 			envVar.startsWith("OLLAMA") ||
 			envVar.startsWith("OPENROUTER") ||
 			envVar.startsWith("OPENCODE") ||
-			envVar.startsWith("ZAI");
+			envVar.startsWith("ZAI") ||
+			ALLOWED_PROVIDER_ENV_VARS.includes(envVar);
 
 		if (!isWhitelistedProvider && containsSensitivePattern(keyPath)) {
 			console.warn(

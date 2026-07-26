@@ -70,6 +70,38 @@ describe("detectProvider()", () => {
 		});
 	});
 
+	describe("ClinePass models", () => {
+		it("should detect cline-pass/* models", () => {
+			expect(detectProvider("cline-pass/glm-5.2")).toBe("clinepass");
+			expect(detectProvider("cline-pass/deepseek-v4-pro")).toBe("clinepass");
+			expect(detectProvider("cline-pass/deepseek-v4-flash")).toBe("clinepass");
+			expect(detectProvider("cline-pass/kimi-k3")).toBe("clinepass");
+		});
+
+		it("should detect cline-pass models case-insensitively", () => {
+			expect(detectProvider("CLINE-PASS/GLM-5.2")).toBe("clinepass");
+			expect(detectProvider("Cline-Pass/DeepSeek-V4-Pro")).toBe("clinepass");
+		});
+	});
+
+	describe("ClinePass - getModelInfo / supportsThinking / supportsTools", () => {
+		it("should return correct info for cline-pass models", () => {
+			const info = getModelInfo("cline-pass/deepseek-v4-flash");
+			expect(info?.provider).toBe("clinepass");
+			expect(info?.supportsThinking).toBe(true);
+			expect(info?.supportsTools).toBe(true);
+			expect(info?.contextWindow).toBe(128000);
+			expect(info?.maxOutputTokens).toBe(8192);
+		});
+
+		it("should report thinking + tools for cline-pass models", () => {
+			expect(supportsThinking("cline-pass/glm-5.2")).toBe(true);
+			expect(supportsTools("cline-pass/glm-5.2")).toBe(true);
+			expect(supportsThinking("cline-pass/kimi-k3")).toBe(true);
+			expect(supportsTools("cline-pass/kimi-k3")).toBe(true);
+		});
+	});
+
 	describe("Ollama - catch-all for unknown models", () => {
 		it("should detect common open source models", () => {
 			expect(detectProvider("llama3.2")).toBe("ollama");
@@ -243,6 +275,11 @@ describe("getProviderPatterns()", () => {
 	it("should return patterns for opencode", () => {
 		const patterns = getProviderPatterns("opencode");
 		expect(patterns).toContain("^opencode/");
+	});
+
+	it("should return patterns for clinepass", () => {
+		const patterns = getProviderPatterns("clinepass");
+		expect(patterns).toContain("^cline-pass/");
 	});
 
 	it("should return patterns for ollama (catch-all)", () => {

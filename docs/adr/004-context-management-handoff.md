@@ -1,7 +1,7 @@
 # ADR-004: Context Management via Handoff/Pickup
 
-**Status:** Accepted  
-**Date:** 2026-01-13  
+**Status:** Accepted
+**Date:** 2026-01-13
 **Deciders:** huynhdung
 
 ## Context

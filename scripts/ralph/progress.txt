@@ -173,4 +173,3 @@ Started: Mon Jan 26 08:10:48 +08 2026
   - Useful context: AgentSwitcher uses AGENT_CONFIG from constants.ts for labels and colors
   - Useful context: Agent switching shows confirmation message and updates status line context
  ---
-

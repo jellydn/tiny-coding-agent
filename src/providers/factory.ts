@@ -1,5 +1,6 @@
 import type { ProviderConfig } from "../config/schema.js";
 import { AnthropicProvider } from "./anthropic.js";
+import { ClinePassProvider } from "./clinepass.js";
 import { detectProvider, type ProviderType } from "./model-registry.js";
 import { OllamaProvider } from "./ollama.js";
 import { OllamaCloudProvider } from "./ollama-cloud.js";
@@ -45,6 +46,7 @@ export interface CreateProviderOptions {
 		openrouter?: ProviderConfig;
 		opencode?: ProviderConfig;
 		zai?: ProviderConfig;
+		clinepass?: ProviderConfig;
 	};
 }
 
@@ -58,6 +60,7 @@ const PROVIDER_MAP: Record<string, { class: ProviderClass<LLMClient>; requiresAp
 	openrouter: { class: OpenRouterProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 	opencode: { class: OpenCodeProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 	zai: { class: ZaiProvider as ProviderClass<LLMClient>, requiresApiKey: true },
+	clinepass: { class: ClinePassProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 };
 
 function createProviderInstance<T extends LLMClient>(providerType: string, config: ProviderConfig | undefined): T {

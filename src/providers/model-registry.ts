@@ -1,4 +1,12 @@
-export type ProviderType = "openai" | "anthropic" | "ollama" | "ollamaCloud" | "openrouter" | "opencode" | "zai";
+export type ProviderType =
+	| "openai"
+	| "anthropic"
+	| "ollama"
+	| "ollamaCloud"
+	| "openrouter"
+	| "opencode"
+	| "zai"
+	| "clinepass";
 
 export interface ModelEntry {
 	provider: ProviderType;
@@ -92,6 +100,14 @@ const MODEL_DATABASE: ModelEntry[] = [
 		supportsThinking: true,
 		supportsTools: true,
 		contextWindow: 200000,
+		maxOutputTokens: 8192,
+	},
+	{
+		provider: "clinepass",
+		patterns: ["^cline-pass/"],
+		supportsThinking: true,
+		supportsTools: true,
+		contextWindow: 128000,
 		maxOutputTokens: 8192,
 	},
 	{

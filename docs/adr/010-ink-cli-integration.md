@@ -1,7 +1,7 @@
 # ADR-010: Ink CLI Integration
 
-**Status:** Accepted  
-**Date:** 2026-01-18  
+**Status:** Accepted
+**Date:** 2026-01-18
 **Deciders:** huynhdung
 
 ## Context
