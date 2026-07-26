@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import * as readline from "node:readline";
 import {
 	applyProviderToConfig,
+	containsLiteralApiKey,
 	findProvider,
 	formatProviderStatus,
 	getProviderStatus,
@@ -224,6 +225,68 @@ describe("login handler", () => {
 			const output = formatProviderStatus(providers);
 			// Ollama local doesn't require API key — "ready" when configured
 			expect(output).toContain("ready");
+		});
+	});
+
+	describe("containsLiteralApiKey()", () => {
+		// Construct env-var reference strings via concatenation to avoid
+		// Biome's noTemplateCurlyInString lint rule, which flags ${...} in
+		// non-template-literal strings. These represent the literal text
+		// "${OPENAI_API_KEY}" as it would appear in config.yaml.
+		const OPENAI_REF = "${" + "OPENAI_API_KEY}";
+		const ANTHROPIC_REF = "${" + "ANTHROPIC_API_KEY}";
+
+		it("should return false for an empty config", () => {
+			expect(containsLiteralApiKey({})).toBe(false);
+		});
+
+		it("should return false when no providers object exists", () => {
+			expect(containsLiteralApiKey({ defaultModel: "gpt-4o" })).toBe(false);
+		});
+
+		it("should return false for providers with no apiKey", () => {
+			expect(containsLiteralApiKey({ providers: { ollama: { baseUrl: "http://localhost:11434" } } })).toBe(false);
+		});
+
+		it("should return true for a literal API key", () => {
+			expect(containsLiteralApiKey({ providers: { openai: { apiKey: "sk-test-key" } } })).toBe(true);
+		});
+
+		it("should return false for an env-var reference apiKey", () => {
+			expect(containsLiteralApiKey({ providers: { openai: { apiKey: OPENAI_REF } } })).toBe(false);
+		});
+
+		it("should return false for an empty apiKey string", () => {
+			expect(containsLiteralApiKey({ providers: { openai: { apiKey: "" } } })).toBe(false);
+		});
+
+		it("should return true if any provider has a literal key", () => {
+			expect(
+				containsLiteralApiKey({
+					providers: {
+						ollama: { baseUrl: "http://localhost:11434" },
+						openai: { apiKey: OPENAI_REF },
+						anthropic: { apiKey: "sk-ant-test" },
+					},
+				})
+			).toBe(true);
+		});
+
+		it("should return false when all apiKeys are env-var references", () => {
+			expect(
+				containsLiteralApiKey({
+					providers: {
+						openai: { apiKey: OPENAI_REF },
+						anthropic: { apiKey: ANTHROPIC_REF },
+					},
+				})
+			).toBe(false);
+		});
+
+		it("should handle non-object providers gracefully", () => {
+			expect(containsLiteralApiKey({ providers: "not-an-object" })).toBe(false);
+			expect(containsLiteralApiKey({ providers: null })).toBe(false);
+			expect(containsLiteralApiKey({ providers: [] })).toBe(false);
 		});
 	});
 });

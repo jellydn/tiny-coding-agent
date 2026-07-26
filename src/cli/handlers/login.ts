@@ -183,6 +183,26 @@ export function formatProviderStatus(providers: Config["providers"] | undefined)
 	return lines.join("\n");
 }
 
+/**
+ * Check if a config object contains any literal (non-env-var-reference) API
+ * key. An `apiKey` value like `"sk-..."` is literal; `"${OPENAI_API_KEY}"`
+ * is an env-var reference and does not count. Used to decide whether to
+ * write the config file with owner-only (0o600) permissions.
+ */
+export function containsLiteralApiKey(config: Record<string, unknown>): boolean {
+	const providers = config.providers;
+	if (!providers || typeof providers !== "object") return false;
+
+	for (const providerConfig of Object.values(providers as Record<string, unknown>)) {
+		if (!providerConfig || typeof providerConfig !== "object") continue;
+		const apiKey = (providerConfig as Record<string, unknown>).apiKey;
+		if (typeof apiKey === "string" && apiKey.length > 0 && !apiKey.startsWith("${")) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // ===== Config I/O Helpers (follow the mcp.ts pattern) =====
 
 async function readConfigFile(configPath: string): Promise<Record<string, unknown>> {
@@ -205,12 +225,20 @@ async function writeConfigFile(configPath: string, config: Record<string, unknow
 		mkdirSync(CONFIG_DIR, { recursive: true });
 	}
 
+	// Write with owner-only permissions when the config contains a literal
+	// API key, to prevent other users on the system from reading secrets.
+	// Note: `mode` only applies when the file is first created — existing
+	// files keep their current permissions. `createDefaultConfig` in loader.ts
+	// always uses 0o600, so the common onboarding flow (create → login) starts
+	// with the right permissions.
+	const writeOptions = containsLiteralApiKey(config) ? { mode: 0o600, encoding: "utf-8" as const } : "utf-8";
+
 	if (configPath.endsWith(".json")) {
-		await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+		await writeFile(configPath, JSON.stringify(config, null, 2), writeOptions);
 		return;
 	}
 	const { stringify: stringifyYaml } = await import("yaml");
-	await writeFile(configPath, stringifyYaml(config), "utf-8");
+	await writeFile(configPath, stringifyYaml(config), writeOptions);
 }
 
 // ===== Prompt Helpers (readline-based, matching build-agent.ts pattern) =====
