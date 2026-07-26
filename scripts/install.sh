@@ -75,7 +75,7 @@ fi
 if command -v file >/dev/null 2>&1; then
   echo "Verifying binary architecture..."
   FILE_OUTPUT=$(file "${INSTALL_DIR}/${BINARY_NAME}")
-  
+
   case "$ARCH" in
     arm64)
       if echo "$FILE_OUTPUT" | grep -q "x86-64\|x86_64"; then
