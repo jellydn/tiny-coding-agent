@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { ClinePassProvider } from "../../src/providers/clinepass.js";
+import { isModelInCatalog } from "../../src/providers/models-dev.js";
 import { OpenAIProvider } from "../../src/providers/openai.js";
 
 const DEFAULT_BASE_URL = "https://api.cline.bot/v1";
@@ -73,14 +74,19 @@ describe("ClinePassProvider", () => {
 		});
 
 		it("should fall through to OpenAIProvider defaults (not the ClinePass hardcoded entry) for unknown model ids", async () => {
-			// Marker id chosen deliberately so the test deterministically
+			// Marker id chosen deliberately so this test deterministically
 			// exercises OpenAIProvider's hardcoded fallback path:
 			//   1. CLINEPASS_MODEL_IDS contains no entry matching this id
 			//      (no underscores, no `__definitely-not-in-catalog__` pattern).
-			//   2. models.dev has no entry for it under the "openai" provider
-			//      either, so the parent's catalog lookup returns null and
-			//      control reaches the bottom hardcoded-fallback block.
+			//   2. The runtime check below asserts that models.dev also has
+			//      no entry for it under the "openai" provider, so the
+			//      parent's catalog lookup returns null and control reaches
+			//      the bottom hardcoded-fallback block. If models.dev ever
+			//      adds such an entry, this test fails loudly with a
+			//      descriptive message rather than silently exercising the
+			//      catalog path.
 			const unknownId = "cline-pass/__definitely-not-in-catalog__";
+			expect(isModelInCatalog(unknownId, "openai")).toBe(false);
 			const caps = await provider.getCapabilities(unknownId);
 			expect(caps.modelName).toBe(unknownId);
 			// The ClinePass hardcoded entry reports supportsThinking=true,

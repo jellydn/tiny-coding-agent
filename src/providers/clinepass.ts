@@ -78,10 +78,15 @@ export class ClinePassProvider extends OpenAIProvider {
 		this._resolvedBaseUrl = baseUrl;
 	}
 
-	/** Resolve the baseUrl this provider was actually configured with.
-	 *  Defaults to the upstream ClinePass endpoint when none is supplied.
-	 *  Useful for health checks and for tests that need to assert the parent
-	 *  saw the same value. */
+	/** Returns the baseUrl this provider was configured with.
+	 *  Defaults to `https://api.cline.bot/v1` when none is supplied.
+	 *
+	 *  Contract: this value always equals the baseUrl that was forwarded
+	 *  to the parent `OpenAIProvider` constructor — both come from the
+	 *  same `resolveBaseUrl(config)` call, so the two cannot drift.
+	 *
+	 *  Intended for health checks and for tests that need to assert the
+	 *  parent saw the same URL. */
 	getResolvedBaseUrl(): string {
 		return this._resolvedBaseUrl;
 	}
