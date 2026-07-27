@@ -5,7 +5,13 @@
  * `isLooping` and `truncateOutput` are used by both Agent.runStream() and
  * TurnExecutor.executeTurn(). Moving them here lets turn-executor.ts import
  * from this file instead of from agent.ts, breaking the cycle.
+ *
+ * `streamLlmResponse` eliminates the duplicate stream-creation + iteration
+ * pattern between the main loop and the loop-detection final-answer section
+ * in runStream() (architecture review Candidate #2).
  */
+
+import type { ChatOptions, LLMClient, Message, TokenUsage, ToolCall, ToolDefinition } from "../providers/types.js";
 
 const MAX_OUTPUT_LENGTH = 500;
 
@@ -54,4 +60,82 @@ export function truncateOutput(output: string | undefined): string | undefined {
 		return `${output.slice(0, MAX_OUTPUT_LENGTH)}\n... (${output.length - MAX_OUTPUT_LENGTH} more chars)`;
 	}
 	return output;
+}
+
+// ─── streamLlmResponse ───────────────────────────────────────────────
+
+/** Options for streamLlmResponse — mirrors the subset of ChatOptions needed
+ *  to create an LLM stream, plus the system prompt to prepend. */
+export interface StreamLlmOptions {
+	llmClient: LLMClient;
+	model: string;
+	systemPrompt: string;
+	messages: Message[];
+	tools?: ToolDefinition[];
+	thinking?: ChatOptions["thinking"];
+	signal?: AbortSignal;
+}
+
+/** Collected result after the stream completes — tool calls, usage, timing. */
+export interface StreamLlmResult {
+	toolCalls: ToolCall[];
+	usage?: TokenUsage;
+	timeToFirstTokenMs?: number;
+}
+
+/**
+ * Create an LLM stream with the system prompt prepended, and iterate it.
+ * Yields raw content strings for real-time display. Returns collected
+ * tool calls, usage, and time-to-first-token via the generator's return value.
+ *
+ * Eliminates the duplicate stream-creation + iteration pattern between
+ * the main loop and the loop-detection final-answer section in runStream().
+ *
+ * The caller is responsible for:
+ * - Deciding what to yield (e.g. isValidToolCall filtering in the main loop)
+ * - Building fullContent from yielded strings
+ * - Error handling (AbortError rethrow, error yield + return)
+ *
+ * Usage:
+ * ```ts
+ * const gen = streamLlmResponse({ llmClient, model, systemPrompt, messages, tools });
+ * while (true) {
+ *   const { value, done } = await gen.next();
+ *   if (done) { /* value is StreamLlmResult *\/ break; }
+ *   // value is a content string — yield or filter as needed
+ * }
+ * ```
+ */
+export async function* streamLlmResponse(options: StreamLlmOptions): AsyncGenerator<string, StreamLlmResult, unknown> {
+	const stream = options.llmClient.stream({
+		model: options.model,
+		messages: [{ role: "system", content: options.systemPrompt }, ...options.messages],
+		tools: options.tools,
+		thinking: options.thinking,
+		signal: options.signal,
+	});
+
+	const toolCalls: ToolCall[] = [];
+	let usage: TokenUsage | undefined;
+	let timeToFirstTokenMs: number | undefined;
+	const startTime = Date.now();
+	let firstChunkSeen = false;
+
+	for await (const chunk of stream) {
+		if (!firstChunkSeen && (chunk.content || chunk.toolCalls)) {
+			firstChunkSeen = true;
+			timeToFirstTokenMs = Date.now() - startTime;
+		}
+		if (chunk.content) {
+			yield chunk.content;
+		}
+		if (chunk.toolCalls) {
+			toolCalls.push(...chunk.toolCalls);
+		}
+		if (chunk.usage) {
+			usage = chunk.usage;
+		}
+	}
+
+	return { toolCalls, usage, timeToFirstTokenMs };
 }

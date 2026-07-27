@@ -12,15 +12,17 @@ import { parseSkillFrontmatter } from "../skills/parser.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { escapeXml } from "../utils/xml.js";
 import { AgentObservability } from "./agent-observability.js";
+import { type StreamLlmResult, streamLlmResponse } from "./agent-utils.js";
 import { ConversationManager } from "./conversation.js";
 import { buildContextWithMemory, type ContextStats, calculateContextBudget, MemoryStore } from "./memory.js";
 import { countTokensSync, truncateMessages } from "./tokens.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Re-export for backward compatibility — other modules and tests import
-// isLooping and truncateOutput from agent.ts. The canonical home is now
-// agent-utils.ts (extracted to break the agent.ts ↔ turn-executor.ts cycle).
-export { isLooping, truncateOutput } from "./agent-utils.js";
+// isLooping, truncateOutput, and streamLlmResponse from agent.ts. The
+// canonical home is agent-utils.ts (extracted to break the agent.ts ↔
+// turn-executor.ts cycle and to eliminate the duplicate stream pattern).
+export { isLooping, streamLlmResponse, truncateOutput } from "./agent-utils.js";
 
 export function checkAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) {
@@ -482,49 +484,46 @@ export class Agent {
 				let firstChunkSeen = false;
 				// --------------------------------------------------------------------
 
-				const stream = llmClient.stream({
-					model: modelName,
-					messages: [
-						{
-							role: "system",
-							content: this._systemPrompt,
-						},
-						...messages,
-					],
-					tools: tools.length > 0 ? tools : undefined,
-					thinking: effectiveThinking,
-					signal: options?.signal,
-				});
-
 				let fullContent = "";
 				let responseToolCalls: string[] = [];
 				const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
 
 				try {
-					for await (const chunk of stream) {
-						if (!firstChunkSeen && (chunk.content || chunk.toolCalls)) {
+					const streamGen = streamLlmResponse({
+						llmClient,
+						model: modelName,
+						systemPrompt: this._systemPrompt,
+						messages,
+						tools: tools.length > 0 ? tools : undefined,
+						thinking: effectiveThinking,
+						signal: options?.signal,
+					});
+
+					while (true) {
+						const { value, done } = await streamGen.next();
+						if (done) {
+							const result = value as StreamLlmResult;
+							assistantToolCalls.push(...result.toolCalls);
+							responseToolCalls = result.toolCalls.map((tc) => tc.name);
+							llmUsage = result.usage;
+							if (!firstChunkSeen) {
+								llmTimeToFirstToken = llmTimer.ms;
+							}
+							break;
+						}
+						// value is a content string
+						if (!firstChunkSeen) {
 							firstChunkSeen = true;
 							llmTimeToFirstToken = llmTimer.ms;
 						}
-						if (chunk.content) {
-							if (!isValidToolCall(chunk.content)) {
-								fullContent += chunk.content;
-								yield {
-									content: chunk.content,
-									iterations: iteration + 1,
-									done: false,
-									contextStats,
-								};
-							}
-						}
-
-						if (chunk.toolCalls) {
-							assistantToolCalls.push(...chunk.toolCalls);
-							responseToolCalls = chunk.toolCalls.map((tc) => tc.name);
-						}
-
-						if (chunk.usage) {
-							llmUsage = chunk.usage;
+						if (!isValidToolCall(value)) {
+							fullContent += value;
+							yield {
+								content: value,
+								iterations: iteration + 1,
+								done: false,
+								contextStats,
+							};
 						}
 					}
 				} catch (err) {
@@ -664,29 +663,24 @@ export class Agent {
 				}
 
 				try {
-					const stream = llmClient.stream({
+					const streamGen = streamLlmResponse({
+						llmClient,
 						model: modelName,
-						messages: [
-							{
-								role: "system",
-								content: this._systemPrompt,
-							},
-							...messages,
-						],
-						tools: undefined,
+						systemPrompt: this._systemPrompt,
+						messages,
 						thinking: effectiveThinking,
 						signal: options?.signal,
 					});
 
-					for await (const chunk of stream) {
-						if (chunk.content) {
-							yield {
-								content: chunk.content,
-								iterations: iteration + 1,
-								done: false,
-								contextStats: updateStats(),
-							};
-						}
+					while (true) {
+						const { value, done } = await streamGen.next();
+						if (done) break;
+						yield {
+							content: value,
+							iterations: iteration + 1,
+							done: false,
+							contextStats: updateStats(),
+						};
 					}
 				} catch (streamError) {
 					if (streamError instanceof DOMException && streamError.name === "AbortError") {
