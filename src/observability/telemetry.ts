@@ -77,7 +77,6 @@ export function initTelemetry(config: TelemetryConfig = {}): void {
 	if (config.disabled !== undefined) telemetryDisabled = config.disabled;
 
 	if (initialized && !config.spanProcessors) {
-		initialized = true;
 		return;
 	}
 	try {

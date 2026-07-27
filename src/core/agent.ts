@@ -479,9 +479,8 @@ export class Agent {
 					provider: providerName,
 					model: modelName,
 				});
-				let llmTimeToFirstToken: number | undefined;
 				let llmUsage: TokenUsage | undefined;
-				let firstChunkSeen = false;
+				let llmTimeToFirstToken: number | undefined;
 				// --------------------------------------------------------------------
 
 				let fullContent = "";
@@ -499,6 +498,9 @@ export class Agent {
 						signal: options?.signal,
 					});
 
+					// while(true) + gen.next() is required (not for-await) because we
+					// need the generator's return value (StreamLlmResult) which
+					// for-await does not expose.
 					while (true) {
 						const { value, done } = await streamGen.next();
 						if (done) {
@@ -506,16 +508,10 @@ export class Agent {
 							assistantToolCalls.push(...result.toolCalls);
 							responseToolCalls = result.toolCalls.map((tc) => tc.name);
 							llmUsage = result.usage;
-							if (!firstChunkSeen) {
-								llmTimeToFirstToken = llmTimer.ms;
-							}
+							llmTimeToFirstToken = result.timeToFirstTokenMs;
 							break;
 						}
-						// value is a content string
-						if (!firstChunkSeen) {
-							firstChunkSeen = true;
-							llmTimeToFirstToken = llmTimer.ms;
-						}
+						// value is a content string — filter tool-call JSON from display
 						if (!isValidToolCall(value)) {
 							fullContent += value;
 							yield {
