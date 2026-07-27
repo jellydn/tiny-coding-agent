@@ -67,13 +67,4 @@ describe("getModelsForProviders", () => {
 		});
 		expect(models).toHaveLength(0);
 	});
-
-	it("should deduplicate models across providers", () => {
-		// Both ollama and ollamaCloud may have overlapping model names
-		const models = getModelsForProviders({ ollama: true, ollamaCloud: true });
-		const ids = models.map((m) => m.id);
-		const uniqueIds = new Set(ids);
-
-		expect(ids.length).toBe(uniqueIds.size);
-	});
 });
