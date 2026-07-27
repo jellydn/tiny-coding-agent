@@ -12,7 +12,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 
 - **Rich Terminal UI**: Ink-powered CLI with components for messages, spinners, and tool output
 - **TTY Detection**: Automatically adapts to terminal capabilities with plain text fallback
-- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, and ClinePass
+- **Multi-Provider LLM Support**: Works with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, ClinePass, and QwenCloud
 - **MCP Client Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **Built-in Tools**: File operations, bash execution, grep, glob, and web search
 - **Memory System**: User-initiated persistent storage with relevance-based retrieval
@@ -73,13 +73,14 @@ tiny-agent login            # Interactive provider picker (recommended for first
 tiny-agent login openai     # Connect OpenAI directly
 tiny-agent login anthropic  # Connect Anthropic directly
 tiny-agent login ollama     # Configure local Ollama (no API key needed)
+tiny-agent login qwencloud # Connect QwenCloud directly
 tiny-agent login status     # Show which providers are connected
 ```
 
 **What it does:**
 
 1. Shows your current provider connection status.
-2. Lets you pick a provider (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, ClinePass).
+2. Lets you pick a provider (OpenAI, Anthropic, Ollama, OpenRouter, OpenCode, Z.AI, ClinePass, QwenCloud).
 3. Prompts for your API key with **masked input** (typed characters show as `*`).
 4. Saves the key to `~/.tiny-agent/config.yaml` and suggests a default model for that provider.
 
@@ -93,6 +94,7 @@ Get an API key from your provider:
 | OpenCode   | <https://opencode.ai>                            |
 | Z.AI       | <https://open.bigmodel.cn/usercenter/apikeys>    |
 | ClinePass  | <https://cline.bot>                              |
+| QwenCloud  | <https://home.qwencloud.com> (requires Token Plan) |
 | Ollama     | No key needed — runs locally. Install from <https://ollama.com> |
 
 > **Tip:** For better security, store the key in an environment variable instead of the config file. After running `login`, replace `apiKey: sk-...` with `apiKey: ${OPENAI_API_KEY}` and `export OPENAI_API_KEY=your-key` in your shell profile.
@@ -303,6 +305,39 @@ providers:
     apiKey: ${OLLAMA_API_KEY}
 ```
 
+### QwenCloud
+
+[QwenCloud](https://home.qwencloud.com) provides access to Qwen3.x, DeepSeek V4, and GLM-5.2 models via a Token Plan subscription. The API is OpenAI-compatible.
+
+```bash
+# Get a key from https://home.qwencloud.com (requires Token Plan)
+export QWENCLOUD_API_KEY="your-key"
+```
+
+**Config:**
+
+```yaml
+providers:
+  qwencloud:
+    apiKey: ${QWENCLOUD_API_KEY}
+```
+
+**Available models:**
+
+- `qw/qwen3.8-max-preview` - Qwen3.8 Max Preview (262K context)
+- `qw/qwen3.7-plus` - Qwen3.7 Plus (1M context, vision)
+- `qw/qwen3.7-max` - Qwen3.7 Max (262K context)
+- `qw/qwen3.6-flash` - Qwen3.6 Flash (131K context, vision)
+- `qw/deepseek-v4-pro` - DeepSeek V4 Pro (1M context)
+- `qw/glm-5.2` - GLM-5.2 (200K context)
+
+**Usage:**
+
+```bash
+tiny-agent --model qw/glm-5.2 "explain async/await"
+tiny-agent --model qw/deepseek-v4-pro "design a microservice architecture"
+```
+
 ### OpenCode Zen
 
 [OpenCode Zen](https://opencode.ai/zen) provides curated, tested models for coding agents.
@@ -395,7 +430,7 @@ tiny-agent mcp add myserver npx -y @org/mcp-server
 | Option              | Description                                             |
 | ------------------- | ------------------------------------------------------- |
 | `--model <name>`    | Override default model                                  |
-| `--provider <name>` | Override provider (openai\|anthropic\|ollama\|opencode) |
+| `--provider <name>` | Override provider (openai\|anthropic\|ollama\|opencode\|zai\|clinepass\|qwencloud) |
 | `--json`            | Output in JSON format (for programmatic consumption)    |
 | `--verbose, -v`     | Enable verbose logging                                  |
 | `--save`            | Save conversation to file                               |

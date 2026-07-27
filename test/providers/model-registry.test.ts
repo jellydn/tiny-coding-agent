@@ -84,6 +84,34 @@ describe("detectProvider()", () => {
 		});
 	});
 
+	describe("QwenCloud models", () => {
+		it("should detect qw/* models", () => {
+			expect(detectProvider("qw/glm-5.2")).toBe("qwencloud");
+			expect(detectProvider("qw/qwen3.7-plus")).toBe("qwencloud");
+			expect(detectProvider("qw/deepseek-v4-pro")).toBe("qwencloud");
+			expect(detectProvider("qw/qwen3.6-flash")).toBe("qwencloud");
+		});
+
+		it("should detect qw/ models case-insensitively", () => {
+			expect(detectProvider("QW/GLM-5.2")).toBe("qwencloud");
+			expect(detectProvider("Qw/DeepSeek-V4-Pro")).toBe("qwencloud");
+		});
+
+		it("should report thinking + tools for qw/ models", () => {
+			expect(supportsThinking("qw/glm-5.2")).toBe(true);
+			expect(supportsTools("qw/glm-5.2")).toBe(true);
+		});
+
+		it("should return correct info for qw/ models", () => {
+			const info = getModelInfo("qw/glm-5.2");
+			expect(info?.provider).toBe("qwencloud");
+			expect(info?.supportsThinking).toBe(true);
+			expect(info?.supportsTools).toBe(true);
+			expect(info?.contextWindow).toBe(262144);
+			expect(info?.maxOutputTokens).toBe(131072);
+		});
+	});
+
 	describe("ClinePass - getModelInfo / supportsThinking / supportsTools", () => {
 		it("should return correct info for cline-pass models", () => {
 			const info = getModelInfo("cline-pass/deepseek-v4-flash");
@@ -280,6 +308,11 @@ describe("getProviderPatterns()", () => {
 	it("should return patterns for clinepass", () => {
 		const patterns = getProviderPatterns("clinepass");
 		expect(patterns).toContain("^cline-pass/");
+	});
+
+	it("should return patterns for qwencloud", () => {
+		const patterns = getProviderPatterns("qwencloud");
+		expect(patterns).toContain("^qw/");
 	});
 
 	it("should return patterns for ollama (catch-all)", () => {

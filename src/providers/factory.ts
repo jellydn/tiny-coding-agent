@@ -8,6 +8,7 @@ import { getCachedOllamaModels } from "./ollama-models.js";
 import { OpenAIProvider } from "./openai.js";
 import { OpenCodeProvider } from "./opencode.js";
 import { OpenRouterProvider } from "./openrouter.js";
+import { QwenCloudProvider } from "./qwencloud.js";
 import type { LLMClient } from "./types.js";
 import { ZaiProvider } from "./zai.js";
 
@@ -47,6 +48,7 @@ export interface CreateProviderOptions {
 		opencode?: ProviderConfig;
 		zai?: ProviderConfig;
 		clinepass?: ProviderConfig;
+		qwencloud?: ProviderConfig;
 	};
 }
 
@@ -61,6 +63,7 @@ const PROVIDER_MAP: Record<string, { class: ProviderClass<LLMClient>; requiresAp
 	opencode: { class: OpenCodeProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 	zai: { class: ZaiProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 	clinepass: { class: ClinePassProvider as ProviderClass<LLMClient>, requiresApiKey: true },
+	qwencloud: { class: QwenCloudProvider as ProviderClass<LLMClient>, requiresApiKey: true },
 };
 
 function createProviderInstance<T extends LLMClient>(providerType: string, config: ProviderConfig | undefined): T {

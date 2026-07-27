@@ -80,6 +80,7 @@ export interface Config {
 		opencode?: ProviderConfig;
 		zai?: ProviderConfig;
 		clinepass?: ProviderConfig;
+		qwencloud?: ProviderConfig;
 	};
 	mcpServers?: Record<string, McpServerConfig>;
 	tools?: Record<string, ToolConfig>;

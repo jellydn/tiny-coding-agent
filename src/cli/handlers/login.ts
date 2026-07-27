@@ -89,6 +89,14 @@ export const LOGIN_PROVIDERS: readonly LoginProviderInfo[] = [
 		defaultModel: "cline-pass/glm-5.2",
 		getKeyUrl: "https://cline.bot",
 	},
+	{
+		key: "qwencloud",
+		name: "QwenCloud",
+		requiresApiKey: true,
+		envVar: "QWENCLOUD_API_KEY",
+		defaultModel: "qw/glm-5.2",
+		getKeyUrl: "https://home.qwencloud.com",
+	},
 ];
 
 export interface ProviderStatus {
