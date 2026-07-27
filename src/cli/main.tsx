@@ -1,5 +1,6 @@
 import { render } from "ink";
 import { loadConfig } from "../config/loader.js";
+import type { EnabledProviders } from "../ui/components/ModelPicker.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
@@ -20,10 +21,15 @@ import { type CliOptions, createAgent, parseArgs } from "./shared.js";
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
 
 function getProviderDisplayName(providers: Record<string, unknown>): string {
+	if (providers.qwencloud) return "QwenCloud";
+	if (providers.clinepass) return "ClinePass";
 	if (providers.opencode) return "OpenCode";
 	if (providers.openai) return "OpenAI";
 	if (providers.anthropic) return "Anthropic";
+	if (providers.ollamaCloud) return "Ollama (Cloud)";
 	if (providers.ollama) return "Ollama";
+	if (providers.zai) return "Zai";
+	if (providers.openrouter) return "OpenRouter";
 	return "Default";
 }
 
@@ -104,16 +110,6 @@ type ToolExecutionDisplay = {
 	error?: string;
 };
 
-type EnabledProviders = {
-	openai: boolean;
-	anthropic: boolean;
-	ollama: boolean;
-	ollamaCloud: boolean;
-	openrouter: boolean;
-	opencode: boolean;
-	zai: boolean;
-};
-
 function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
 	return {
 		openai: !!providers.openai,
@@ -123,6 +119,8 @@ function getEnabledProviders(providers: Record<string, unknown>): EnabledProvide
 		openrouter: !!providers.openrouter,
 		opencode: !!providers.opencode,
 		zai: !!providers.zai,
+		qwencloud: !!providers.qwencloud,
+		clinepass: !!providers.clinepass,
 	};
 }
 
