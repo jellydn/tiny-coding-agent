@@ -55,7 +55,7 @@ const bashTool = {
 
 /** Helper: create a StepExecutor with a mocked prompt function. */
 function makeExecutor(registry: ToolRegistry, decision: string): StepExecutor {
-	const mockPrompt = vi.fn<(q: string, opts: string[]) => Promise<string>>().mockResolvedValue(decision);
+	const mockPrompt = vi.fn<(q: string, opts: string[]) => Promise<string | null>>().mockResolvedValue(decision);
 	return new StepExecutor(registry, { promptFn: mockPrompt });
 }
 

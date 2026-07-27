@@ -5,7 +5,6 @@ import { containsLiteralApiKey, readConfigFile, writeConfigFile } from "../../sr
 const TEMP_DIR = "/tmp/test-config-io";
 const TEMP_YAML = `${TEMP_DIR}/test-config.yaml`;
 const TEMP_JSON = `${TEMP_DIR}/test-config.json`;
-const TEMP_NESTED_YAML = `${TEMP_DIR}/nested/sub/config.yaml`;
 
 beforeEach(() => {
 	rmSync(TEMP_DIR, { recursive: true, force: true });
@@ -102,6 +101,23 @@ describe("config-io", () => {
 			const stats = statSync(TEMP_YAML);
 			const mode = stats.mode & 0o777;
 			expect(mode).toBe(0o600);
+		});
+
+		it("should chmod existing files to 0o600 when config has a literal API key", async () => {
+			// First write a config WITHOUT a literal key (gets default permissions)
+			const noKeyConfig = { defaultModel: "gpt-4o" };
+			await writeConfigFile(TEMP_YAML, noKeyConfig);
+			const statsBefore = statSync(TEMP_YAML);
+			const modeBefore = statsBefore.mode & 0o777;
+			expect(modeBefore).not.toBe(0o600);
+
+			// Now write a config WITH a literal key — should chmod the existing file
+			const withKeyConfig = { providers: { openai: { apiKey: "sk-test-key" } } };
+			await writeConfigFile(TEMP_YAML, withKeyConfig);
+
+			const statsAfter = statSync(TEMP_YAML);
+			const modeAfter = statsAfter.mode & 0o777;
+			expect(modeAfter).toBe(0o600);
 		});
 
 		it("should write with default permissions when config has no literal API key", async () => {

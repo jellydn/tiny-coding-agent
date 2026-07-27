@@ -140,7 +140,7 @@ describe("cli/prompt", () => {
 			createInterfaceSpy.mockRestore();
 		});
 
-		it("should return the first option when no match", async () => {
+		it("should return null when no option matches", async () => {
 			const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
 				() =>
 					({
@@ -152,12 +152,12 @@ describe("cli/prompt", () => {
 			);
 
 			const result = await promptChoice("What to do?", ["retry", "skip", "abort"]);
-			expect(result).toBe("retry");
+			expect(result).toBeNull();
 
 			createInterfaceSpy.mockRestore();
 		});
 
-		it("should return the first option for empty input", async () => {
+		it("should return null for empty input", async () => {
 			const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
 				() =>
 					({
@@ -169,7 +169,7 @@ describe("cli/prompt", () => {
 			);
 
 			const result = await promptChoice("What to do?", ["retry", "skip", "abort"]);
-			expect(result).toBe("retry");
+			expect(result).toBeNull();
 
 			createInterfaceSpy.mockRestore();
 		});

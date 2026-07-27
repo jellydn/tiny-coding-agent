@@ -106,12 +106,12 @@ type ExecutionOutcome = { success: boolean; output?: string; error?: string };
 
 /** Optional dependency injection for the recovery prompt (testability). */
 export interface StepExecutorOptions {
-	promptFn?: (question: string, options: string[]) => Promise<string>;
+	promptFn?: (question: string, options: string[]) => Promise<string | null>;
 }
 
 export class StepExecutor {
 	private _registry: ToolRegistry;
-	private _promptFn: (question: string, options: string[]) => Promise<string>;
+	private _promptFn: (question: string, options: string[]) => Promise<string | null>;
 
 	constructor(registry: ToolRegistry, options: StepExecutorOptions = {}) {
 		this._registry = registry;
@@ -207,6 +207,11 @@ export class StepExecutor {
 	private async _promptRecovery(error: string, stepNumber: number): Promise<"retry" | "skip" | "abort"> {
 		console.error(`\n❌ Error in step ${stepNumber}: ${error}`);
 		const decision = await this._promptFn("\nWhat would you like to do?", ["retry", "skip", "abort"]);
+		if (!decision) {
+			// No match — default to skip (safest: don't retry a failing action,
+			// don't abort the whole build)
+			return "skip";
+		}
 		return decision.toLowerCase() as "retry" | "skip" | "abort";
 	}
 }

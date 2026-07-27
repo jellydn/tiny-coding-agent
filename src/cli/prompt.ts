@@ -25,6 +25,10 @@ export async function prompt(question: string): Promise<string> {
  * Read a line from stdin with masked input (echoes `*` for each character).
  * Falls back to plain readline when stdin is not a TTY (e.g. piped input).
  *
+ * Rejects with an error on Ctrl+C instead of calling process.exit(0), so
+ * callers can handle the interruption gracefully (e.g. abort the login
+ * flow and return to the prompt).
+ *
  * Security note: the raw-mode masking only works in a real PTY. When stdin
  * is piped (not a TTY), the input will be visible — this is the fallback
  * path used in tests.
@@ -47,7 +51,7 @@ export async function promptHidden(promptText: string): Promise<string> {
 	}
 
 	// TTY: read character-by-character with masking
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		let input = "";
 		stdin.setRawMode(true);
 		stdin.resume();
@@ -65,10 +69,11 @@ export async function promptHidden(promptText: string): Promise<string> {
 					resolve(input.trim());
 					break;
 				case "\u0003": // Ctrl+C
+					stdin.removeListener("data", onData);
 					stdin.setRawMode(false);
 					stdin.pause();
 					process.stdout.write("\n");
-					process.exit(0);
+					reject(new Error("Interrupted by user (Ctrl+C)"));
 					break;
 				case "\u007f": // Delete
 				case "\b": // Backspace
@@ -92,13 +97,14 @@ export async function promptHidden(promptText: string): Promise<string> {
 
 /**
  * Prompt the user to choose from a list of options. The prompt shows the
- * options and accepts a case-insensitive match. Falls back to the first
- * option if the answer doesn't match any.
+ * options and accepts a case-insensitive match. Returns null when the
+ * answer doesn't match any option — callers should handle the null case
+ * (e.g. re-prompt, default, or abort) rather than silently falling back.
  *
  * This consolidates the `promptRecoveryDecision` pattern from build-agent.ts
  * and the `confirmMajorDecision` pattern from plan-agent.ts.
  */
-export async function promptChoice(question: string, options: string[]): Promise<string> {
+export async function promptChoice(question: string, options: string[]): Promise<string | null> {
 	const { createInterface } = await import("node:readline");
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -107,7 +113,7 @@ export async function promptChoice(question: string, options: string[]): Promise
 			rl.close();
 			const normalized = answer.toLowerCase().trim();
 			const matched = options.find((option) => option.toLowerCase() === normalized);
-			resolve(matched ?? options[0] ?? "");
+			resolve(matched ?? null);
 		});
 	});
 }
