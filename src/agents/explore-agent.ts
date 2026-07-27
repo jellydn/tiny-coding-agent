@@ -103,7 +103,8 @@ export async function exploreAgent(
 		console.log(`📂 Exploring codebase (${depth} mode)...`);
 
 		const explorer = new CodebaseExplorer();
-		const codebaseContext = depth === "shallow" ? await explorer.exploreShallow(cwd) : await explorer.exploreDeep(cwd);
+		const { report: codebaseContext, metrics } =
+			depth === "shallow" ? await explorer.exploreShallow(cwd) : await explorer.exploreDeep(cwd);
 		console.log("✓ Codebase exploration complete");
 
 		const config = loadConfig();
@@ -127,8 +128,6 @@ export async function exploreAgent(
 
 		const findings = response.content;
 		console.log(`✓ Analysis generated (${findings.length} characters)`);
-
-		const metrics = await explorer.getMetrics(cwd);
 
 		const recommendations = extractRecommendations(findings);
 

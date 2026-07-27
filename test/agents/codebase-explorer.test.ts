@@ -239,7 +239,7 @@ describe("CodebaseExplorer", () => {
 	});
 
 	describe("exploreShallow", () => {
-		it("should return a combined report with all shallow sections", async () => {
+		it("should return a report with all shallow sections plus metrics", async () => {
 			writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test", version: "1.0.0" }), "utf-8");
 			writeFileSync(
 				path.join(tempDir, "tsconfig.json"),
@@ -248,7 +248,7 @@ describe("CodebaseExplorer", () => {
 			);
 			mkdirSync(path.join(tempDir, "src"), { recursive: true });
 
-			const report = await explorer.exploreShallow(tempDir);
+			const { report, metrics } = await explorer.exploreShallow(tempDir);
 
 			expect(report).toContain("=== Project Structure ===");
 			expect(report).toContain("=== Package Information ===");
@@ -256,11 +256,14 @@ describe("CodebaseExplorer", () => {
 			expect(report).toContain("=== Git Information ===");
 			expect(report).toContain("Name: test");
 			expect(report).toContain("Target: ES2022");
+			// Shallow exploration includes metrics via getMetrics()
+			expect(metrics).toBeDefined();
+			expect(typeof metrics.fileCount).toBe("number");
 		});
 	});
 
 	describe("exploreDeep", () => {
-		it("should return a combined report with deep sections including dependency analysis and metrics", async () => {
+		it("should return a report with deep sections plus metrics (no double traversal)", async () => {
 			writeFileSync(
 				path.join(tempDir, "package.json"),
 				JSON.stringify({ name: "deep-test", version: "2.0.0" }),
@@ -269,7 +272,7 @@ describe("CodebaseExplorer", () => {
 			mkdirSync(path.join(tempDir, "src"), { recursive: true });
 			writeFileSync(path.join(tempDir, "src", "main.ts"), 'import { foo } from "lodash";\n', "utf-8");
 
-			const report = await explorer.exploreDeep(tempDir);
+			const { report, metrics } = await explorer.exploreDeep(tempDir);
 
 			expect(report).toContain("=== Full Project Structure ===");
 			expect(report).toContain("=== Package Information ===");
@@ -278,6 +281,12 @@ describe("CodebaseExplorer", () => {
 			expect(report).toContain("=== Dependency Analysis ===");
 			expect(report).toContain("=== Code Metrics ===");
 			expect(report).toContain("deep-test");
+			// Metrics are computed once inside exploreDeep and returned alongside the report —
+			// the orchestrator no longer calls getMetrics() separately.
+			expect(metrics).toBeDefined();
+			expect(typeof metrics.fileCount).toBe("number");
+			expect(metrics.fileCount).toBeGreaterThanOrEqual(1);
+			expect(metrics.locCount).toBeDefined();
 		});
 	});
 
@@ -290,8 +299,7 @@ describe("CodebaseExplorer", () => {
 			writeFileSync(path.join(tempDir, "src", "a.ts"), "import { x } from 'react';\n");
 			writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "shared-test" }), "utf-8");
 
-			const report = await explorer.exploreDeep(tempDir);
-			const metrics = await explorer.getMetrics(tempDir);
+			const { report, metrics } = await explorer.exploreDeep(tempDir);
 
 			expect(report).toContain("shared-test");
 			expect(typeof metrics.fileCount).toBe("number");

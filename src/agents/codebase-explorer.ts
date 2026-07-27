@@ -13,7 +13,19 @@ import { fileTools, globTool, grepTool, ToolRegistry } from "../tools/index.js";
  *   exploration concerns live here; LLM + state-file concerns stay in explore-agent.ts
  * - N+1 file reads in getLocCount now share one registry instead of re-creating it per call
  * - Testable without an LLM: pass a temp dir, call exploreShallow(), assert the output
+ *
+ * Optimization (architecture review Candidate #5):
+ * - exploreDeep() returns metrics alongside the report text, avoiding the double
+ *   getFileCount/getLocCount traversal that occurred when the orchestrator called
+ *   getMetrics() separately after exploreDeep().
  */
+
+/** Result of an exploration — the report text plus structured metrics. */
+export interface ExplorationOutput {
+	report: string;
+	metrics: Record<string, number | string>;
+}
+
 export class CodebaseExplorer {
 	private readonly registry: ToolRegistry;
 
@@ -280,8 +292,9 @@ export class CodebaseExplorer {
 
 	/**
 	 * Run a shallow exploration: structure, package, tsconfig, git info.
+	 * Returns the report text plus structured metrics (computed via getMetrics).
 	 */
-	async exploreShallow(cwd: string): Promise<string> {
+	async exploreShallow(cwd: string): Promise<ExplorationOutput> {
 		const sections: string[] = [];
 
 		sections.push("=== Project Structure ===");
@@ -296,14 +309,18 @@ export class CodebaseExplorer {
 		sections.push("\n=== Git Information ===");
 		sections.push(await this.getGitInfo(cwd));
 
-		return sections.join("\n");
+		return { report: sections.join("\n"), metrics: await this.getMetrics(cwd) };
 	}
 
 	/**
 	 * Run a deep exploration: shallow sections + dependency analysis + code metrics.
+	 * Returns the report text plus structured metrics, reusing the file/LOC counts
+	 * already computed for the report (avoids the double traversal that occurred
+	 * when the orchestrator called getMetrics() separately).
 	 */
-	async exploreDeep(cwd: string): Promise<string> {
+	async exploreDeep(cwd: string): Promise<ExplorationOutput> {
 		const sections: string[] = [];
+		const metrics: Record<string, number | string> = {};
 
 		sections.push("=== Full Project Structure ===");
 		sections.push(await this.getProjectStructure(cwd));
@@ -322,20 +339,22 @@ export class CodebaseExplorer {
 
 		try {
 			const fileCount = await this.getFileCount(cwd);
+			metrics.fileCount = fileCount;
 			sections.push(`\n=== Code Metrics ===`);
 			sections.push(`Total project files (approx): ${fileCount}`);
 		} catch {
-			// Ignore
+			metrics.fileCount = 0;
 		}
 
 		try {
 			const locCount = await this.getLocCount(cwd);
+			metrics.locCount = locCount;
 			sections.push(`Lines of code (sample): ~${locCount}`);
 		} catch {
-			// Ignore
+			// locCount omitted on error
 		}
 
-		return sections.join("\n");
+		return { report: sections.join("\n"), metrics };
 	}
 
 	/**
