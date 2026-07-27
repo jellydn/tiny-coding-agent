@@ -1,10 +1,8 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { prompt } from "../cli/prompt.js";
 import { loadConfig } from "../config/loader.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
-import { globTool, ToolRegistry } from "../tools/index.js";
+import { CodebaseExplorer } from "./codebase-explorer.js";
 import { exampleOutput } from "./plan-grammar.js";
 import { readStateFile, writeStateFile } from "./state.js";
 import type { StateFile } from "./types.js";
@@ -64,55 +62,13 @@ userStories:
 
 Include only user-facing stories that deliver concrete value. Group related stories into milestones if appropriate.`;
 
-async function exploreCodebase(_taskDescription: string): Promise<string> {
-	const explorationResults: string[] = [];
-	const cwd = ".";
-
-	const registry = new ToolRegistry();
-	registry.register({
-		name: "glob",
-		description: globTool.description,
-		parameters: globTool.parameters,
-		execute: globTool.execute,
-	});
-
-	try {
-		explorationResults.push("=== Project Structure ===");
-		const globResult = await registry.execute("glob", { pattern: "**/*.ts", path: cwd });
-		explorationResults.push(globResult.output ?? "");
-
-		explorationResults.push("\n=== Package.json ===");
-		try {
-			const packageJsonContent = await fs.readFile(path.join(process.cwd(), "package.json"), "utf-8");
-			explorationResults.push(packageJsonContent);
-		} catch {
-			explorationResults.push("package.json not found");
-		}
-
-		explorationResults.push("\n=== TS Config ===");
-		try {
-			const tsconfigContent = await fs.readFile(path.join(process.cwd(), "tsconfig.json"), "utf-8");
-			explorationResults.push(tsconfigContent);
-		} catch {
-			explorationResults.push("tsconfig.json not found");
-		}
-
-		explorationResults.push("\n=== Existing Agent Files ===");
-		const agentFiles = await registry.execute("glob", { pattern: "src/agents/*.ts", path: cwd });
-		explorationResults.push(agentFiles.output ?? "");
-
-		explorationResults.push("\n=== Recent Code Changes ===");
-		try {
-			const gitLog = await fs.readFile(".git/COMMIT_EDITMSG", "utf-8").catch(() => "No recent commits");
-			explorationResults.push(gitLog);
-		} catch {
-			explorationResults.push("Unable to read git history");
-		}
-	} catch (err) {
-		explorationResults.push(`Exploration error: ${(err as Error).message}`);
-	}
-
-	return explorationResults.join("\n");
+/** Explore the codebase using the shared CodebaseExplorer module.
+ *  Replaces the stale inline exploreCodebase() that had its own ToolRegistry
+ *  and duplicated the exploration logic already extracted into CodebaseExplorer. */
+async function exploreCodebase(): Promise<string> {
+	const explorer = new CodebaseExplorer();
+	const { report } = await explorer.exploreDeep(".");
+	return report;
 }
 
 function createPlanMessages(taskDescription: string, codebaseContext: string, generatePrd: boolean): Message[] {
@@ -145,7 +101,7 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 
 	try {
 		console.log("📂 Exploring codebase context...");
-		const codebaseContext = await exploreCodebase(taskDescription);
+		const codebaseContext = await exploreCodebase();
 		console.log("✓ Codebase exploration complete");
 
 		const config = loadConfig();

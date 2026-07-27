@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { CodebaseExplorer } from "../../src/agents/codebase-explorer.js";
 import { readStateFile } from "../../src/agents/state.js";
 import type { StateFile } from "../../src/agents/types.js";
-import { globTool, ToolRegistry } from "../../src/tools/index.js";
 
 const DEFAULT_STATE_FILE = "/tmp/test-plan-agent-state.json";
 
@@ -17,21 +17,13 @@ function cleanupStateFiles() {
 	} catch {}
 }
 
-describe("exploreCodebase", () => {
+describe("exploreCodebase (via CodebaseExplorer)", () => {
 	it("should return exploration results structure", async () => {
-		const cwd = ".";
-
-		const registry = new ToolRegistry();
-		registry.register({
-			name: "glob",
-			description: globTool.description,
-			parameters: globTool.parameters,
-			execute: globTool.execute,
-		});
-
-		const globResult = await registry.execute("glob", { pattern: "**/*.ts", path: cwd });
-		expect(globResult.success).toBe(true);
-		expect(globResult.output).toBeDefined();
+		const explorer = new CodebaseExplorer();
+		const { report, metrics } = await explorer.exploreDeep(".");
+		expect(report).toBeDefined();
+		expect(report).toContain("Project Structure");
+		expect(metrics).toBeDefined();
 	});
 
 	it("should handle package.json reading", async () => {
