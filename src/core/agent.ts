@@ -3,31 +3,15 @@ import * as path from "node:path";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ObservabilityConfig, ProviderConfig, ThinkingConfig } from "../config/schema.js";
 import type { McpManager } from "../mcp/manager.js";
-import {
-	configureLogger,
-	estimateCost,
-	initLangfuse,
-	initTelemetry,
-	isLangfuseEnabled,
-	type LogFields,
-	log,
-	makeGenerationInput,
-	mergeUsage,
-	NO_USAGE,
-	recordGeneration,
-	sanitizeError,
-	setUsageAttributes,
-	startSpan,
-	Timer,
-} from "../observability/index.js";
-import { currentTraceId, ensureTraceContext } from "../observability/trace-context.js";
-import { createProvider, detectProvider, parseModelString } from "../providers/factory.js";
+import { createProvider, parseModelString } from "../providers/factory.js";
+import { detectProvider } from "../providers/model-registry.js";
 import type { LLMClient, Message, TokenUsage, ToolDefinition } from "../providers/types.js";
 import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
 import { discoverSkills, generateSkillsPrompt, getBuiltinSkillsDir, type SkillMetadata } from "../skills/index.js";
 import { parseSkillFrontmatter } from "../skills/parser.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { escapeXml } from "../utils/xml.js";
+import { AgentObservability } from "./agent-observability.js";
 import { ConversationManager } from "./conversation.js";
 import { buildContextWithMemory, type ContextStats, calculateContextBudget, MemoryStore } from "./memory.js";
 import { countTokensSync, truncateMessages } from "./tokens.js";
@@ -196,8 +180,7 @@ export class Agent {
 	private _skillsInitPromise?: Promise<void>;
 	private _activeSkillAllowedTools: string[] | undefined;
 	private _mcpManager?: McpManager;
-	private _observability?: ObservabilityConfig;
-	private _obsInitialized: boolean = false;
+	private _obsWrapper: AgentObservability;
 	private _turnExecutor: TurnExecutor;
 
 	constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
@@ -213,8 +196,8 @@ export class Agent {
 		this._trackContextUsage = options.trackContextUsage ?? false;
 		this._thinking = options.thinking;
 		this._mcpManager = options.mcpManager ?? undefined;
-		this._observability = options.observability;
 		this._conversationManager = new ConversationManager(options.conversationFile);
+		this._obsWrapper = new AgentObservability(options.observability);
 		this._turnExecutor = new TurnExecutor(toolRegistry, { verbose: options.verbose });
 
 		let effectiveSystemPrompt =
@@ -317,24 +300,6 @@ export class Agent {
 		}
 	}
 
-	/** Lazily configure structured logging, OpenTelemetry, and optional Langfuse. */
-	private _initObservability(): void {
-		if (this._obsInitialized) return;
-		this._obsInitialized = true;
-		const obs = this._observability;
-		configureLogger({
-			logFullPrompts: obs?.logFullPrompts ?? false,
-			previewLength: obs?.previewLength ?? 200,
-		});
-		if (obs?.telemetryEnabled !== false) {
-			initTelemetry({ disabled: false });
-		}
-		if (obs?.langfuseEnabled) {
-			// Fire-and-forget; failures degrade silently to disabled.
-			void initLangfuse();
-		}
-	}
-
 	/** Detect the provider name for a model string, for log/span attributes. */
 	private _providerNameFor(model: string): string {
 		try {
@@ -342,22 +307,6 @@ export class Agent {
 		} catch {
 			return "unknown";
 		}
-	}
-
-	/** Build observability metadata for the final response chunk. */
-	private _obsMeta(
-		traceId: string,
-		latencyMs: number,
-		model: string,
-		usage: TokenUsage | undefined
-	): AgentObservabilityMeta {
-		const cost = estimateCost(usage, model);
-		return {
-			traceId,
-			latencyMs,
-			usage,
-			estimatedCostUsd: cost.estimatedCostUsd,
-		};
 	}
 
 	startChatSession(): void {
@@ -380,27 +329,10 @@ export class Agent {
 
 		this._clearSkillRestriction();
 
-		// --- Observability: establish trace context + root span -------------
-		this._initObservability();
-		ensureTraceContext();
-		const traceId = currentTraceId();
+		// --- Observability: begin request ----------------------------------
 		const providerName = this._providerNameFor(runtimeConfig?.model ?? model);
-		const rootSpan = startSpan("http.request", {
-			"ai.provider": providerName,
-			"ai.model": runtimeConfig?.model ?? model,
-		});
-		const totalTimer = new Timer();
-		let accumulatedUsage: TokenUsage | undefined;
-		const totalRetryCount = 0;
-
-		log.info({
-			event: "request.start",
-			traceId,
-			provider: providerName,
-			model: runtimeConfig?.model ?? model,
-			prompt: userPrompt,
-			promptLength: userPrompt.length,
-		});
+		const obsCtx = { provider: providerName, model: runtimeConfig?.model ?? model };
+		this._obsWrapper.beginRequest(userPrompt, obsCtx);
 		// -------------------------------------------------------------------
 
 		const effectiveModel = runtimeConfig?.model ?? model;
@@ -445,8 +377,7 @@ export class Agent {
 			);
 
 			// --- Observability: retrieval span ---------------------------------
-			const retrievalSpan = startSpan("retrieval");
-			const retrievalTimer = new Timer();
+			const { span: retrievalSpan, timer: retrievalTimer } = this._obsWrapper.beginRetrieval();
 			let relevantMemories: ReturnType<MemoryStore["findRelevant"]> = [];
 			let result: { context: Array<{ role: string; content: string }>; stats: ContextStats };
 			try {
@@ -459,18 +390,9 @@ export class Agent {
 					conversationBudget
 				);
 			} catch (err) {
-				retrievalSpan.end(err);
-				throw err;
+				this._obsWrapper.recordRetrievalError(retrievalSpan, err);
 			}
-			retrievalSpan.setAttribute("retrieval.result_count", relevantMemories.length);
-			retrievalSpan.setAttribute("ai.latency_ms", Math.round(retrievalTimer.ms));
-			retrievalSpan.end();
-			log.info({
-				event: "retrieval",
-				traceId,
-				latencyMs: Math.round(retrievalTimer.ms),
-				resultCount: relevantMemories.length,
-			});
+			this._obsWrapper.recordRetrieval(retrievalSpan, retrievalTimer, relevantMemories.length);
 			// -------------------------------------------------------------------
 
 			messages = result.context as Message[];
@@ -523,7 +445,6 @@ export class Agent {
 
 		let iteration = 0;
 		let loopDetected = false;
-		let requestFailed = false;
 
 		this._turnExecutor.reset();
 
@@ -552,11 +473,10 @@ export class Agent {
 				}
 
 				// --- Observability: LLM request span + timer ------------------------
-				const llmSpan = startSpan("llm.request", {
-					"ai.provider": providerName,
-					"ai.model": modelName,
+				const { span: llmSpan, timer: llmTimer } = this._obsWrapper.beginLlmCall({
+					provider: providerName,
+					model: modelName,
 				});
-				const llmTimer = new Timer();
 				let llmTimeToFirstToken: number | undefined;
 				let llmUsage: TokenUsage | undefined;
 				let firstChunkSeen = false;
@@ -608,19 +528,19 @@ export class Agent {
 						}
 					}
 				} catch (err) {
-					llmSpan.end(err);
+					this._obsWrapper.recordLlmCallError(llmSpan, err);
 					const streamError = err as Error | DOMException;
 					if (streamError instanceof DOMException && streamError.name === "AbortError") {
 						throw streamError;
 					}
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
-					requestFailed = true;
+					this._obsWrapper.markFailed();
 					yield {
 						content: `\n\nError during LLM stream: ${errorMessage}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats,
-						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+						observability: this._obsWrapper.buildMeta(modelName),
 					};
 					return;
 				}
@@ -628,43 +548,18 @@ export class Agent {
 				const llmLatencyMs = Math.round(llmTimer.ms);
 
 				// --- Observability: record LLM call --------------------------------
-				accumulatedUsage = accumulatedUsage || llmUsage ? mergeUsage(accumulatedUsage, llmUsage) : undefined;
-				const costEstimate = estimateCost(llmUsage, modelName);
-				setUsageAttributes(llmSpan, llmUsage, costEstimate.estimatedCostUsd);
-				llmSpan.setAttribute("ai.latency_ms", llmLatencyMs);
-				if (llmTimeToFirstToken !== undefined) {
-					llmSpan.setAttribute("ai.time_to_first_token_ms", Math.round(llmTimeToFirstToken));
-				}
-				llmSpan.end();
-
-				log.info({
-					event: "llm.request",
-					traceId,
-					provider: providerName,
-					model: modelName,
-					latencyMs: llmLatencyMs,
-					usage: llmUsage ?? NO_USAGE,
-					estimatedCostUsd: costEstimate.estimatedCostUsd,
-					response: fullContent,
-					responseLength: fullContent.length,
-					status: "ok",
-				});
-
-				// Optional Langfuse generation record (no-op when disabled).
-				if (isLangfuseEnabled()) {
-					recordGeneration(
-						makeGenerationInput({
-							traceId,
-							name: "llm.request",
-							model: modelName,
-							input: userPrompt,
-							output: fullContent,
-							usage: llmUsage,
-							latencyMs: llmLatencyMs,
-							estimatedCostUsd: costEstimate.estimatedCostUsd,
-						})
-					);
-				}
+				this._obsWrapper.recordLlmResponse(
+					llmSpan,
+					llmTimer,
+					{ provider: providerName, model: modelName },
+					{
+						usage: llmUsage,
+						content: fullContent,
+						latencyMs: llmLatencyMs,
+						timeToFirstTokenMs: llmTimeToFirstToken,
+					},
+					userPrompt
+				);
 				// --------------------------------------------------------------------
 
 				if (this._verbose) {
@@ -697,7 +592,7 @@ export class Agent {
 						iterations: iteration + 1,
 						done: true,
 						contextStats,
-						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+						observability: this._obsWrapper.buildMeta(modelName),
 					};
 					return;
 				}
@@ -705,8 +600,7 @@ export class Agent {
 				checkAborted(options?.signal);
 
 				// --- Tool execution via TurnExecutor --------------------------------
-				const toolSpan = startSpan("tool.execution");
-				const toolTimer = new Timer();
+				const { span: toolSpan, timer: toolTimer } = this._obsWrapper.beginToolExecution();
 
 				// Yield "running" display objects
 				yield {
@@ -721,24 +615,17 @@ export class Agent {
 				const toolDuration = Math.round(toolTimer.ms);
 
 				// --- Observability: record tool execution ---------------------------
-				toolSpan.setAttribute("ai.latency_ms", toolDuration);
-				toolSpan.setAttribute("tool.names", assistantToolCalls.map((tc) => tc.name).join(","));
-				toolSpan.end();
-				for (const exec of turnResult.toolExecutions) {
-					const toolFields: LogFields = {
-						event: "tool.execution",
-						traceId,
-						toolName: exec.name,
+				this._obsWrapper.recordToolResult(
+					toolSpan,
+					toolTimer,
+					assistantToolCalls.map((tc) => tc.name),
+					turnResult.toolExecutions.map((exec) => ({
+						name: exec.name,
+						status: (exec.status === "complete" ? "complete" : "error") as "complete" | "error",
 						latencyMs: toolDuration,
-						status: exec.status === "complete" ? "ok" : "error",
-					};
-					if (exec.status === "error" && exec.error) {
-						const { errorType, errorMessage } = sanitizeError(new Error(exec.error));
-						toolFields.errorType = errorType;
-						toolFields.errorMessage = errorMessage;
-					}
-					log.info(toolFields);
-				}
+						error: exec.error,
+					}))
+				);
 				// --------------------------------------------------------------------
 
 				// Yield "complete/error" display objects
@@ -806,13 +693,13 @@ export class Agent {
 						throw streamError;
 					}
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
-					requestFailed = true;
+					this._obsWrapper.markFailed();
 					yield {
 						content: `\n\nError during LLM stream: ${errorMessage}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats: updateStats(),
-						observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+						observability: this._obsWrapper.buildMeta(modelName),
 					};
 					return;
 				}
@@ -823,7 +710,7 @@ export class Agent {
 					iterations: iteration + 1,
 					done: true,
 					contextStats: updateStats(),
-					observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+					observability: this._obsWrapper.buildMeta(modelName),
 				};
 				return;
 			}
@@ -840,48 +727,16 @@ export class Agent {
 				done: true,
 				maxIterationsReached: true,
 				contextStats: updateStats(),
-				observability: this._obsMeta(traceId, Math.round(totalTimer.ms), modelName, accumulatedUsage),
+				observability: this._obsWrapper.buildMeta(modelName),
 			};
 		} catch (err) {
 			// --- Observability: record failure against the trace --------------
-			requestFailed = true;
-			const { errorType, errorMessage } = sanitizeError(err);
-			const failLatency = Math.round(totalTimer.ms);
-			rootSpan.recordError(err);
-			log.error({
-				event: "request.error",
-				traceId,
-				provider: providerName,
-				model: modelName,
-				latencyMs: failLatency,
-				status: "error",
-				errorType,
-				errorMessage,
-				retryCount: totalRetryCount,
-				usage: accumulatedUsage ?? NO_USAGE,
-			});
+			this._obsWrapper.recordRequestError({ provider: providerName, model: modelName }, err);
 			// ----------------------------------------------------------------
 			throw err;
 		} finally {
 			// --- Observability: close root span + emit request.end -----------
-			const totalLatencyMs = Math.round(totalTimer.ms);
-			const endCost = estimateCost(accumulatedUsage, modelName);
-			rootSpan.setAttributes({
-				"ai.latency_ms": totalLatencyMs,
-				"ai.estimated_cost_usd": endCost.estimatedCostUsd,
-			});
-			setUsageAttributes(rootSpan, accumulatedUsage, endCost.estimatedCostUsd);
-			rootSpan.end();
-			log.info({
-				event: "request.end",
-				traceId,
-				provider: providerName,
-				model: modelName,
-				latencyMs: totalLatencyMs,
-				usage: accumulatedUsage ?? NO_USAGE,
-				estimatedCostUsd: endCost.estimatedCostUsd,
-				status: requestFailed ? "error" : "ok",
-			});
+			this._obsWrapper.finalize({ provider: providerName, model: modelName });
 			// ----------------------------------------------------------------
 		}
 	}
