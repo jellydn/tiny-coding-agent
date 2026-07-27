@@ -242,7 +242,7 @@ export class CodebaseExplorer {
 			const importResult = await this.registry.execute("grep", {
 				pattern: "^import.*from",
 				path: cwd,
-				type: "ts",
+				include: "*.ts",
 			});
 
 			if (importResult.success && importResult.output) {
