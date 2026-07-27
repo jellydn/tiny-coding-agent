@@ -445,7 +445,7 @@ COMMANDS:
 
 OPTIONS:
     --model <model>                    Override default model
-    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|zai)
+    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|opencode|zai|clinepass|qwencloud)
     --verbose, -v                      Enable verbose logging
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
