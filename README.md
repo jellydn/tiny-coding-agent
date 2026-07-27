@@ -97,6 +97,25 @@ Get an API key from your provider:
 
 > **Tip:** For better security, store the key in an environment variable instead of the config file. After running `login`, replace `apiKey: sk-...` with `apiKey: ${OPENAI_API_KEY}` and `export OPENAI_API_KEY=your-key` in your shell profile.
 
+## Provider Logout
+
+Remove a provider's API key from your config. If the logged-out provider was your active default model, you'll be prompted to pick a new one from the remaining connected providers.
+
+```bash
+tiny-agent logout            # Interactive picker — choose which provider to disconnect
+tiny-agent logout openai     # Remove OpenAI's API key directly
+tiny-agent logout status     # Show which providers have keys set
+```
+
+**What it does:**
+
+1. Shows your current provider connection status.
+2. Lets you pick a provider to disconnect (only providers with an API key set are listed).
+3. Removes the `apiKey` field from that provider's config entry — the provider entry itself is preserved (e.g. a custom `baseUrl` stays).
+4. If the logged-out provider was the active default model, prompts you to select a new default from the remaining connected providers.
+
+> **Note:** `logout` refuses for Ollama (local) since there's no API key to remove. Use `tiny-agent login ollama` to reconfigure the base URL instead.
+
 ## Troubleshooting
 
 ### "command not found: tiny-agent"
@@ -336,6 +355,8 @@ tiny-agent --provider opencode --model opencode/gpt-5.2-codex "write a function"
 | `tiny-agent run "prompt"`   | Single prompt, then exit             |
 | `tiny-agent login`          | Connect a provider (onboarding)      |
 | `tiny-agent login status`   | Show provider connection status      |
+| `tiny-agent logout`         | Remove a provider's API key          |
+| `tiny-agent logout status`  | Show which providers have keys set   |
 | `tiny-agent config`         | Show current config                  |
 | `tiny-agent status`         | Show provider, MCP, tools            |
 | `tiny-agent mcp`            | Manage MCP servers                   |
@@ -482,6 +503,7 @@ Skills are automatically discovered from `SKILL.md` files in your configured ski
 | `/clear`        | Clear conversation history                             |
 | `/model <name>` | Switch model                                           |
 | `/login`        | Show provider connection status + onboarding guidance  |
+| `/logout`       | Show logout guidance (use top-level `tiny-agent logout`)  |
 | `/tools`        | View tool execution history                            |
 | `/mcp`          | Show MCP server status                                 |
 | `/memory`       | List stored memories                                   |
@@ -590,6 +612,9 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 009: Tool Confirmation System
 - 010: Ink CLI Integration
 - 011: Multi-Agent System (Plan/Build/Explore)
+- 012: GatewayOpenAIProvider Base Class (30% threshold)
+- 013: ClinePass Live Model Lookup
+- 014: Login Command Onboarding Design
 
 ## Development
 
