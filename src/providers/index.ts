@@ -7,6 +7,8 @@ export type { OllamaProviderConfig } from "./ollama.js";
 export { OllamaProvider } from "./ollama.js";
 export type { OpenAIProviderConfig } from "./openai.js";
 export { OpenAIProvider } from "./openai.js";
+export type { QwenCloudProviderConfig } from "./qwencloud.js";
+export { QwenCloudProvider } from "./qwencloud.js";
 export type {
 	ChatOptions,
 	ChatResponse,

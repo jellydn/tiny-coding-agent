@@ -63,6 +63,7 @@ export interface ProviderConfigs {
 	opencode?: ProviderConfig;
 	zai?: ProviderConfig;
 	clinepass?: ProviderConfig;
+	qwencloud?: ProviderConfig;
 }
 
 export interface AgentOptions {

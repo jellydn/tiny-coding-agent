@@ -17,7 +17,7 @@ import type { Config } from "../../../src/config/schema.js";
 
 describe("login handler", () => {
 	describe("LOGIN_PROVIDERS", () => {
-		it("should include all 8 providers from the factory", () => {
+		it("should include all 9 providers from the factory", () => {
 			const keys = LOGIN_PROVIDERS.map((p) => p.key);
 			expect(keys).toContain("openai");
 			expect(keys).toContain("anthropic");
@@ -27,7 +27,8 @@ describe("login handler", () => {
 			expect(keys).toContain("opencode");
 			expect(keys).toContain("zai");
 			expect(keys).toContain("clinepass");
-			expect(keys).toHaveLength(8);
+			expect(keys).toContain("qwencloud");
+			expect(keys).toHaveLength(9);
 		});
 
 		it("should have a default model for every provider", () => {
@@ -81,7 +82,7 @@ describe("login handler", () => {
 	describe("getProviderStatus()", () => {
 		it("should return not-configured for an empty providers object", () => {
 			const statuses = getProviderStatus(undefined);
-			expect(statuses).toHaveLength(8);
+			expect(statuses).toHaveLength(9);
 			for (const s of statuses) {
 				expect(s.configured).toBe(false);
 				expect(s.hasApiKey).toBe(false);

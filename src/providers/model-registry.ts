@@ -6,7 +6,8 @@ export type ProviderType =
 	| "openrouter"
 	| "opencode"
 	| "zai"
-	| "clinepass";
+	| "clinepass"
+	| "qwencloud";
 
 export interface ModelEntry {
 	provider: ProviderType;
@@ -109,6 +110,14 @@ const MODEL_DATABASE: ModelEntry[] = [
 		supportsTools: true,
 		contextWindow: 128000,
 		maxOutputTokens: 8192,
+	},
+	{
+		provider: "qwencloud",
+		patterns: ["^qw/"],
+		supportsThinking: true,
+		supportsTools: true,
+		contextWindow: 262144,
+		maxOutputTokens: 131072,
 	},
 	{
 		provider: "ollama",
