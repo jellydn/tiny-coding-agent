@@ -12,6 +12,8 @@ const PROVIDER_NAMES: Record<string, string> = {
 	openrouter: "OpenRouter",
 	opencode: "OpenCode",
 	zai: "Zai (Zhipu AI)",
+	qwencloud: "QwenCloud",
+	clinepass: "ClinePass",
 };
 
 export interface ModelPickerItem {
@@ -198,6 +200,8 @@ export interface ProviderModels {
 	openrouter: ModelPickerItem[];
 	opencode: ModelPickerItem[];
 	zai: ModelPickerItem[];
+	qwencloud: ModelPickerItem[];
+	clinepass: ModelPickerItem[];
 }
 
 const PROVIDER_MODELS: ProviderModels = {
@@ -270,6 +274,15 @@ const PROVIDER_MODELS: ProviderModels = {
 		{ id: "glm-4", name: "GLM-4", description: "Zhipu's powerful model" },
 		{ id: "glm-3-turbo", name: "GLM-3 Turbo", description: "Zhipu's efficient model" },
 	],
+	qwencloud: [
+		{ id: "qw/glm-5.2", name: "GLM-5.2", description: "QwenCloud GLM" },
+		{ id: "qw/qwen3.8-max-preview", name: "Qwen3.8 Max Preview", description: "QwenCloud reasoning" },
+		{ id: "qw/qwen3.7-plus", name: "Qwen3.7 Plus", description: "QwenCloud 1M context" },
+		{ id: "qw/qwen3.7-max", name: "Qwen3.7 Max", description: "QwenCloud reasoning" },
+		{ id: "qw/qwen3.6-flash", name: "Qwen3.6 Flash", description: "QwenCloud fast" },
+		{ id: "qw/deepseek-v4-pro", name: "DeepSeek V4 Pro", description: "QwenCloud DeepSeek" },
+	],
+	clinepass: [{ id: "cline-pass/glm-5.2", name: "GLM-5.2 (ClinePass)", description: "ClinePass GLM" }],
 };
 
 export interface EnabledProviders {
@@ -280,6 +293,8 @@ export interface EnabledProviders {
 	openrouter?: boolean;
 	opencode?: boolean;
 	zai?: boolean;
+	qwencloud?: boolean;
+	clinepass?: boolean;
 }
 
 export function getModelsForProviders(enabledProviders: EnabledProviders): ModelPickerItem[] {
@@ -315,3 +330,51 @@ export function getModelsForProviders(enabledProviders: EnabledProviders): Model
 }
 
 export const DEFAULT_MODELS: ModelPickerItem[] = [...PROVIDER_MODELS.ollama];
+
+/** Compute which providers are enabled from a raw config providers object. */
+export function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
+	return {
+		openai: !!providers.openai,
+		anthropic: !!providers.anthropic,
+		ollama: !!providers.ollama,
+		ollamaCloud: !!providers.ollamaCloud,
+		openrouter: !!providers.openrouter,
+		opencode: !!providers.opencode,
+		zai: !!providers.zai,
+		qwencloud: !!providers.qwencloud,
+		clinepass: !!providers.clinepass,
+	};
+}
+
+/**
+ * Short display names for the CLI init output ("Provider: X").
+ * Kept separate from PROVIDER_NAMES (which has longer descriptive names
+ * like "Ollama (Local)" for the model picker UI).
+ */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+	qwencloud: "QwenCloud",
+	clinepass: "ClinePass",
+	opencode: "OpenCode",
+	openai: "OpenAI",
+	anthropic: "Anthropic",
+	ollamaCloud: "Ollama (Cloud)",
+	ollama: "Ollama",
+	zai: "Zai",
+	openrouter: "OpenRouter",
+};
+
+/**
+ * Priority order for display: newer / less common providers are checked
+ * first so they appear as the "primary" provider when multiple are configured.
+ */
+const PROVIDER_DISPLAY_PRIORITY = Object.keys(PROVIDER_DISPLAY_NAMES) as readonly string[];
+
+/** Return a human-readable display name for the first configured provider. */
+export function getProviderDisplayName(providers: Record<string, unknown>): string {
+	for (const key of PROVIDER_DISPLAY_PRIORITY) {
+		if (providers[key]) {
+			return PROVIDER_DISPLAY_NAMES[key] ?? key;
+		}
+	}
+	return "Default";
+}

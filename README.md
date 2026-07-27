@@ -305,13 +305,13 @@ providers:
     apiKey: ${OLLAMA_API_KEY}
 ```
 
-### QwenCloud
+### QwenCloud (Token Plan)
 
-[QwenCloud](https://home.qwencloud.com) provides access to Qwen3.x, DeepSeek V4, and GLM-5.2 models via a Token Plan subscription. The API is OpenAI-compatible.
+[QwenCloud](https://home.qwencloud.com) provides an OpenAI-compatible API for Qwen3.x, DeepSeek V4, and GLM-5.2 models behind a static API key (requires a Token Plan subscription).
 
 ```bash
-# Get a key from https://home.qwencloud.com (requires Token Plan)
-export QWENCLOUD_API_KEY="your-key"
+# Get API key from https://home.qwencloud.com
+export QWENCLOUD_API_KEY="your-api-key"
 ```
 
 **Config:**
@@ -322,20 +322,20 @@ providers:
     apiKey: ${QWENCLOUD_API_KEY}
 ```
 
-**Available models:**
+**Available models** (use the `qw/` prefix):
 
-- `qw/qwen3.8-max-preview` - Qwen3.8 Max Preview (262K context)
-- `qw/qwen3.7-plus` - Qwen3.7 Plus (1M context, vision)
-- `qw/qwen3.7-max` - Qwen3.7 Max (262K context)
-- `qw/qwen3.6-flash` - Qwen3.6 Flash (131K context, vision)
-- `qw/deepseek-v4-pro` - DeepSeek V4 Pro (1M context)
 - `qw/glm-5.2` - GLM-5.2 (200K context)
+- `qw/qwen3.8-max-preview` - Qwen3.8 Max Preview (262K, reasoning)
+- `qw/qwen3.7-plus` - Qwen3.7 Plus (1M context, reasoning + vision)
+- `qw/qwen3.7-max` - Qwen3.7 Max (262K, reasoning)
+- `qw/qwen3.6-flash` - Qwen3.6 Flash (131K, fast + vision)
+- `qw/deepseek-v4-pro` - DeepSeek V4 Pro (1M context, reasoning)
 
 **Usage:**
 
 ```bash
-tiny-agent --model qw/glm-5.2 "explain async/await"
-tiny-agent --model qw/deepseek-v4-pro "design a microservice architecture"
+tiny-agent --model qw/glm-5.2 "fix this bug"
+tiny-agent --model qw/qwen3.8-max-preview "write a function"
 ```
 
 ### OpenCode Zen
@@ -430,7 +430,7 @@ tiny-agent mcp add myserver npx -y @org/mcp-server
 | Option              | Description                                             |
 | ------------------- | ------------------------------------------------------- |
 | `--model <name>`    | Override default model                                  |
-| `--provider <name>` | Override provider (openai\|anthropic\|ollama\|opencode\|zai\|clinepass\|qwencloud) |
+| `--provider <name>` | Override provider (openai\|anthropic\|ollama\|openrouter\|opencode\|zai\|clinepass\|qwencloud) |
 | `--json`            | Output in JSON format (for programmatic consumption)    |
 | `--verbose, -v`     | Enable verbose logging                                  |
 | `--save`            | Save conversation to file                               |

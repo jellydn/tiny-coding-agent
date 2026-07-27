@@ -1,5 +1,6 @@
 import { render } from "ink";
 import { loadConfig } from "../config/loader.js";
+import { getEnabledProviders, getProviderDisplayName } from "../ui/components/ModelPicker.js";
 import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
@@ -18,14 +19,6 @@ import { handleUpgrade } from "./handlers/upgrade.js";
 import { type CliOptions, createAgent, parseArgs } from "./shared.js";
 
 const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
-
-function getProviderDisplayName(providers: Record<string, unknown>): string {
-	if (providers.opencode) return "OpenCode";
-	if (providers.openai) return "OpenAI";
-	if (providers.anthropic) return "Anthropic";
-	if (providers.ollama) return "Ollama";
-	return "Default";
-}
 
 export class ThinkingTagFilter {
 	private buffer = "";
@@ -103,28 +96,6 @@ type ToolExecutionDisplay = {
 	output?: string;
 	error?: string;
 };
-
-type EnabledProviders = {
-	openai: boolean;
-	anthropic: boolean;
-	ollama: boolean;
-	ollamaCloud: boolean;
-	openrouter: boolean;
-	opencode: boolean;
-	zai: boolean;
-};
-
-function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
-	return {
-		openai: !!providers.openai,
-		anthropic: !!providers.anthropic,
-		ollama: !!providers.ollama,
-		ollamaCloud: !!providers.ollamaCloud,
-		openrouter: !!providers.openrouter,
-		opencode: !!providers.opencode,
-		zai: !!providers.zai,
-	};
-}
 
 function formatOutputPreview(output: string): string {
 	const lines = output.split("\n");
@@ -474,7 +445,7 @@ COMMANDS:
 
 OPTIONS:
     --model <model>                    Override default model
-    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|zai)
+    --provider <provider>              Override provider (openai|anthropic|ollama|openrouter|opencode|zai|clinepass|qwencloud)
     --verbose, -v                      Enable verbose logging
     --save                             Save conversation to file
     --no-memory                        Disable memory (enabled by default)
