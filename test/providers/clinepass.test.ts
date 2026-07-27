@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { ClinePassProvider } from "../../src/providers/clinepass.js";
 import { isModelInCatalog } from "../../src/providers/models-dev.js";
 import { OpenAIProvider } from "../../src/providers/openai.js";
+import type { ChatOptions } from "../../src/providers/types.js";
 
 const DEFAULT_BASE_URL = "https://api.cline.bot/v1";
 const CUSTOM_BASE_URL = "https://custom.example.com/v1";
@@ -365,6 +366,67 @@ describe("ClinePassProvider", () => {
 			});
 			await provider.getCapabilities("cline-pass/glm-5.2");
 			expect(capturedUrl).toBe(CUSTOM_MODELS_URL);
+		});
+	});
+
+	describe("chat() and stream() prefix stripping", () => {
+		it("should strip the cline-pass/ prefix before calling the upstream API in chat()", async () => {
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			// Spy on the parent's chat to capture the model string that
+			// actually reaches the OpenAI SDK.
+			const chatSpy = spyOn(OpenAIProvider.prototype, "chat");
+			chatSpy.mockImplementation(async (_options: ChatOptions) => ({
+				content: "ok",
+				finishReason: "stop" as const,
+			}));
+
+			await provider.chat({
+				model: "cline-pass/glm-5.2",
+				messages: [{ role: "user", content: "hello" }],
+			});
+
+			// The upstream API must receive the bare model id, not the prefixed one.
+			expect(chatSpy).toHaveBeenCalledTimes(1);
+			expect(chatSpy.mock.calls[0]?.[0]?.model).toBe("glm-5.2");
+			chatSpy.mockRestore();
+		});
+
+		it("should strip the cline-pass/ prefix before calling the upstream API in stream()", async () => {
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			const streamSpy = spyOn(OpenAIProvider.prototype, "stream");
+			// Return a minimal async generator so the for-await loop completes.
+			streamSpy.mockImplementation(async function* (_options: ChatOptions) {
+				yield { content: "ok", done: true };
+			});
+
+			const chunks: unknown[] = [];
+			for await (const chunk of provider.stream({
+				model: "cline-pass/glm-5.2",
+				messages: [{ role: "user", content: "hello" }],
+			})) {
+				chunks.push(chunk);
+			}
+
+			expect(streamSpy).toHaveBeenCalledTimes(1);
+			expect(streamSpy.mock.calls[0]?.[0]?.model).toBe("glm-5.2");
+			streamSpy.mockRestore();
+		});
+
+		it("should pass through models that have no cline-pass/ prefix unchanged", async () => {
+			const provider = new ClinePassProvider({ apiKey: "test-key" });
+			const chatSpy = spyOn(OpenAIProvider.prototype, "chat");
+			chatSpy.mockImplementation(async (_options: ChatOptions) => ({
+				content: "ok",
+				finishReason: "stop" as const,
+			}));
+
+			await provider.chat({
+				model: "bare-model-id",
+				messages: [{ role: "user", content: "hello" }],
+			});
+
+			expect(chatSpy.mock.calls[0]?.[0]?.model).toBe("bare-model-id");
+			chatSpy.mockRestore();
 		});
 	});
 });

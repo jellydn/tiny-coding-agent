@@ -1,5 +1,6 @@
 import type { ModelCapabilities } from "./capabilities.js";
 import { OpenAIProvider } from "./openai.js";
+import type { ChatOptions, ChatResponse, StreamChunk } from "./types.js";
 
 export interface ClinePassProviderConfig {
 	apiKey: string;
@@ -35,6 +36,14 @@ const defaultClineCapabilities = (modelName: string): ModelCapabilities => ({
 	isVerified: true,
 	source: "api",
 });
+
+/** Strip the `cline-pass/` prefix before forwarding to the OpenAI-compatible API.
+ *  The prefix is used internally for model routing/registry lookups but the
+ *  upstream Cline API expects the bare model id (e.g. "glm-5.2", not
+ *  "cline-pass/glm-5.2").  Same pattern as QwenCloudProvider's `qw/` strip. */
+function stripPrefix(model: string): string {
+	return model.replace(/^cline-pass\//, "");
+}
 
 const DEFAULT_BASE_URL = "https://api.cline.bot/v1";
 
@@ -111,6 +120,14 @@ export class ClinePassProvider extends OpenAIProvider {
 	 *  parent saw the same URL. */
 	getResolvedBaseUrl(): string {
 		return this._resolvedBaseUrl;
+	}
+
+	override async chat(options: ChatOptions): Promise<ChatResponse> {
+		return super.chat({ ...options, model: stripPrefix(options.model) });
+	}
+
+	override async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
+		yield* super.stream({ ...options, model: stripPrefix(options.model) });
 	}
 
 	override async getCapabilities(model: string): Promise<ModelCapabilities> {

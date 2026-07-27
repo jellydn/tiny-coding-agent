@@ -3,8 +3,8 @@
  *
  * Creates spans for: HTTP/CLI request → retrieval → tool execution → LLM
  * request, with useful `ai.*` / `tool.*` / `retrieval.*` attributes. Errors
- * are recorded on spans. Uses a console exporter locally; the exporter is
- * configurable so an OTLP backend can be added later.
+ * are recorded on spans. Uses a silent no-op exporter by default; the
+ * exporter is configurable so an OTLP backend can be added later.
  *
  * Telemetry never becomes a single point of failure: if the OTel packages fail
  * to load or a span operation throws, callers receive a no-op span and the
@@ -13,12 +13,29 @@
 import { context, DiagConsoleLogger, DiagLogLevel, diag, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
 	BasicTracerProvider,
-	ConsoleSpanExporter,
 	SimpleSpanProcessor,
+	type SpanExporter,
 	type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import type { TokenUsage } from "./token-usage.js";
 import { currentSpan, popSpan, pushSpan } from "./trace-context.js";
+
+/**
+ * A no-op span exporter that silently drops all spans. Used as the default
+ * so the structured JSON logger (observability/logger.ts) is the sole
+ * user-facing observability surface — raw OTel span objects never pollute
+ * stdout. Callers who need span export (e.g. OTLP to a collector) pass
+ * their own `spanProcessors` to `initTelemetry`.
+ */
+class NoopSpanExporter implements SpanExporter {
+	// `export` is a reserved keyword, so we use a quoted method name.
+	// The callback must still be invoked to fulfill the SpanExporter contract.
+	export(_spans: unknown[], callback: (result: { code: number }) => void): void {
+		callback({ code: 0 });
+	}
+	async shutdown(): Promise<void> {}
+	async forceFlush(): Promise<void> {}
+}
 
 /** Attribute keys used across spans. */
 export const SpanAttributes = {
@@ -38,7 +55,7 @@ export const SpanAttributes = {
 } as const;
 
 export interface TelemetryConfig {
-	/** Custom span processor(s); defaults to a console exporter. */
+	/** Custom span processor(s); defaults to a silent no-op exporter. */
 	spanProcessors?: SpanProcessor[];
 	/** Disable telemetry entirely. */
 	disabled?: boolean;
@@ -65,7 +82,12 @@ export function initTelemetry(config: TelemetryConfig = {}): void {
 	}
 	try {
 		diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.NONE);
-		const processors = config.spanProcessors ?? [new SimpleSpanProcessor(new ConsoleSpanExporter())];
+		// Default: a silent no-op processor. The structured JSON logger
+		// (observability/logger.ts) already provides all user-facing
+		// observability — the raw OTel span dump from ConsoleSpanExporter
+		// only pollutes stdout. Callers who want span export (e.g. OTLP)
+		// pass their own `spanProcessors`.
+		const processors = config.spanProcessors ?? [new SimpleSpanProcessor(new NoopSpanExporter())];
 		provider = new BasicTracerProvider({ spanProcessors: processors });
 		tracer = provider.getTracer("tiny-agent");
 		telemetryDisabled = config.disabled ?? false;
