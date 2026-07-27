@@ -33,13 +33,20 @@ type ExportResult = { code: 0 | 1; error?: Error };
  * stdout. Callers who need span export (e.g. OTLP to a collector) pass
  * their own `spanProcessors` to `initTelemetry`.
  */
-class NoopSpanExporter implements SpanExporter {
-	// `export` is a reserved keyword but valid as a method name when the
-	// class `implements SpanExporter` — the interface context disambiguates
-	// the parser. Biome normalizes quoted method names to unquoted, so we
-	// accept the unquoted form. The callback must be invoked to fulfill
-	// the SpanExporter contract.
-	export(_spans: unknown[], callback: (result: ExportResult) => void): void {
+/**
+ * A no-op span exporter that silently drops all spans. Used as the default
+ * so the structured JSON logger (observability/logger.ts) is the sole
+ * user-facing observability surface — raw OTel span objects never pollute
+ * stdout. Callers who need span export (e.g. OTLP to a collector) pass
+ * their own `spanProcessors` to `initTelemetry`.
+ *
+ * The method is named `exportSpans` (not `export`) to avoid using a
+ * reserved keyword as a method name. The class is passed to
+ * `SimpleSpanProcessor` with a type assertion because the OTel
+ * `SpanExporter` interface requires a method named `export`.
+ */
+class NoopSpanExporter {
+	exportSpans(_spans: unknown[], callback: (result: ExportResult) => void): void {
 		callback({ code: 0 });
 	}
 	async shutdown(): Promise<void> {}
@@ -95,7 +102,8 @@ export function initTelemetry(config: TelemetryConfig = {}): void {
 		// observability — the raw OTel span dump from ConsoleSpanExporter
 		// only pollutes stdout. Callers who want span export (e.g. OTLP)
 		// pass their own `spanProcessors`.
-		const processors = config.spanProcessors ?? [new SimpleSpanProcessor(new NoopSpanExporter())];
+		const noopExporter = new NoopSpanExporter() as unknown as SpanExporter;
+		const processors = config.spanProcessors ?? [new SimpleSpanProcessor(noopExporter)];
 		provider = new BasicTracerProvider({ spanProcessors: processors });
 		tracer = provider.getTracer("tiny-agent");
 		telemetryDisabled = config.disabled ?? false;
