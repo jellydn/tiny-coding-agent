@@ -5,16 +5,7 @@ import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
 import { isJsonMode, setJsonMode, setNoColor, shouldUseInk } from "../ui/utils.js";
-import { handleAgent } from "./handlers/agent.js";
-import { handleConfig } from "./handlers/config.js";
-import { handleLogin, handleLogout } from "./handlers/login.js";
-import { handleMcp } from "./handlers/mcp.js";
-import { handleMemory } from "./handlers/memory.js";
-import { handlePlan } from "./handlers/plan.js";
-import { handleSkill } from "./handlers/skill.js";
-import { handleState } from "./handlers/state.js";
-import { handleStatus } from "./handlers/status.js";
-import { handleTrace } from "./handlers/trace.js";
+import { dispatchCommand, dispatchPreConfig, registerMainHandlers } from "./command-dispatch.js";
 import { handleUpgrade } from "./handlers/upgrade.js";
 import { type CliOptions, createAgent, parseArgs } from "./shared.js";
 
@@ -493,6 +484,12 @@ For more information, visit: https://github.com/jellydn/tiny-coding-agent
 }
 
 export async function main(): Promise<void> {
+	// Register the main.tsx-local handlers (handleRun, handleInteractiveChat)
+	// with the dispatch table. Done inside main() rather than at module level
+	// to avoid TDZ issues when command-dispatch.ts is loaded transitively
+	// (e.g. by tests) without main.tsx being the entry point.
+	registerMainHandlers(handleRun, handleInteractiveChat);
+
 	try {
 		const { command, args, options } = parseArgs();
 
@@ -518,56 +515,14 @@ export async function main(): Promise<void> {
 			return;
 		}
 
-		// `login` runs before loadConfig() because the user may be onboarding
-		// and have no valid provider configured yet.
-		if (command === "login") {
-			await handleLogin(args);
-			return;
-		}
-
-		// `logout` also runs before loadConfig() so it can remove a key even if
-		// the remaining config is invalid (e.g. no providers left at all).
-		if (command === "logout") {
-			await handleLogout(args);
-			return;
-		}
+		// Pre-config commands (login, logout) run before loadConfig() because
+		// the user may be onboarding with no valid provider configured yet.
+		const handled = await dispatchPreConfig(command, args, options);
+		if (handled) return;
 
 		const config = loadConfig();
 
-		if (command === "chat") {
-			await handleInteractiveChat(config, args, options);
-		} else if (command === "run") {
-			await handleRun(config, args, options);
-		} else if (command === "config") {
-			await handleConfig(config, args);
-		} else if (command === "status") {
-			await handleStatus(config, options);
-		} else if (command === "memory") {
-			await handleMemory(config, args, options);
-		} else if (command === "skill") {
-			await handleSkill(config, args, options);
-		} else if (command === "mcp") {
-			await handleMcp(args);
-		} else if (command === "plan" && args.length > 0 && ["show", "tasks", "todo"].includes(args[0] ?? "")) {
-			await handlePlan(config, args, options);
-		} else if (["plan", "build", "explore", "run-plan-build", "run-all"].includes(command)) {
-			await handleAgent(command, args, options);
-		} else if (command === "state") {
-			await handleState(config, args, options);
-		} else if (command === "trace") {
-			await handleTrace(config, args, options);
-		} else if (command === "tasks") {
-			await handlePlan(config, ["tasks"], options);
-		} else if (command === "todo") {
-			await handlePlan(config, ["todo"], options);
-		} else {
-			console.error(`Unknown command: ${command}`);
-			console.error(
-				"Available commands: chat, run <prompt>, trace <prompt>, login, logout, config, status, memory, skill, mcp, plan, build, explore, run-plan-build, run-all, state, plan show, tasks, todo"
-			);
-			console.error("Options: --model <model>, --provider <provider>, --verbose, --save, --state-file, --help");
-			process.exit(2);
-		}
+		await dispatchCommand(command, { config, args, options });
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		console.error(`Error: ${message}`);
