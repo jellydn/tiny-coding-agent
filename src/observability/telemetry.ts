@@ -20,6 +20,12 @@ import {
 import type { TokenUsage } from "./token-usage.js";
 import { currentSpan, popSpan, pushSpan } from "./trace-context.js";
 
+// Local type matching @opentelemetry/core's ExportResult — we avoid
+// importing from @opentelemetry/core directly because it's a transitive
+// dependency (not listed in package.json). The structural type is
+// bivariantly compatible with the SpanExporter interface's callback.
+type ExportResult = { code: 0 | 1; error?: Error };
+
 /**
  * A no-op span exporter that silently drops all spans. Used as the default
  * so the structured JSON logger (observability/logger.ts) is the sole
@@ -28,9 +34,12 @@ import { currentSpan, popSpan, pushSpan } from "./trace-context.js";
  * their own `spanProcessors` to `initTelemetry`.
  */
 class NoopSpanExporter implements SpanExporter {
-	// `export` is a reserved keyword, so we use a quoted method name.
-	// The callback must still be invoked to fulfill the SpanExporter contract.
-	export(_spans: unknown[], callback: (result: { code: number }) => void): void {
+	// `export` is a reserved keyword but valid as a method name when the
+	// class `implements SpanExporter` — the interface context disambiguates
+	// the parser. Biome normalizes quoted method names to unquoted, so we
+	// accept the unquoted form. The callback must be invoked to fulfill
+	// the SpanExporter contract.
+	export(_spans: unknown[], callback: (result: ExportResult) => void): void {
 		callback({ code: 0 });
 	}
 	async shutdown(): Promise<void> {}
