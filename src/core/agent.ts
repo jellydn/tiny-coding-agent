@@ -13,9 +13,10 @@ import type { ToolRegistry } from "../tools/registry.js";
 import { escapeXml } from "../utils/xml.js";
 import { AgentObservability } from "./agent-observability.js";
 import { type StreamLlmResult, streamLlmResponse } from "./agent-utils.js";
+import { buildContextStats, type PrepareContextResult, prepareContext } from "./context-budget.js";
 import { ConversationManager } from "./conversation.js";
-import { buildContextWithMemory, type ContextStats, calculateContextBudget, MemoryStore } from "./memory.js";
-import { countTokensSync, truncateMessages } from "./tokens.js";
+import type { ContextStats } from "./memory.js";
+import { MemoryStore } from "./memory.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Re-export for backward compatibility — other modules and tests import
@@ -34,10 +35,6 @@ export function redactApiKey(key?: string): string {
 	if (!key) return "(not set)";
 	if (key.length <= 8) return "****";
 	return `${key.slice(0, 4)}...REDACTED`;
-}
-
-function calculateMessageTokens(messages: Message[]): number {
-	return messages.reduce((sum, msg) => sum + countTokensSync(msg.content), 0);
 }
 
 export interface ProviderConfigs {
@@ -132,32 +129,6 @@ export function isValidToolCall(text: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-interface BuildStatsParams {
-	systemTokens: number;
-	memoryTokens: number;
-	convTokens: number;
-	truncationApplied: boolean;
-	maxContextTokens: number;
-}
-
-function buildStats({
-	systemTokens,
-	memoryTokens,
-	convTokens,
-	truncationApplied,
-	maxContextTokens,
-}: BuildStatsParams): ContextStats {
-	return {
-		systemPromptTokens: systemTokens,
-		memoryTokens,
-		conversationTokens: convTokens,
-		totalTokens: systemTokens + memoryTokens + convTokens,
-		maxContextTokens,
-		truncationApplied,
-		memoryCount: 0,
-	};
 }
 
 export class Agent {
@@ -355,67 +326,30 @@ export class Agent {
 			messages = [{ role: "user", content: userPrompt }];
 		}
 
-		let contextStats: ContextStats;
-		let memoryTokensUsed = 0;
-		let truncationApplied = false;
-
-		const systemTokens = countTokensSync(this._systemPrompt);
-		const maxContextTokens = this._maxContextTokens ?? 0;
-
-		if (!this._maxContextTokens) {
-			contextStats = buildStats({
-				systemTokens,
-				memoryTokens: 0,
-				convTokens: calculateMessageTokens(messages),
-				truncationApplied: false,
-				maxContextTokens,
-			});
-		} else if (this._memoryStore) {
-			const { memoryBudget, conversationBudget } = calculateContextBudget(
-				this._maxContextTokens,
-				systemTokens,
-				this._maxMemoryTokens,
-				{ memoryBudgetPercent: this._memoryBudgetPercent }
-			);
-
-			// --- Observability: retrieval span ---------------------------------
-			const { span: retrievalSpan, timer: retrievalTimer } = this._obsWrapper.beginRetrieval();
-			let relevantMemories: ReturnType<MemoryStore["findRelevant"]> = [];
-			let result: { context: Array<{ role: string; content: string }>; stats: ContextStats };
-			try {
-				relevantMemories = this._memoryStore.findRelevant(userPrompt, 10);
-				result = buildContextWithMemory(
-					this._systemPrompt,
-					relevantMemories,
-					messages,
-					memoryBudget,
-					conversationBudget
-				);
-			} catch (err) {
-				this._obsWrapper.recordRetrievalError(retrievalSpan, err);
-			}
-			this._obsWrapper.recordRetrieval(retrievalSpan, retrievalTimer, relevantMemories.length);
-			// -------------------------------------------------------------------
-
-			messages = result.context as Message[];
-			contextStats = result.stats;
-			memoryTokensUsed = result.stats.memoryTokens;
-			truncationApplied = result.stats.truncationApplied;
-		} else {
-			const availableTokens = this._maxContextTokens - systemTokens - 1000;
-			if (availableTokens > 0) {
-				const truncated = await truncateMessages(messages, availableTokens);
-				truncationApplied = truncated.length < messages.length;
-				if (truncationApplied) messages = truncated as Message[];
-			}
-			contextStats = buildStats({
-				systemTokens,
-				memoryTokens: 0,
-				convTokens: calculateMessageTokens(messages),
-				truncationApplied,
-				maxContextTokens,
-			});
-		}
+		const ctxResult: PrepareContextResult = await prepareContext({
+			systemPrompt: this._systemPrompt,
+			userPrompt,
+			messages,
+			maxContextTokens: this._maxContextTokens,
+			memoryStore: this._memoryStore,
+			maxMemoryTokens: this._maxMemoryTokens,
+			memoryBudgetPercent: this._memoryBudgetPercent,
+			wrapRetrieval: () => {
+				const { span: retrievalSpan, timer: retrievalTimer } = this._obsWrapper.beginRetrieval();
+				return (resultCount: number, error?: unknown) => {
+					if (error !== undefined) {
+						this._obsWrapper.recordRetrievalError(retrievalSpan, error);
+					}
+					this._obsWrapper.recordRetrieval(retrievalSpan, retrievalTimer, resultCount);
+				};
+			},
+		});
+		messages = ctxResult.messages;
+		let contextStats: ContextStats = ctxResult.stats;
+		const memoryTokensUsed = ctxResult.memoryTokensUsed;
+		const truncationApplied = ctxResult.truncationApplied;
+		const systemTokens = ctxResult.systemTokens;
+		const maxContextTokens = ctxResult.stats.maxContextTokens;
 
 		const tools = this._getToolDefinitions();
 
@@ -451,10 +385,10 @@ export class Agent {
 		this._turnExecutor.reset();
 
 		const updateStats = (): ContextStats =>
-			buildStats({
+			buildContextStats({
 				systemTokens,
 				memoryTokens: memoryTokensUsed,
-				convTokens: calculateMessageTokens(messages),
+				messages,
 				truncationApplied,
 				maxContextTokens,
 			});
