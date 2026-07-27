@@ -32,13 +32,6 @@ type ExportResult = { code: 0 | 1; error?: Error };
  * user-facing observability surface — raw OTel span objects never pollute
  * stdout. Callers who need span export (e.g. OTLP to a collector) pass
  * their own `spanProcessors` to `initTelemetry`.
- */
-/**
- * A no-op span exporter that silently drops all spans. Used as the default
- * so the structured JSON logger (observability/logger.ts) is the sole
- * user-facing observability surface — raw OTel span objects never pollute
- * stdout. Callers who need span export (e.g. OTLP to a collector) pass
- * their own `spanProcessors` to `initTelemetry`.
  *
  * The method is named `exportSpans` (not `export`) to avoid using a
  * reserved keyword as a method name. The class is passed to

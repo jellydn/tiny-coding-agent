@@ -129,8 +129,7 @@ const PLAN_PLAN_SUBCOMMANDS = new Set(["show", "tasks", "todo"]);
 
 /** Route the `plan` command: show/tasks/todo → handlePlan, else → handleAgent. */
 async function handlePlanRoute(ctx: DispatchContext): Promise<void> {
-	const firstArg = ctx.args[0] ?? "";
-	if (PLAN_PLAN_SUBCOMMANDS.has(firstArg)) {
+	if (planRoute(ctx.args[0]) === "plan") {
 		await handlePlan(ctx.config, ctx.args, ctx.options);
 	} else {
 		await handleAgent("plan", ctx.args, ctx.options);
