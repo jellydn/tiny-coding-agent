@@ -2,7 +2,8 @@ import { Box, Text } from "ink";
 import InkSpinner from "ink-spinner";
 import type React from "react";
 import { memo } from "react";
-import type { ToolCallStatus } from "./ToolCall.js";
+import type { ToolCallStatus } from "./tool-status.js";
+import { formatDuration, getStatusColor, getStatusIcon } from "./tool-status.js";
 
 export interface ToolSummary {
 	name: string;
@@ -14,31 +15,6 @@ export interface ToolSummary {
 interface ToolsPanelProps {
 	tools: ToolSummary[];
 	onClose?: () => void;
-}
-
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(1)}s`;
-}
-
-const STATUS_ICONS = {
-	success: "[✓]",
-	error: "[✗]",
-	pending: "[pending]",
-} as const;
-
-const STATUS_COLORS = {
-	success: "green",
-	error: "red",
-	pending: "yellow",
-} as const;
-
-function getStatusIcon(status: ToolCallStatus): string {
-	return STATUS_ICONS[status];
-}
-
-function getStatusColor(status: ToolCallStatus): string {
-	return STATUS_COLORS[status];
 }
 
 function getArgPreview(args: Record<string, unknown>, maxLen = 40): string {

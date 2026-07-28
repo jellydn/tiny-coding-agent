@@ -2,8 +2,10 @@ import { Box, Text } from "ink";
 import InkSpinner from "ink-spinner";
 import type React from "react";
 import { memo, useMemo } from "react";
+import type { ToolCallStatus } from "./tool-status.js";
+import { formatDuration, getStatusColor, getStatusIcon } from "./tool-status.js";
 
-export type ToolCallStatus = "pending" | "success" | "error";
+export type { ToolCallStatus } from "./tool-status.js";
 
 export interface ToolCallProps {
 	name: string;
@@ -13,11 +15,6 @@ export interface ToolCallProps {
 	duration?: number;
 }
 
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(1)}s`;
-}
-
 function formatArgValue(value: unknown): string {
 	if (typeof value === "string") return value;
 	try {
@@ -25,26 +22,6 @@ function formatArgValue(value: unknown): string {
 	} catch {
 		return String(value);
 	}
-}
-
-const STATUS_ICONS = {
-	success: "[✓]",
-	error: "[✗]",
-	pending: "[pending]",
-} as const;
-
-const STATUS_COLORS = {
-	success: "green",
-	error: "red",
-	pending: "yellow",
-} as const;
-
-function getStatusIcon(status: ToolCallStatus): string {
-	return STATUS_ICONS[status];
-}
-
-function getStatusColor(status: ToolCallStatus): string {
-	return STATUS_COLORS[status];
 }
 
 export const ToolCall = memo(function ToolCall({
