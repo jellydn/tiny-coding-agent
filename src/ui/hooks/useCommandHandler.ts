@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { readStateFile } from "../../agents/state.js";
 import { StateManager } from "../../agents/state-manager.js";
 import { formatProviderStatus } from "../../cli/handlers/login.js";
 import { readConfigFile } from "../../config/config-io.js";
@@ -140,17 +139,12 @@ export function useCommandHandler({
 			const subcommand = args.trim().toLowerCase() || "show";
 			const stateFile = DEFAULT_STATE_FILE;
 
-			// Check if the state file actually exists on disk — StateManager's
-			// loadOrCreate() creates a fresh state if the file is missing, which
-			// would mask the "not found" error for the user.
-			const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-			if (!stateResult.success || !stateResult.data) {
+			const mgr = new StateManager(stateFile);
+			const loadResult = await mgr.loadOrFail();
+			if (!loadResult.success) {
 				onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
 				return;
 			}
-
-			const mgr = new StateManager(stateFile);
-			const _state = await mgr.loadOrCreate();
 
 			if (subcommand === "show") {
 				const plan = mgr.getPlan();
