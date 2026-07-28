@@ -44,7 +44,7 @@ Layered, dependency-inverted architecture. The CLI is the outermost layer; every
         │
 ┌───────▼────────────────────────────────────────────────────────────┐
 │  Cross-cutting: src/observability/  src/config/  src/utils/        │
-│  src/config/config-io.ts  src/cli/prompt.ts                       │
+│  src/config/config-io.ts  src/cli/prompt.ts  src/hooks/          │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -170,3 +170,5 @@ Architecture decisions are documented in `docs/adr/` (ADR-001 through ADR-014). 
 - ADR-012: GatewayOpenAIProvider base class (held back by 30% duplication threshold)
 - ADR-013: ClinePass live model lookup (replace baked capability table with live fetch)
 - ADR-014: Login command onboarding design (top-level dispatch, status-only chat, literal key storage)
+- ADR-015: Lifecycle hooks system (external command spawning, sequential pipeline, plannotator preset)
+- ADR-016: Agent decomposition (deletion test, type-only imports, 10 extracted modules)

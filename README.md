@@ -18,6 +18,7 @@ A lightweight, extensible coding agent built in TypeScript that helps developers
 - **Memory System**: User-initiated persistent storage with relevance-based retrieval
 - **Agent Skills**: Reusable prompts from agentskills.io or custom SKILL.md files
 - **Plugin System**: Extend the agent with custom tools
+- **Lifecycle Hooks**: Review and modify plans before execution (e.g. plannotator)
 - **JSON Output Mode**: Machine-readable output for tooling integration
 
 ## Quick Install
@@ -249,6 +250,22 @@ mcpServers:
 #   - "mcp_serena_*memories*"    # Disable Serena memory tools
 #   - "mcp_serena_*onboarding*"  # Disable Serena onboarding tools
 
+# Lifecycle hooks (optional — review/modify plans before execution)
+# hooks:
+#   - name: plannotator-review-plan
+#     event: post-plan-generate
+#     command: plannotator
+#     args: ["--review"]
+#     inputMode: stdin
+#     enabled: true
+#     applyModifications: true
+#   - name: plannotator-review-build
+#     event: pre-build-execute
+#     command: plannotator
+#     args: ["--review"]
+#     inputMode: stdin
+#     enabled: false  # double review is opt-in
+
 # Disable all MCP servers
 # mcpServers: {}
 
@@ -394,9 +411,10 @@ tiny-agent --provider opencode --model opencode/gpt-5.2-codex "write a function"
 | `tiny-agent logout status`  | Show which providers have keys set   |
 | `tiny-agent config`         | Show current config                  |
 | `tiny-agent status`         | Show provider, MCP, tools            |
-| `tiny-agent mcp`            | Manage MCP servers                   |
-| `tiny-agent memory`         | Manage memories                      |
-| `tiny-agent skill`          | Manage skills                        |
+| `tiny-agent mcp`            | Manage MCP servers                   || `tiny-agent memory`         | Manage memories                                      |
+| `tiny-agent skill`          | Manage skills                                        |
+| `tiny-agent hooks`          | Manage lifecycle hooks                               |
+| `tiny-agent review`         | Run review hooks on the current plan                 |
 
 ### MCP Server Management
 
@@ -544,7 +562,65 @@ Skills are automatically discovered from `SKILL.md` files in your configured ski
 | `/memory`       | List stored memories                                   |
 | `/skill [name]` | List all skills, or load a specific skill              |
 | `@<skill-name>` | Load a skill (type @ to see picker)                    |
+| `/review`       | Run review hooks on the current plan (e.g. plannotator) |
 | `/exit`         | Exit chat (Ctrl+D also works)                          |
+
+## Lifecycle Hooks
+
+Hooks allow external commands to intercept the agent's lifecycle at defined points — review plans, modify content, approve or reject before execution. This is the foundation for human-in-the-loop integrations like [plannotator](https://github.com/backnotprop/plannotator).
+
+### Lifecycle Events
+
+| Event | When it fires | What the hook receives |
+|-------|-------------|----------------------|
+| `post-plan-generate` | After `planAgent()` generates a plan, before saving | Plan text (Markdown) |
+| `pre-build-execute` | Before `buildAgent()` starts executing steps | Plan text (Markdown) |
+| `post-explore-complete` | After `exploreAgent()` completes | Findings report text |
+
+### Installing Presets
+
+Install a built-in hook preset with a single command:
+
+```bash
+tiny-agent hooks install plannotator   # Install plannotator review hooks
+tiny-agent hooks list                  # Show installed hooks
+tiny-agent hooks presets               # List available presets
+tiny-agent hooks enable <name>         # Enable a hook
+tiny-agent hooks disable <name>        # Disable a hook
+tiny-agent hooks remove <name>         # Remove a hook
+```
+
+**Plannotator** ([github.com/backnotprop/plannotator](https://github.com/backnotprop/plannotator)) opens the plan in a browser UI where you can annotate, edit, approve, or reject before execution. The plan-review hook is enabled by default; the build-review hook is disabled by default (double review is opt-in).
+
+```bash
+npm install -g plannotator   # or use npx plannotator
+```
+
+### Manual Configuration
+
+Add hooks to `~/.tiny-agent/config.yaml`:
+
+```yaml
+hooks:
+  - name: my-review-hook
+    event: post-plan-generate
+    command: ./review.sh
+    args: ["--plan"]
+    inputMode: stdin        # "stdin" (pipe) or "arg" (append as last arg)
+    enabled: true
+    timeoutMs: 0            # 0 = no timeout (wait for human review)
+    applyModifications: true # use the hook's modified content
+```
+
+### Review from Chat
+
+The `/review` chat command loads hooks from config, runs `post-plan-generate` hooks on the current plan, and saves the modified plan back to the state file — all without exiting the chat session.
+
+```
+> /review
+```
+
+Hooks are external CLI commands (not in-process plugins). They receive content via stdin and return modified content via stdout. If the hook binary isn't installed, it's skipped gracefully — the agent continues without review. See [ADR-015](docs/adr/015-lifecycle-hooks-system.md) for the full design.
 
 ## Custom Plugins
 
@@ -650,6 +726,8 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 012: GatewayOpenAIProvider Base Class (30% threshold)
 - 013: ClinePass Live Model Lookup
 - 014: Login Command Onboarding Design
+- 015: Lifecycle Hooks System
+- 016: Agent Decomposition
 
 ## Development
 
