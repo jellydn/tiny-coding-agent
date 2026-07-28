@@ -44,10 +44,6 @@ export interface MemoryStoreOptions {
 	autoLoad?: boolean;
 }
 
-export interface ContextBudgetOptions {
-	memoryBudgetPercent?: number;
-}
-
 export interface ContextStats {
 	systemPromptTokens: number;
 	memoryTokens: number;
@@ -423,92 +419,4 @@ export class MemoryStore {
 		this._memories.delete(oldestId);
 		this._sortedIds.splice(lastIndex, 1);
 	}
-}
-
-export function calculateContextBudget(
-	maxContextTokens: number,
-	systemPromptTokens: number,
-	maxMemoryTokens?: number,
-	options?: ContextBudgetOptions
-): { memoryBudget: number; conversationBudget: number } {
-	const memoryPercent = options?.memoryBudgetPercent ?? 0.2;
-	const availableForContent = maxContextTokens - systemPromptTokens - 1000;
-
-	if (availableForContent <= 0) {
-		return { memoryBudget: 0, conversationBudget: 0 };
-	}
-
-	if (maxMemoryTokens !== undefined) {
-		const memoryBudget = Math.min(maxMemoryTokens, Math.floor(availableForContent * memoryPercent));
-		return {
-			memoryBudget,
-			conversationBudget: availableForContent - memoryBudget,
-		};
-	}
-
-	const memoryBudget = Math.floor(availableForContent * memoryPercent);
-	return {
-		memoryBudget,
-		conversationBudget: availableForContent - memoryBudget,
-	};
-}
-
-export function buildContextWithMemory(
-	systemPrompt: string,
-	memories: Memory[],
-	conversationMessages: Array<{ role: string; content: string }>,
-	memoryBudget: number,
-	conversationBudget: number
-): { context: Array<{ role: string; content: string }>; stats: ContextStats } {
-	const systemTokens = countTokensSync(systemPrompt);
-
-	let memoryTokens = 0;
-	const includedMemories: string[] = [];
-
-	for (const memory of memories) {
-		const tokens = countTokensSync(memory.content);
-		if (memoryTokens + tokens <= memoryBudget) {
-			memoryTokens += tokens;
-			includedMemories.push(`[${memory.category}] ${memory.content}`);
-		}
-	}
-
-	const memoryContext = includedMemories.length > 0 ? `## Relevant Memories\n${includedMemories.join("\n")}` : "";
-
-	const context: Array<{ role: string; content: string }> = [{ role: "system", content: systemPrompt }];
-
-	if (memoryContext) {
-		context.push({ role: "system", content: memoryContext });
-	}
-
-	let conversationTokens = 0;
-	const includedMessages: Array<{ role: string; content: string }> = [];
-
-	for (let i = 0; i < conversationMessages.length; i++) {
-		const msg = conversationMessages[i] as { role: string; content: string };
-		const tokens = countTokensSync(msg.content);
-		if (conversationTokens + tokens <= conversationBudget) {
-			conversationTokens += tokens;
-			includedMessages.push(msg);
-		}
-	}
-
-	context.push(...includedMessages);
-
-	const totalTokens = systemTokens + memoryTokens + conversationTokens;
-	const truncationApplied =
-		includedMessages.length < conversationMessages.length || includedMemories.length < memories.length;
-
-	return {
-		context,
-		stats: {
-			systemPromptTokens: systemTokens,
-			memoryTokens,
-			conversationTokens,
-			totalTokens,
-			maxContextTokens: systemTokens + memoryBudget + conversationBudget,
-			truncationApplied,
-			memoryCount: includedMemories.length,
-		},
-	};
 }

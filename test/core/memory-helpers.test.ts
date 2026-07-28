@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
-import { buildContextWithMemory, calculateContextBudget, type Memory, MemoryStore } from "../../src/core/memory.js";
+import { buildContextWithMemory, calculateContextBudget } from "../../src/core/context-budget.js";
+import { type Memory, MemoryStore } from "../../src/core/memory.js";
 
 const TEMP_DIR = "/tmp/test-memory-store";
 
