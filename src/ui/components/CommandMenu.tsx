@@ -33,6 +33,7 @@ const STATIC_COMMANDS: Command[] = [
 	{ name: "/plan", description: "Show current plan" },
 	{ name: "/tasks", description: "List all tasks with status" },
 	{ name: "/todo", description: "Show pending tasks" },
+	{ name: "/review", description: "Review current plan with hooks" },
 ];
 
 export function CommandMenu({ filter = "", onSelect, onClose, skillItems = [] }: CommandMenuProps): React.ReactElement {

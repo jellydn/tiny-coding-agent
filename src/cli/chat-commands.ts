@@ -10,6 +10,7 @@ export const COMMANDS = {
 	THINKING: "/thinking",
 	EFFORT: "/effort",
 	BYE: "/bye",
+	REVIEW: "/review",
 } as const;
 
 export interface ParsedCommand {
@@ -99,6 +100,10 @@ export function parseChatCommand(input: string): ParsedCommand {
 			};
 		}
 		return { isCommand: true, error: `Invalid effort level: ${parts[1]}. Use: low/medium/high` };
+	}
+
+	if (fuzzyMatch(cmd, COMMANDS.REVIEW)) {
+		return { isCommand: true, matchedCommand: COMMANDS.REVIEW };
 	}
 
 	if (fuzzyMatch(cmd, COMMANDS.BYE)) {

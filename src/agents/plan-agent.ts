@@ -1,5 +1,7 @@
 import { prompt } from "../cli/prompt.js";
 import { loadConfig } from "../config/loader.js";
+import { buildRegistry, runHooks } from "../hooks/manager.js";
+import type { HookConfig } from "../hooks/types.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { CodebaseExplorer } from "./codebase-explorer.js";
@@ -11,6 +13,7 @@ export interface PlanAgentOptions {
 	stateFilePath?: string;
 	generatePrd?: boolean;
 	verbose?: boolean;
+	hooks?: HookConfig[];
 }
 
 export interface PlanResult {
@@ -123,8 +126,37 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 			maxTokens: 8192,
 		});
 
-		const plan = response.content;
+		let plan = response.content;
 		console.log(`✓ Plan generated (${plan.length} characters)`);
+
+		// --- Hook: post-plan-generate ---
+		// Run lifecycle hooks (e.g. plannotator) that may modify or reject the plan.
+		if (options?.hooks && options.hooks.length > 0) {
+			const registry = buildRegistry(options.hooks);
+			const hookResult = await runHooks(registry, "post-plan-generate", {
+				event: "post-plan-generate",
+				content: plan,
+				taskDescription,
+				stateFile: stateFilePath,
+			});
+
+			if (hookResult.modifiedContent) {
+				plan = hookResult.modifiedContent;
+				console.log(`✓ Plan modified by hook (${plan.length} characters)`);
+			}
+
+			if (hookResult.feedback) {
+				console.log(`\n📋 Hook feedback:\n${hookResult.feedback}\n`);
+			}
+
+			if (hookResult.approved === false) {
+				console.log("\n✗ Plan rejected by reviewer. Aborting.");
+				return {
+					success: false,
+					error: "Plan rejected by hook reviewer",
+				};
+			}
+		}
 
 		let prd: string | undefined;
 		if (generatePrd) {
