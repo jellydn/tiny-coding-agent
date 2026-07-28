@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Agent } from "../../src/core/agent.js";
+import { ProviderCache } from "../../src/core/provider-cache.js";
 import type { ChatOptions, ChatResponse, LLMClient, StreamChunk } from "../../src/providers/types.js";
 import { ToolRegistry } from "../../src/tools/registry.js";
 
@@ -27,69 +28,43 @@ class MockLLMClient implements LLMClient {
 }
 
 describe("Agent - Provider Fallback Behavior", () => {
-	describe("_getLlmClientForModel() fallback", () => {
+	describe("ProviderCache.getClientForModel() fallback", () => {
 		it("should use default client when provider configs are not provided", () => {
 			const defaultClient = new MockLLMClient();
-			const registry = new ToolRegistry();
-			const agent = new Agent(defaultClient, registry);
+			const cache = new ProviderCache(defaultClient);
 
-			const client = (
-				agent as unknown as {
-					_getLlmClientForModel(model: string): LLMClient;
-				}
-			)._getLlmClientForModel("gpt-4");
+			const client = cache.getClientForModel("gpt-4");
 
 			expect(client).toBe(defaultClient);
 		});
 
 		it("should use default client when provider configs are empty object", () => {
 			const defaultClient = new MockLLMClient();
-			const registry = new ToolRegistry();
-			const agent = new Agent(defaultClient, registry, {
-				providerConfigs: {},
-			});
+			const cache = new ProviderCache(defaultClient, {});
 
-			const client = (
-				agent as unknown as {
-					_getLlmClientForModel(model: string): LLMClient;
-				}
-			)._getLlmClientForModel("gpt-4");
+			const client = cache.getClientForModel("gpt-4");
 
 			expect(client).toBe(defaultClient);
 		});
 
 		it("should use default client when detectProvider returns unknown type", () => {
 			const defaultClient = new MockLLMClient();
-			const registry = new ToolRegistry();
-			const agent = new Agent(defaultClient, registry);
+			const cache = new ProviderCache(defaultClient);
 
-			const client = (
-				agent as unknown as {
-					_getLlmClientForModel(model: string): LLMClient;
-				}
-			)._getLlmClientForModel("unknown-model-123");
+			const client = cache.getClientForModel("unknown-model-123");
 
 			expect(client).toBe(defaultClient);
 		});
 
 		it("should not add to provider cache when using default client", () => {
 			const defaultClient = new MockLLMClient();
-			const registry = new ToolRegistry();
-			const agent = new Agent(defaultClient, registry);
+			const cache = new ProviderCache(defaultClient);
 
-			const agentPrivate = agent as unknown as {
-				_providerCache: Map<string, { client: LLMClient; timestamp: number }>;
-			};
+			expect(cache.size).toBe(0);
 
-			expect(agentPrivate._providerCache.size).toBe(0);
+			cache.getClientForModel("gpt-4");
 
-			(
-				agent as unknown as {
-					_getLlmClientForModel(model: string): LLMClient;
-				}
-			)._getLlmClientForModel("gpt-4");
-
-			expect(agentPrivate._providerCache.size).toBe(0);
+			expect(cache.size).toBe(0);
 		});
 	});
 
