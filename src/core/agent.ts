@@ -1,9 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { loadAgentsMd } from "../config/loader.js";
-import type { ObservabilityConfig, ProviderConfig, ThinkingConfig } from "../config/schema.js";
+import type { ObservabilityConfig, ThinkingConfig } from "../config/schema.js";
 import type { McpManager } from "../mcp/manager.js";
-import { createProvider, parseModelString } from "../providers/factory.js";
+import { parseModelString } from "../providers/factory.js";
 import { detectProvider } from "../providers/model-registry.js";
 import type { LLMClient, Message, TokenUsage, ToolDefinition } from "../providers/types.js";
 import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
@@ -23,6 +23,7 @@ import { ConversationManager } from "./conversation.js";
 import { DebugLogger } from "./debug-logger.js";
 import type { ContextStats } from "./memory.js";
 import { MemoryStore } from "./memory.js";
+import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Re-export for backward compatibility — other modules and tests import
@@ -43,17 +44,9 @@ export function redactApiKey(key?: string): string {
 	return `${key.slice(0, 4)}...REDACTED`;
 }
 
-export interface ProviderConfigs {
-	openai?: ProviderConfig;
-	anthropic?: ProviderConfig;
-	ollama?: ProviderConfig;
-	ollamaCloud?: ProviderConfig;
-	openrouter?: ProviderConfig;
-	opencode?: ProviderConfig;
-	zai?: ProviderConfig;
-	clinepass?: ProviderConfig;
-	qwencloud?: ProviderConfig;
-}
+// Re-export ProviderConfigs for backward compatibility — tests and other
+// modules import it from agent.ts. The canonical home is now provider-cache.ts.
+export type { ProviderConfigs } from "./provider-cache.js";
 
 export interface AgentOptions {
 	maxIterations?: number;
@@ -138,11 +131,8 @@ export function isValidToolCall(text: string): boolean {
 }
 
 export class Agent {
-	private _defaultLlmClient: LLMClient;
+	private _providerCache: ProviderCache;
 	private _providerConfigs?: ProviderConfigs;
-	private _providerCache: Map<string, { client: LLMClient; timestamp: number; healthy: boolean }> = new Map();
-	private static readonly DEFAULT_PROVIDER_CACHE_SIZE = 10;
-	private _providerCacheMaxSize: number;
 	private _toolRegistry: ToolRegistry;
 	private _maxIterations: number;
 	private _systemPrompt: string;
@@ -164,9 +154,8 @@ export class Agent {
 	private _debug: DebugLogger;
 
 	constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
-		this._defaultLlmClient = llmClient;
 		this._providerConfigs = options.providerConfigs;
-		this._providerCacheMaxSize = options.providerCacheSize ?? Agent.DEFAULT_PROVIDER_CACHE_SIZE;
+		this._providerCache = new ProviderCache(llmClient, options.providerConfigs, options.providerCacheSize);
 		this._toolRegistry = toolRegistry;
 		this._maxIterations = options.maxIterations ?? 20;
 		this._verbose = options.verbose ?? false;
@@ -227,69 +216,6 @@ export class Agent {
 		return this._skillsInitPromise;
 	}
 
-	private _evictOldestCacheEntry(): void {
-		let oldestKey: string | null = null;
-		let oldestTimestamp = Infinity;
-		for (const [key, entry] of this._providerCache.entries()) {
-			if (entry.timestamp < oldestTimestamp) {
-				oldestTimestamp = entry.timestamp;
-				oldestKey = key;
-			}
-		}
-		if (oldestKey) {
-			this._providerCache.delete(oldestKey);
-		}
-	}
-
-	private _getLlmClientForModel(model: string): LLMClient {
-		if (!this._providerConfigs) return this._defaultLlmClient;
-
-		const providerType = detectProvider(model);
-		const cached = this._providerCache.get(providerType);
-
-		if (cached?.healthy) {
-			cached.timestamp = Date.now();
-			return cached.client;
-		}
-
-		if (cached && !cached.healthy) {
-			this._providerCache.delete(providerType);
-		}
-
-		try {
-			const client = createProvider({
-				model,
-				provider: providerType,
-				providers: this._providerConfigs,
-			});
-
-			if (this._providerCache.size >= this._providerCacheMaxSize) {
-				this._evictOldestCacheEntry();
-			}
-
-			// Cache the new client as healthy
-			this._providerCache.set(providerType, { client, timestamp: Date.now(), healthy: true });
-			return client;
-		} catch (err) {
-			// Mark existing cache entry as unhealthy if it exists
-			const existing = this._providerCache.get(providerType);
-			if (existing) {
-				existing.healthy = false;
-			}
-			console.warn(`[Agent] Failed to create provider for ${providerType}, falling back to default: ${err}`);
-			return this._defaultLlmClient;
-		}
-	}
-
-	/** Detect the provider name for a model string, for log/span attributes. */
-	private _providerNameFor(model: string): string {
-		try {
-			return detectProvider(model);
-		} catch {
-			return "unknown";
-		}
-	}
-
 	startChatSession(): void {
 		this._conversationManager.startSession();
 	}
@@ -311,14 +237,14 @@ export class Agent {
 		this._clearSkillRestriction();
 
 		// --- Observability: begin request ----------------------------------
-		const providerName = this._providerNameFor(runtimeConfig?.model ?? model);
+		const providerName = this._providerCache.getProviderName(runtimeConfig?.model ?? model);
 		const obsCtx = { provider: providerName, model: runtimeConfig?.model ?? model };
 		this._obsWrapper.beginRequest(userPrompt, obsCtx);
 		// -------------------------------------------------------------------
 
 		const effectiveModel = runtimeConfig?.model ?? model;
 		const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
-		const llmClient = this._getLlmClientForModel(effectiveModel);
+		const llmClient = this._providerCache.getClientForModel(effectiveModel);
 
 		const { model: modelName } = parseModelString(effectiveModel);
 
@@ -754,10 +680,8 @@ export class Agent {
 	async healthCheck(): Promise<HealthStatus> {
 		const issues: string[] = [];
 
-		if (!this._defaultLlmClient) {
-			issues.push("No default LLM client configured");
-		}
-
+		// The default LLM client is always provided in the constructor, so
+		// we only flag an issue when provider configs are explicitly empty.
 		if (this._providerConfigs && Object.keys(this._providerConfigs).length === 0) {
 			issues.push("Provider configs empty");
 		}
