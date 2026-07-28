@@ -5,7 +5,46 @@
  *
  * The security-sensitive `promptHidden` (raw-mode `*` echoing with Ctrl+C
  * handling) lives here so it can be tested in isolation.
+ *
+ * Prompt DI: tests can override prompt/promptHidden via setPromptDeps()
+ * and restore defaults via resetPromptDeps(). Flow functions in
+ * login-flow.ts call getPromptFn()/getPromptHiddenFn() instead of the
+ * real functions directly, so mock prompts take effect without touching
+ * production callers (build-agent, plan-agent) that import prompt()
+ * directly.
  */
+
+// ===== Prompt DI singleton =====
+
+export interface PromptDeps {
+	prompt: (question: string) => Promise<string>;
+	promptHidden: (question: string) => Promise<string>;
+}
+
+let _promptFn: (question: string) => Promise<string> = prompt;
+let _promptHiddenFn: (question: string) => Promise<string> = promptHidden;
+
+/** Override prompt functions for testing. Call resetPromptDeps() in afterEach. */
+export function setPromptDeps(deps: Partial<PromptDeps>): void {
+	if (deps.prompt) _promptFn = deps.prompt;
+	if (deps.promptHidden) _promptHiddenFn = deps.promptHidden;
+}
+
+/** Restore default prompt functions after a test override. */
+export function resetPromptDeps(): void {
+	_promptFn = prompt;
+	_promptHiddenFn = promptHidden;
+}
+
+/** Get the current prompt function (real or mock). Used by login-flow.ts. */
+export function getPromptFn(): (question: string) => Promise<string> {
+	return _promptFn;
+}
+
+/** Get the current promptHidden function (real or mock). Used by login-flow.ts. */
+export function getPromptHiddenFn(): (question: string) => Promise<string> {
+	return _promptHiddenFn;
+}
 
 /**
  * Read a line from stdin via readline. Returns the trimmed answer.
