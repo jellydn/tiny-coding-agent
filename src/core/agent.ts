@@ -615,19 +615,8 @@ export class Agent {
 			issues.push("Provider configs empty");
 		}
 
-		if (issues.length > 0) {
-			return {
-				ready: false,
-				issues,
-				providerCount: this._providerCache.size,
-				skillCount: this._skillManager.count,
-				memoryEnabled: !!this._memoryStore,
-				mcpServers: this._mcpManager?.getServerStatus() ?? [],
-			};
-		}
-
 		return {
-			ready: true,
+			ready: issues.length === 0,
 			issues,
 			providerCount: this._providerCache.size,
 			skillCount: this._skillManager.count,

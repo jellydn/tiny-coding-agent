@@ -102,19 +102,15 @@ function toolExecutionHeader(te: ToolExecutionDisplay, symbol: string): string {
 }
 
 function displayToolExecutionPlain(te: ToolExecutionDisplay): void {
-	const isRunning = te.status === "running";
-	const isComplete = te.status === "complete";
-	const isError = te.status === "error";
-
-	if (isRunning) {
+	if (te.status === "running") {
 		process.stdout.write(toolExecutionHeader(te, ""));
 		return;
 	}
 
-	const symbol = isComplete ? "✓" : isError ? "✗" : "";
+	const symbol = te.status === "complete" ? "✓" : "✗";
 	process.stdout.write(toolExecutionHeader(te, symbol));
 
-	const outputToShow = isComplete ? te.output : isError ? te.error : undefined;
+	const outputToShow = te.status === "complete" ? te.output : te.error;
 	if (outputToShow) {
 		process.stdout.write(formatOutputPreview(outputToShow));
 	}
