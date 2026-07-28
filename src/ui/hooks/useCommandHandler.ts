@@ -8,6 +8,7 @@ import { buildRegistry, hasHooks, runHooks } from "../../hooks/manager.js";
 import { PLANNOTATOR_PRESET } from "../../hooks/presets.js";
 import type { HookConfig } from "../../hooks/types.js";
 import type { McpManager } from "../../mcp/manager.js";
+import { generateHelpText, resolveCommandAlias } from "../chat-command-registry.js";
 import type { Command } from "../components/CommandMenu.js";
 import { MessageRole } from "../types/enums.js";
 
@@ -357,41 +358,22 @@ export function useCommandHandler({
 		onAddMessage(MessageRole.ASSISTANT, "✓ Plan approved by reviewer.");
 	}, [onAddMessage]);
 
+	// Dispatch map — each command name maps to a handler function.
+	// Aliases (/tasks, /todo → /plan) are resolved via resolveCommandAlias()
+	// before dispatch. The /help text is auto-generated from the registry.
 	const handleCommand = useCallback(
 		(commandName: string, args: string = "") => {
-			switch (commandName) {
-				case "/clear":
+			const canonical = resolveCommandAlias(commandName);
+
+			const dispatchers: Record<string, () => void> = {
+				"/clear": () => {
 					onClearMessages();
 					onAddMessage(MessageRole.ASSISTANT, "Conversation cleared.");
-					break;
-				case "/exit":
-					onExit();
-					break;
-				case "/help":
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`Available commands:
-  /help    - Show this help
-  /clear   - Clear conversation
-  /model   - Switch model
-  /agent   - Switch agent
-  /login   - Show provider connection status
-  /logout  - Show provider logout status
-  /tools   - View tool executions
-  /mcp     - Show MCP server status
-  /memory  - List memories
-  /skill   - List skills
-  /plan    - Show current plan
-  /tasks   - List all tasks with status
-  /todo    - Show pending tasks
-  /review  - Review current plan with hooks
-  /exit    - Exit`
-					);
-					break;
-				case "/model":
-					onSetShowModelPicker(true);
-					break;
-				case "/agent":
+				},
+				"/exit": () => onExit(),
+				"/help": () => onAddMessage(MessageRole.ASSISTANT, generateHelpText()),
+				"/model": () => onSetShowModelPicker(true),
+				"/agent": () => {
 					if (onSetShowAgentSwitcher) {
 						onSetShowAgentSwitcher(true);
 					} else {
@@ -406,39 +388,28 @@ export function useCommandHandler({
 Use ←/→ to navigate, Enter to select.`
 						);
 					}
-					break;
-				case "/login":
-					handleLoginCommand();
-					break;
-				case "/logout":
-					handleLogoutCommand();
-					break;
-				case "/mcp":
-					handleMcpCommand();
-					break;
-				case "/skill":
-					handleSkillCommand(args);
-					break;
-				case "/memory":
-					handleMemoryCommand();
-					break;
-				case "/plan":
-				case "/tasks":
-				case "/todo":
-					handlePlanCommand(args);
-					break;
-				case "/review":
-					handleReviewCommand();
-					break;
-				case "/tools":
+				},
+				"/login": () => handleLoginCommand(),
+				"/logout": () => handleLogoutCommand(),
+				"/mcp": () => handleMcpCommand(),
+				"/skill": () => handleSkillCommand(args),
+				"/memory": () => handleMemoryCommand(),
+				"/plan": () => handlePlanCommand(args),
+				"/review": () => handleReviewCommand(),
+				"/tools": () => {
 					if (onSetShowToolsPanel) {
 						onSetShowToolsPanel(true);
 					} else {
 						onAddMessage(MessageRole.ASSISTANT, "No tools executed yet.");
 					}
-					break;
-				default:
-					onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
+				},
+			};
+
+			const handler = dispatchers[canonical];
+			if (handler) {
+				handler();
+			} else {
+				onAddMessage(MessageRole.ASSISTANT, `Unknown command: ${commandName}`);
 			}
 		},
 		[

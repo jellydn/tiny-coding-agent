@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SkillMetadata } from "../../skills/types.js";
+import { getCommandList } from "../chat-command-registry.js";
 
 export interface Command {
 	name: string;
@@ -15,26 +16,8 @@ interface CommandMenuProps {
 	skillItems?: SkillMetadata[];
 }
 
-const STATIC_COMMANDS: Command[] = [
-	{ name: "/help", description: "Show available commands" },
-	{ name: "/clear", description: "Clear the conversation" },
-	{ name: "/model", description: "Switch the model" },
-	{ name: "/agent", description: "Switch agent" },
-	{ name: "/login", description: "Show provider connection status" },
-	{ name: "/logout", description: "Show provider logout guidance" },
-	{ name: "/tools", description: "View tool executions" },
-	{ name: "/mcp", description: "Show MCP server status" },
-	{ name: "/memory", description: "List memories" },
-	{ name: "/exit", description: "Exit the session" },
-	{
-		name: "/skill",
-		description: "List skills",
-	},
-	{ name: "/plan", description: "Show current plan" },
-	{ name: "/tasks", description: "List all tasks with status" },
-	{ name: "/todo", description: "Show pending tasks" },
-	{ name: "/review", description: "Review current plan with hooks" },
-];
+// Auto-generated from the chat-command-registry — no more manual sync.
+const STATIC_COMMANDS: Command[] = getCommandList();
 
 export function CommandMenu({ filter = "", onSelect, onClose, skillItems = [] }: CommandMenuProps): React.ReactElement {
 	const [selectedIndex, setSelectedIndex] = useState(0);
