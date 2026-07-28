@@ -17,6 +17,11 @@
  */
 
 import { readStateFile, type StateResult, writeStateFile } from "./state.js";
+
+// Re-export for backward compatibility — CLI handlers and agents import
+// DEFAULT_STATE_FILE from state-manager.js (the module they already depend on).
+export { DEFAULT_STATE_FILE } from "./state.js";
+
 import type { AgentPhase, AgentResult, AgentStatus, BuildResult, StateError, StateFile } from "./types.js";
 
 const DEFAULT_AGENT_NAME = "tiny-agent";

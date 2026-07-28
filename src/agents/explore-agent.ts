@@ -1,6 +1,7 @@
 import type { Message } from "../providers/types.js";
 import { createAgentClient } from "./agent-client.js";
 import { CodebaseExplorer } from "./codebase-explorer.js";
+import { DEFAULT_STATE_FILE } from "./state.js";
 import { StateManager } from "./state-manager.js";
 
 export interface ExploreAgentOptions {
@@ -84,7 +85,7 @@ export async function exploreAgent(
 	taskDescription: string,
 	options?: ExploreAgentOptions
 ): Promise<ExploreAgentResult> {
-	const stateFilePath = options?.stateFilePath || ".tiny-state.json";
+	const stateFilePath = options?.stateFilePath || DEFAULT_STATE_FILE;
 	const depth = options?.depth || "shallow";
 	const verbose = options?.verbose || false;
 

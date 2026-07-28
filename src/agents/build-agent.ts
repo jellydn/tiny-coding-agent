@@ -6,6 +6,7 @@ import { fileTools } from "../tools/file-tools.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { createAgentClient } from "./agent-client.js";
 import { type Step as GrammarStep, type Plan, parse as parsePlanGrammar } from "./plan-grammar.js";
+import { DEFAULT_STATE_FILE } from "./state.js";
 import { StateManager } from "./state-manager.js";
 import { StepExecutor } from "./step-executor.js";
 
@@ -188,7 +189,7 @@ function createBuildRegistry(): ToolRegistry {
 }
 
 export async function buildAgent(planContent: string, options?: BuildAgentOptions): Promise<BuildAgentResult> {
-	const stateFilePath = options?.stateFilePath || ".tiny-state.json";
+	const stateFilePath = options?.stateFilePath || DEFAULT_STATE_FILE;
 	const dryRun = options?.dryRun ?? false;
 	const verbose = options?.verbose ?? false;
 

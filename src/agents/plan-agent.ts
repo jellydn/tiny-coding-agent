@@ -5,6 +5,7 @@ import type { Message } from "../providers/types.js";
 import { createAgentClient } from "./agent-client.js";
 import { CodebaseExplorer } from "./codebase-explorer.js";
 import { exampleOutput } from "./plan-grammar.js";
+import { DEFAULT_STATE_FILE } from "./state.js";
 import { StateManager } from "./state-manager.js";
 
 export interface PlanAgentOptions {
@@ -89,7 +90,7 @@ ${generatePrd ? "Generate a comprehensive PRD based on the implementation plan."
 }
 
 export async function planAgent(taskDescription: string, options?: PlanAgentOptions): Promise<PlanResult> {
-	const stateFilePath = options?.stateFilePath || ".tiny-state.json";
+	const stateFilePath = options?.stateFilePath || DEFAULT_STATE_FILE;
 	const generatePrd = options?.generatePrd || false;
 	const verbose = options?.verbose || false;
 

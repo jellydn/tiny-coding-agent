@@ -1,11 +1,9 @@
 import { buildAgent } from "../../agents/build-agent.js";
 import { exploreAgent } from "../../agents/explore-agent.js";
 import { planAgent } from "../../agents/plan-agent.js";
-import { StateManager } from "../../agents/state-manager.js";
+import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import type { HookConfig } from "../../hooks/types.js";
 import type { CliOptions } from "../shared.js";
-
-const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 export async function handleAgent(
 	command: string,

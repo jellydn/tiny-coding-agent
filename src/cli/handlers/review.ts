@@ -10,15 +10,13 @@
  * updated plan is saved back to the state file.
  */
 
-import { StateManager } from "../../agents/state-manager.js";
+import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import { readConfigFile } from "../../config/config-io.js";
 import { getConfigPath } from "../../config/loader.js";
 import { buildRegistry, hasHooks, runHooks } from "../../hooks/manager.js";
 import { PLANNOTATOR_PRESET } from "../../hooks/presets.js";
 import type { HookConfig, HookEvent } from "../../hooks/types.js";
 import type { CliOptions } from "../shared.js";
-
-const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 export async function handleReview(_config: unknown, args: string[], options: CliOptions): Promise<void> {
 	const stateFile = options.stateFile || DEFAULT_STATE_FILE;
