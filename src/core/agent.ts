@@ -20,6 +20,7 @@ import {
 } from "./agent-utils.js";
 import { buildContextStats, type PrepareContextResult, prepareContext } from "./context-budget.js";
 import { ConversationManager } from "./conversation.js";
+import { DebugLogger } from "./debug-logger.js";
 import type { ContextStats } from "./memory.js";
 import { MemoryStore } from "./memory.js";
 import { TurnExecutor } from "./turn-executor.js";
@@ -160,6 +161,7 @@ export class Agent {
 	private _mcpManager?: McpManager;
 	private _obsWrapper: AgentObservability;
 	private _turnExecutor: TurnExecutor;
+	private _debug: DebugLogger;
 
 	constructor(llmClient: LLMClient, toolRegistry: ToolRegistry, options: AgentOptions = {}) {
 		this._defaultLlmClient = llmClient;
@@ -177,6 +179,7 @@ export class Agent {
 		this._conversationManager = new ConversationManager(options.conversationFile);
 		this._obsWrapper = new AgentObservability(options.observability);
 		this._turnExecutor = new TurnExecutor(toolRegistry, { verbose: options.verbose });
+		this._debug = new DebugLogger(this._verbose);
 
 		let effectiveSystemPrompt =
 			options.systemPrompt ??
@@ -358,31 +361,18 @@ export class Agent {
 
 		const tools = this._getToolDefinitions();
 
-		if (this._verbose) {
-			const providerType = detectProvider(effectiveModel);
-			const providerConfig = this._providerConfigs?.[providerType];
-
-			console.log("\n[LLM Request Details]");
-			console.log(`  Provider: ${providerType}`);
-			console.log(`  Model: ${effectiveModel}`);
-			console.log(`  API Key: ${redactApiKey(providerConfig?.apiKey)}`);
-			if (providerConfig?.baseUrl) {
-				console.log(`  Base URL: ${providerConfig.baseUrl}`);
-			}
-			if (effectiveThinking?.enabled) {
-				console.log(
-					`  Thinking: enabled (effort: ${effectiveThinking.effort ?? "medium"}, budget: ${effectiveThinking.budgetTokens ?? "default"})`
-				);
-			}
-			console.log(`  System Prompt: ${this._systemPrompt.length} chars`);
-			console.log(`  Messages: ${messages.length}`);
-			console.log(`  Tools: ${tools.length}`);
-			console.log(`  maxContextTokens: ${this._maxContextTokens}`);
-			if (this._memoryStore) {
-				console.log(`  Memory: ${this._memoryStore.count()} memories stored`);
-			}
-			console.log("");
-		}
+		const providerTypeForDetails = detectProvider(effectiveModel);
+		this._debug.logRequestDetails({
+			providerType: providerTypeForDetails,
+			model: effectiveModel,
+			providerConfig: this._providerConfigs?.[providerTypeForDetails],
+			thinking: effectiveThinking,
+			systemPromptLength: this._systemPrompt.length,
+			messageCount: messages.length,
+			toolCount: tools.length,
+			maxContextTokens: this._maxContextTokens,
+			memoryCount: this._memoryStore?.count(),
+		});
 
 		let iteration = 0;
 		let loopDetected = false;
@@ -402,16 +392,7 @@ export class Agent {
 			for (iteration = 0; iteration < this._maxIterations; iteration++) {
 				checkAborted(options?.signal);
 
-				if (this._verbose) {
-					console.log(`\n[Iteration ${iteration + 1}]`);
-					if (this._trackContextUsage) {
-						console.log(
-							`[Context: ${contextStats.totalTokens}/${contextStats.maxContextTokens} - ` +
-								`sys: ${contextStats.systemPromptTokens}t, mem: ${contextStats.memoryTokens}t, ` +
-								`conv: ${contextStats.conversationTokens}t]`
-						);
-					}
-				}
+				this._debug.logIteration(iteration, contextStats, this._trackContextUsage);
 
 				// --- Observability: LLM request span + timer ------------------------
 				const { span: llmSpan, timer: llmTimer } = this._obsWrapper.beginLlmCall({
@@ -496,12 +477,7 @@ export class Agent {
 				);
 				// --------------------------------------------------------------------
 
-				if (this._verbose) {
-					console.log(`LLM Response: ${fullContent}`);
-					if (responseToolCalls.length > 0) {
-						console.log(`Tool Calls: ${responseToolCalls.join(", ")}`);
-					}
-				}
+				this._debug.logLlmResponse(fullContent, responseToolCalls);
 
 				const assistantMessage: Message = {
 					role: "assistant",
@@ -515,9 +491,7 @@ export class Agent {
 				}
 
 				if (assistantToolCalls.length === 0) {
-					if (this._verbose) {
-						console.log(`\nAgent finished after ${iteration + 1} iteration(s)`);
-					}
+					this._debug.logAgentFinished(iteration + 1);
 
 					await this._updateConversationHistory(messages);
 
@@ -593,9 +567,7 @@ export class Agent {
 			}
 
 			if (loopDetected) {
-				if (this._verbose) {
-					console.log(`\n[Loop detected - requesting final answer from LLM]`);
-				}
+				this._debug.logLoopDetected();
 
 				// Use streamFinalAnswer to eliminate the duplicate stream-creation +
 				// iteration + catch pattern. The helper yields content strings and
@@ -651,9 +623,7 @@ export class Agent {
 				return;
 			}
 
-			if (this._verbose) {
-				console.log(`\n[Agent reached max iterations (${this._maxIterations})]`);
-			}
+			this._debug.logMaxIterations(this._maxIterations);
 
 			await this._updateConversationHistory(messages);
 
