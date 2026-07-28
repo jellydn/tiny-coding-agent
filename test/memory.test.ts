@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildContextWithMemory, calculateContextBudget, MemoryStore } from "@/core/memory.js";
+import { buildContextWithMemory, calculateContextBudget } from "@/core/context-budget.js";
+import { MemoryStore } from "@/core/memory.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tempDir = path.join(__dirname, "..", "..", "tmp");
