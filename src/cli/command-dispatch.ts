@@ -21,10 +21,12 @@
 import type { Config } from "../config/schema.js";
 import { handleAgent } from "./handlers/agent.js";
 import { handleConfig } from "./handlers/config.js";
+import { handleHooks } from "./handlers/hooks.js";
 import { handleLogin, handleLogout } from "./handlers/login.js";
 import { handleMcp } from "./handlers/mcp.js";
 import { handleMemory } from "./handlers/memory.js";
 import { handlePlan } from "./handlers/plan.js";
+import { handleReview } from "./handlers/review.js";
 import { handleSkill } from "./handlers/skill.js";
 import { handleState } from "./handlers/state.js";
 import { handleStatus } from "./handlers/status.js";
@@ -107,13 +109,18 @@ function buildPostConfigTable(): Map<string, CommandEntry> {
 		["memory", { type: "handler", handler: (ctx) => handleMemory(ctx.config, ctx.args, ctx.options) }],
 		["skill", { type: "handler", handler: (ctx) => handleSkill(ctx.config, ctx.args, ctx.options) }],
 		["mcp", { type: "handler", handler: (ctx) => handleMcp(ctx.args) }],
+		["hooks", { type: "handler", handler: (ctx) => handleHooks(ctx.config, ctx.args, ctx.options) }],
+		["review", { type: "handler", handler: (ctx) => handleReview(ctx.config, ctx.args, ctx.options) }],
 		["state", { type: "handler", handler: (ctx) => handleState(ctx.config, ctx.args, ctx.options) }],
 		["trace", { type: "handler", handler: (ctx) => handleTrace(ctx.config, ctx.args, ctx.options) }],
 		["plan", { type: "handler", handler: (ctx) => handlePlanRoute(ctx) }],
-		["build", { type: "handler", handler: (ctx) => handleAgent("build", ctx.args, ctx.options) }],
-		["explore", { type: "handler", handler: (ctx) => handleAgent("explore", ctx.args, ctx.options) }],
-		["run-plan-build", { type: "handler", handler: (ctx) => handleAgent("run-plan-build", ctx.args, ctx.options) }],
-		["run-all", { type: "handler", handler: (ctx) => handleAgent("run-all", ctx.args, ctx.options) }],
+		["build", { type: "handler", handler: (ctx) => handleAgent("build", ctx.args, ctx.options, ctx.config.hooks) }],
+		["explore", { type: "handler", handler: (ctx) => handleAgent("explore", ctx.args, ctx.options, ctx.config.hooks) }],
+		[
+			"run-plan-build",
+			{ type: "handler", handler: (ctx) => handleAgent("run-plan-build", ctx.args, ctx.options, ctx.config.hooks) },
+		],
+		["run-all", { type: "handler", handler: (ctx) => handleAgent("run-all", ctx.args, ctx.options, ctx.config.hooks) }],
 		// Aliases — rewrite args then dispatch to the target command
 		["tasks", { type: "alias", target: "plan", args: ["tasks"] }],
 		["todo", { type: "alias", target: "plan", args: ["todo"] }],
@@ -132,7 +139,7 @@ async function handlePlanRoute(ctx: DispatchContext): Promise<void> {
 	if (planRoute(ctx.args[0]) === "plan") {
 		await handlePlan(ctx.config, ctx.args, ctx.options);
 	} else {
-		await handleAgent("plan", ctx.args, ctx.options);
+		await handleAgent("plan", ctx.args, ctx.options, ctx.config.hooks);
 	}
 }
 
@@ -182,6 +189,8 @@ export const KNOWN_COMMANDS = [
 	"memory",
 	"skill",
 	"mcp",
+	"hooks",
+	"review",
 	"plan",
 	"build",
 	"explore",

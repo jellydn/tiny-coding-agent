@@ -405,6 +405,8 @@ USAGE:
     tiny-agent memory [command]        Manage memories
     tiny-agent skill [command]         Manage skills
     tiny-agent mcp [command]           Manage MCP servers
+    tiny-agent hooks [command]         Manage lifecycle hooks (e.g. plannotator)
+    tiny-agent review                  Review the current plan using configured hooks
     tiny-agent plan <task>             Generate a plan for a task
     tiny-agent build                   Execute the build plan from state file
     tiny-agent explore [task]          Explore and analyze codebase
@@ -428,6 +430,12 @@ COMMANDS:
     mcp add <name> <cmd> [args...]     Add a new MCP server
     mcp enable <name>                  Enable an MCP server
     mcp disable <name>                 Disable an MCP server
+    hooks list                         List all configured hooks
+    hooks presets                      List available hook presets
+    hooks install <preset>             Install a preset (e.g. plannotator)
+    hooks enable <name>                Enable a hook
+    hooks disable <name>               Disable a hook
+    hooks remove <name>                Remove a hook
     state show                         Show current state file (JSON)
     state clear                        Clear/reset state file
     plan show                          Show the current plan
@@ -463,6 +471,8 @@ EXAMPLES:
     tiny-agent logout openai           Remove OpenAI's API key
     tiny-agent login status            Show provider connection status
     tiny-agent logout status           Show provider connection status
+    tiny-agent hooks install plannotator  Install plannotator plan review
+    tiny-agent review                  Review current plan with hooks
     tiny-agent status                  Show provider and model capabilities
     tiny-agent --upgrade               Upgrade to the latest version
     tiny-agent --help                  Show this help message

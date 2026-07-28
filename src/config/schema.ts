@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { HookConfig } from "../hooks/types.js";
 
 export interface ProviderConfig {
 	apiKey?: string;
@@ -83,6 +84,7 @@ export interface Config {
 		qwencloud?: ProviderConfig;
 	};
 	mcpServers?: Record<string, McpServerConfig>;
+	hooks?: HookConfig[];
 	tools?: Record<string, ToolConfig>;
 	disabledMcpPatterns?: string[];
 	observability?: ObservabilityConfig;
@@ -155,6 +157,41 @@ export function validateConfig(config: unknown): ConfigValidationError[] {
 					errors.push({
 						field: `skillDirectories[${i}]`,
 						message: `skillDirectories[${i}] must be a string`,
+					});
+				}
+			}
+		}
+	}
+
+	// hooks validation
+	if (c.hooks !== undefined) {
+		if (!Array.isArray(c.hooks)) {
+			errors.push({
+				field: "hooks",
+				message: "hooks must be an array",
+			});
+		} else {
+			const validEvents = new Set(["post-plan-generate", "pre-build-execute", "post-explore-complete"]);
+			for (let i = 0; i < c.hooks.length; i++) {
+				const hook = c.hooks[i] as Record<string, unknown> | undefined;
+				if (!hook || typeof hook !== "object") {
+					errors.push({ field: `hooks[${i}]`, message: `hooks[${i}] must be an object` });
+					continue;
+				}
+				if (typeof hook.name !== "string" || !hook.name) {
+					errors.push({ field: `hooks[${i}].name`, message: `hooks[${i}].name is required and must be a string` });
+				}
+				if (typeof hook.command !== "string" || !hook.command) {
+					errors.push({
+						field: `hooks[${i}].command`,
+						message: `hooks[${i}].command is required and must be a string`,
+					});
+				}
+				const evt = hook.event as string | undefined;
+				if (typeof evt !== "string" || !validEvents.has(evt)) {
+					errors.push({
+						field: `hooks[${i}].event`,
+						message: `hooks[${i}].event must be one of: ${Array.from(validEvents).join(", ")}`,
 					});
 				}
 			}

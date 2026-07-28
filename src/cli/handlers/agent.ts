@@ -2,11 +2,17 @@ import { buildAgent } from "../../agents/build-agent.js";
 import { exploreAgent } from "../../agents/explore-agent.js";
 import { planAgent } from "../../agents/plan-agent.js";
 import { readStateFile } from "../../agents/state.js";
+import type { HookConfig } from "../../hooks/types.js";
 import type { CliOptions } from "../shared.js";
 
 const DEFAULT_STATE_FILE = ".tiny-state.json";
 
-export async function handleAgent(command: string, args: string[], options: CliOptions): Promise<void> {
+export async function handleAgent(
+	command: string,
+	args: string[],
+	options: CliOptions,
+	hooks?: HookConfig[]
+): Promise<void> {
 	const stateFile = options.stateFile || DEFAULT_STATE_FILE;
 	const taskDescription = args.join(" ").trim();
 
@@ -24,6 +30,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				generatePrd: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!result.success) {
@@ -58,6 +65,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				dryRun: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!result.success) {
@@ -115,6 +123,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				generatePrd: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!planResult.success) {
@@ -133,6 +142,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				dryRun: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!buildResult.success) {
@@ -157,6 +167,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				generatePrd: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!planResult.success) {
@@ -175,6 +186,7 @@ export async function handleAgent(command: string, args: string[], options: CliO
 				stateFilePath: stateFile,
 				dryRun: false,
 				verbose: options.verbose,
+				hooks,
 			});
 
 			if (!buildResult.success) {

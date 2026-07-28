@@ -1,4 +1,6 @@
 import { loadConfig } from "../config/loader.js";
+import { buildRegistry, runHooks } from "../hooks/manager.js";
+import type { HookConfig } from "../hooks/types.js";
 import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { bashTool } from "../tools/bash-tool.js";
@@ -13,6 +15,7 @@ export interface BuildAgentOptions {
 	stateFilePath?: string;
 	dryRun?: boolean;
 	verbose?: boolean;
+	hooks?: HookConfig[];
 }
 
 export interface BuildStep {
@@ -249,7 +252,38 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 
 		console.log("\n🚀 Starting build execution...");
 
-		const steps = parsePlanToSteps(planContent);
+		// --- Hook: pre-build-execute ---
+		// Run lifecycle hooks (e.g. plannotator) that may modify or reject the plan
+		// before execution begins. The plan content may be replaced if the hook
+		// returns modified content.
+		let effectivePlanContent = planContent;
+		if (options?.hooks && options.hooks.length > 0) {
+			const registry = buildRegistry(options.hooks);
+			const hookResult = await runHooks(registry, "pre-build-execute", {
+				event: "pre-build-execute",
+				content: planContent,
+				stateFile: stateFilePath,
+			});
+
+			if (hookResult.modifiedContent) {
+				effectivePlanContent = hookResult.modifiedContent;
+				console.log(`✓ Plan modified by hook (${effectivePlanContent.length} characters)`);
+			}
+
+			if (hookResult.feedback) {
+				console.log(`\n📋 Hook feedback:\n${hookResult.feedback}\n`);
+			}
+
+			if (hookResult.approved === false) {
+				console.log("\n✗ Build rejected by reviewer. Aborting.");
+				return {
+					success: false,
+					error: "Build rejected by hook reviewer",
+				};
+			}
+		}
+
+		const steps = parsePlanToSteps(effectivePlanContent);
 
 		if (verbose) {
 			console.log(`Found ${steps.length} steps to execute`);

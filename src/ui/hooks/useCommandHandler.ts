@@ -1,7 +1,12 @@
 import { useCallback } from "react";
-import { readStateFile } from "../../agents/state.js";
+import { readStateFile, writeStateFile } from "../../agents/state.js";
 import { formatProviderStatus } from "../../cli/handlers/login.js";
+import { readConfigFile } from "../../config/config-io.js";
+import { getConfigPath } from "../../config/loader.js";
 import type { Agent } from "../../core/agent.js";
+import { buildRegistry, hasHooks, runHooks } from "../../hooks/manager.js";
+import { PLANNOTATOR_PRESET } from "../../hooks/presets.js";
+import type { HookConfig } from "../../hooks/types.js";
 import type { McpManager } from "../../mcp/manager.js";
 import type { Command } from "../components/CommandMenu.js";
 import { MessageRole } from "../types/enums.js";
@@ -265,6 +270,93 @@ export function useCommandHandler({
 		}
 	}, [agent, onAddMessage]);
 
+	const handleReviewCommand = useCallback(async () => {
+		const stateFile = DEFAULT_STATE_FILE;
+
+		// Load hooks from config file
+		let hooks: HookConfig[] = [];
+		try {
+			const configPath = getConfigPath();
+			const fileConfig = await readConfigFile(configPath);
+			hooks = (fileConfig.hooks as HookConfig[] | undefined) ?? [];
+		} catch {
+			onAddMessage(MessageRole.ASSISTANT, "Error: Could not read config file for hooks.");
+			return;
+		}
+
+		if (hooks.length === 0 || !hasHooks(buildRegistry(hooks), "post-plan-generate")) {
+			onAddMessage(
+				MessageRole.ASSISTANT,
+				"No review hooks configured.\n\n" +
+					"To install the plannotator preset, exit and run:\n" +
+					"  tiny-agent hooks install plannotator\n\n" +
+					"Or add hooks manually in config.yaml."
+			);
+			return;
+		}
+
+		// Load the plan from the state file
+		const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
+		if (!stateResult.success || !stateResult.data) {
+			onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
+			return;
+		}
+
+		const plan = stateResult.data.results?.plan?.plan;
+		if (!plan) {
+			onAddMessage(MessageRole.ASSISTANT, "No plan found in state file. Run 'tiny-agent plan <task>' first.");
+			return;
+		}
+
+		onAddMessage(MessageRole.ASSISTANT, `📋 Reviewing plan (${plan.length} chars) with configured hooks...`);
+
+		const registry = buildRegistry(hooks);
+		const hookResult = await runHooks(registry, "post-plan-generate", {
+			event: "post-plan-generate",
+			content: plan,
+			stateFile,
+			taskDescription: stateResult.data.taskDescription,
+		});
+
+		if (hookResult.skipped) {
+			onAddMessage(
+				MessageRole.ASSISTANT,
+				`⚠️ Review hook was skipped (binary not found).\n\n${PLANNOTATOR_PRESET.installInstructions ?? ""}`
+			);
+			return;
+		}
+
+		if (!hookResult.success) {
+			onAddMessage(MessageRole.ASSISTANT, `✗ Review hook failed: ${hookResult.error ?? "unknown error"}`);
+			return;
+		}
+
+		if (hookResult.feedback) {
+			onAddMessage(MessageRole.ASSISTANT, `📋 Feedback:\n${hookResult.feedback}`);
+		}
+
+		if (hookResult.modifiedContent) {
+			const state = stateResult.data;
+			state.results.plan = { plan: hookResult.modifiedContent };
+			try {
+				await writeStateFile(stateFile, state);
+			} catch {
+				/* state write errors are non-fatal */
+			}
+			onAddMessage(
+				MessageRole.ASSISTANT,
+				`✓ Plan updated (${hookResult.modifiedContent.length} chars) and saved to ${stateFile}`
+			);
+		}
+
+		if (hookResult.approved === false) {
+			onAddMessage(MessageRole.ASSISTANT, "✗ Plan rejected by reviewer.");
+			return;
+		}
+
+		onAddMessage(MessageRole.ASSISTANT, "✓ Plan approved by reviewer.");
+	}, [onAddMessage]);
+
 	const handleCommand = useCallback(
 		(commandName: string, args: string = "") => {
 			switch (commandName) {
@@ -292,6 +384,7 @@ export function useCommandHandler({
   /plan    - Show current plan
   /tasks   - List all tasks with status
   /todo    - Show pending tasks
+  /review  - Review current plan with hooks
   /exit    - Exit`
 					);
 					break;
@@ -334,6 +427,9 @@ Use ←/→ to navigate, Enter to select.`
 				case "/todo":
 					handlePlanCommand(args);
 					break;
+				case "/review":
+					handleReviewCommand();
+					break;
 				case "/tools":
 					if (onSetShowToolsPanel) {
 						onSetShowToolsPanel(true);
@@ -358,6 +454,7 @@ Use ←/→ to navigate, Enter to select.`
 			handleMcpCommand,
 			handleMemoryCommand,
 			handlePlanCommand,
+			handleReviewCommand,
 		]
 	);
 
