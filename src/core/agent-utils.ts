@@ -106,6 +106,93 @@ export interface StreamLlmResult {
  * }
  * ```
  */
+// ─── streamFinalAnswer ───────────────────────────────────────────────
+
+/** Options for streamFinalAnswer — a subset of StreamLlmOptions without tools
+ *  (the final-answer stream never includes tool calls). */
+export interface StreamFinalAnswerOptions {
+	llmClient: LLMClient;
+	model: string;
+	systemPrompt: string;
+	messages: Message[];
+	thinking?: ChatOptions["thinking"];
+	signal?: AbortSignal;
+}
+
+/** Result of streamFinalAnswer — yielded content strings + any error. */
+export interface StreamFinalAnswerResult {
+	/** All content chunks yielded, concatenated. */
+	content: string;
+	/** If the stream threw a non-Abort error, it's captured here (not thrown). */
+	error?: string;
+	/** True if the error was an AbortError (caller should rethrow). */
+	aborted?: boolean;
+}
+
+/**
+ * Create an LLM stream and iterate it to completion, yielding content strings.
+ * Unlike streamLlmResponse, this helper:
+ * - Never passes tools (final-answer mode — no tool calls)
+ * - Catches non-Abort errors and returns them in the result (does not throw)
+ * - Re-throws AbortError (caller must handle)
+ *
+ * This eliminates the duplicate stream-iteration + catch pattern between
+ * the main loop's error path and the loop-detection final-answer block
+ * in runStream().
+ *
+ * The generator yields content strings for real-time display, then returns
+ * a StreamFinalAnswerResult with the full content + any error.
+ *
+ * Usage:
+ * ```ts
+ * const gen = streamFinalAnswer({ llmClient, model, systemPrompt, messages });
+ * while (true) {
+ *   const { value, done } = await gen.next();
+ *   if (done) {
+ *     if (value.aborted) throw new DOMException("Aborted", "AbortError");
+ *     if (value.error) { /* handle error *\/ }
+ *     else { /* value.content is the full text *\/ }
+ *     break;
+ *   }
+ *   // value is a content string — yield it to the UI
+ * }
+ * ```
+ */
+export async function* streamFinalAnswer(
+	options: StreamFinalAnswerOptions
+): AsyncGenerator<string, StreamFinalAnswerResult, unknown> {
+	let fullContent = "";
+
+	try {
+		const streamGen = streamLlmResponse({
+			llmClient: options.llmClient,
+			model: options.model,
+			systemPrompt: options.systemPrompt,
+			messages: options.messages,
+			thinking: options.thinking,
+			signal: options.signal,
+		});
+
+		while (true) {
+			const { value, done } = await streamGen.next();
+			if (done) break;
+			fullContent += value;
+			yield value;
+		}
+
+		return { content: fullContent };
+	} catch (err) {
+		const streamError = err as Error | DOMException;
+		if (streamError instanceof DOMException && streamError.name === "AbortError") {
+			return { content: fullContent, aborted: true };
+		}
+		const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+		return { content: fullContent, error: errorMessage };
+	}
+}
+
+// ─── streamLlmResponse ───────────────────────────────────────────────
+
 export async function* streamLlmResponse(options: StreamLlmOptions): AsyncGenerator<string, StreamLlmResult, unknown> {
 	const stream = options.llmClient.stream({
 		model: options.model,

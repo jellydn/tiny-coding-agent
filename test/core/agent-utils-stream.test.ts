@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { streamLlmResponse } from "../../src/core/agent-utils.js";
+import type { StreamFinalAnswerResult } from "../../src/core/agent-utils.js";
+import { streamFinalAnswer, streamLlmResponse } from "../../src/core/agent-utils.js";
 import type { ModelCapabilities } from "../../src/providers/capabilities.js";
 import type {
 	ChatOptions,
@@ -323,5 +324,191 @@ describe("streamLlmResponse", () => {
 		expect(result?.toolCalls).toHaveLength(2);
 		expect(result?.toolCalls[0]?.name).toBe("glob");
 		expect(result?.toolCalls[1]?.name).toBe("read_file");
+	});
+});
+
+describe("streamFinalAnswer", () => {
+	const baseMessages: Message[] = [{ role: "user", content: "hello" }];
+
+	it("should yield content strings and return full content", async () => {
+		const client = mockClient([{ content: "Hello ", done: false }, { content: "world!", done: false }, { done: true }]);
+
+		const gen = streamFinalAnswer({
+			llmClient: client,
+			model: "test-model",
+			systemPrompt: "You are helpful",
+			messages: baseMessages,
+		});
+
+		const contents: string[] = [];
+		let result: StreamFinalAnswerResult | undefined;
+		while (true) {
+			const { value, done } = await gen.next();
+			if (done) {
+				result = value;
+				break;
+			}
+			contents.push(value);
+		}
+
+		expect(contents).toEqual(["Hello ", "world!"]);
+		expect(result?.content).toBe("Hello world!");
+		expect(result.error).toBeUndefined();
+		expect(result.aborted).toBeUndefined();
+	});
+
+	it("should return empty content for an empty stream", async () => {
+		const client = mockClient([{ done: true }]);
+
+		const gen = streamFinalAnswer({
+			llmClient: client,
+			model: "test-model",
+			systemPrompt: "You are helpful",
+			messages: baseMessages,
+		});
+
+		let result: StreamFinalAnswerResult | undefined;
+		while (true) {
+			const { value, done } = await gen.next();
+			if (done) {
+				result = value;
+				break;
+			}
+		}
+
+		expect(result?.content).toBe("");
+		expect(result.error).toBeUndefined();
+	});
+
+	it("should not pass tools to the underlying stream", async () => {
+		let capturedTools: ToolDefinition[] | undefined;
+		const client: LLMClient = {
+			async chat() {
+				return { content: "mock", finishReason: "stop" };
+			},
+			async *stream(options: ChatOptions): AsyncGenerator<StreamChunk, void, unknown> {
+				capturedTools = options.tools;
+				yield { done: true };
+			},
+			async getCapabilities() {
+				return {
+					modelName: "mock",
+					supportsTools: true,
+					supportsStreaming: true,
+					supportsSystemPrompt: true,
+					supportsToolStreaming: true,
+					supportsThinking: false,
+					contextWindow: 128000,
+					maxOutputTokens: 4096,
+					isVerified: false,
+					source: "fallback",
+				};
+			},
+		};
+
+		const gen = streamFinalAnswer({
+			llmClient: client,
+			model: "test-model",
+			systemPrompt: "You are helpful",
+			messages: baseMessages,
+		});
+		await gen.next();
+
+		expect(capturedTools).toBeUndefined();
+	});
+
+	it("should catch non-Abort errors and return them in the result", async () => {
+		const client: LLMClient = {
+			async chat() {
+				return { content: "mock", finishReason: "stop" };
+			},
+			async *stream(): AsyncGenerator<StreamChunk, void, unknown> {
+				yield { content: "partial", done: false };
+				throw new Error("LLM connection failed");
+			},
+			async getCapabilities() {
+				return {
+					modelName: "mock",
+					supportsTools: true,
+					supportsStreaming: true,
+					supportsSystemPrompt: true,
+					supportsToolStreaming: true,
+					supportsThinking: false,
+					contextWindow: 128000,
+					maxOutputTokens: 4096,
+					isVerified: false,
+					source: "fallback",
+				};
+			},
+		};
+
+		const gen = streamFinalAnswer({
+			llmClient: client,
+			model: "test-model",
+			systemPrompt: "You are helpful",
+			messages: baseMessages,
+		});
+
+		const contents: string[] = [];
+		let result: StreamFinalAnswerResult | undefined;
+		while (true) {
+			const { value, done } = await gen.next();
+			if (done) {
+				result = value;
+				break;
+			}
+			contents.push(value);
+		}
+
+		expect(contents).toEqual(["partial"]);
+		expect(result?.content).toBe("partial");
+		expect(result?.error).toBe("LLM connection failed");
+		expect(result.aborted).toBeUndefined();
+	});
+
+	it("should mark aborted=true for AbortError without throwing", async () => {
+		const client: LLMClient = {
+			async chat() {
+				return { content: "mock", finishReason: "stop" };
+			},
+			async *stream(): AsyncGenerator<StreamChunk, void, unknown> {
+				yield { content: "partial", done: false };
+				throw new DOMException("Aborted", "AbortError");
+			},
+			async getCapabilities() {
+				return {
+					modelName: "mock",
+					supportsTools: true,
+					supportsStreaming: true,
+					supportsSystemPrompt: true,
+					supportsToolStreaming: true,
+					supportsThinking: false,
+					contextWindow: 128000,
+					maxOutputTokens: 4096,
+					isVerified: false,
+					source: "fallback",
+				};
+			},
+		};
+
+		const gen = streamFinalAnswer({
+			llmClient: client,
+			model: "test-model",
+			systemPrompt: "You are helpful",
+			messages: baseMessages,
+		});
+
+		let result: StreamFinalAnswerResult | undefined;
+		while (true) {
+			const { value, done } = await gen.next();
+			if (done) {
+				result = value;
+				break;
+			}
+		}
+
+		expect(result?.aborted).toBe(true);
+		expect(result?.error).toBeUndefined();
+		expect(result?.content).toBe("partial");
 	});
 });

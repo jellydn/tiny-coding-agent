@@ -12,7 +12,12 @@ import { parseSkillFrontmatter } from "../skills/parser.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { escapeXml } from "../utils/xml.js";
 import { AgentObservability } from "./agent-observability.js";
-import { type StreamLlmResult, streamLlmResponse } from "./agent-utils.js";
+import {
+	type StreamFinalAnswerResult,
+	type StreamLlmResult,
+	streamFinalAnswer,
+	streamLlmResponse,
+} from "./agent-utils.js";
 import { buildContextStats, type PrepareContextResult, prepareContext } from "./context-budget.js";
 import { ConversationManager } from "./conversation.js";
 import type { ContextStats } from "./memory.js";
@@ -592,34 +597,41 @@ export class Agent {
 					console.log(`\n[Loop detected - requesting final answer from LLM]`);
 				}
 
-				try {
-					const streamGen = streamLlmResponse({
-						llmClient,
-						model: modelName,
-						systemPrompt: this._systemPrompt,
-						messages,
-						thinking: effectiveThinking,
-						signal: options?.signal,
-					});
+				// Use streamFinalAnswer to eliminate the duplicate stream-creation +
+				// iteration + catch pattern. The helper yields content strings and
+				// returns a StreamFinalAnswerResult with the full content or error.
+				const finalGen = streamFinalAnswer({
+					llmClient,
+					model: modelName,
+					systemPrompt: this._systemPrompt,
+					messages,
+					thinking: effectiveThinking,
+					signal: options?.signal,
+				});
 
-					while (true) {
-						const { value, done } = await streamGen.next();
-						if (done) break;
-						yield {
-							content: value,
-							iterations: iteration + 1,
-							done: false,
-							contextStats: updateStats(),
-						};
+				let finalResult: StreamFinalAnswerResult;
+				while (true) {
+					const { value, done } = await finalGen.next();
+					if (done) {
+						finalResult = value;
+						break;
 					}
-				} catch (streamError) {
-					if (streamError instanceof DOMException && streamError.name === "AbortError") {
-						throw streamError;
-					}
-					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+					yield {
+						content: value,
+						iterations: iteration + 1,
+						done: false,
+						contextStats: updateStats(),
+					};
+				}
+
+				if (finalResult.aborted) {
+					throw new DOMException("Aborted", "AbortError");
+				}
+
+				if (finalResult.error) {
 					this._obsWrapper.markFailed();
 					yield {
-						content: `\n\nError during LLM stream: ${errorMessage}`,
+						content: `\n\nError during LLM stream: ${finalResult.error}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats: updateStats(),
