@@ -1,152 +1,16 @@
-import { render } from "ink";
 import { loadConfig } from "../config/loader.js";
 import { getEnabledProviders, getProviderDisplayName } from "../ui/components/ModelPicker.js";
-import { ToolOutput } from "../ui/components/ToolOutput.js";
 import { statusLineManager } from "../ui/index.js";
 import { StatusType } from "../ui/types/enums.js";
 import { isJsonMode, setJsonMode, setNoColor, shouldUseInk } from "../ui/utils.js";
 import { dispatchCommand, dispatchPreConfig, registerMainHandlers } from "./command-dispatch.js";
 import { handleUpgrade } from "./handlers/upgrade.js";
 import { type CliOptions, createAgent, parseArgs } from "./shared.js";
+import { displayToolExecution, outputJson, ThinkingTagFilter } from "./tool-display.js";
 
-const TOOL_PREVIEW_LINES = Number.parseInt(process.env.TINY_AGENT_TOOL_PREVIEW_LINES ?? "6", 10);
-
-export class ThinkingTagFilter {
-	private buffer = "";
-	private pendingContent = "";
-
-	filter(chunk: string): string {
-		if (this.pendingContent.length > 0) {
-			chunk = this.pendingContent + chunk;
-			this.pendingContent = "";
-		}
-		this.buffer += chunk;
-		let result = "";
-		let lastIndex = 0;
-
-		while (true) {
-			const startIdx = this.buffer.indexOf("<thinking>", lastIndex);
-			if (startIdx === -1) {
-				break;
-			}
-
-			const endIdx = this.buffer.indexOf("</thinking>", startIdx + 11);
-			if (endIdx === -1) {
-				const contentBefore = this.buffer.slice(lastIndex, startIdx);
-				if (contentBefore.length > 0) {
-					result += `${contentBefore}\n`;
-				}
-				this.pendingContent = this.buffer.slice(startIdx);
-				this.buffer = "";
-				return result;
-			}
-
-			const contentBefore = this.buffer.slice(lastIndex, startIdx);
-			result += contentBefore;
-			const afterEnd = this.buffer.slice(endIdx + 11);
-			if (contentBefore.length > 0 && afterEnd.length > 0 && !afterEnd.startsWith("<thinking>")) {
-				result += "\n";
-			}
-			lastIndex = endIdx + 11;
-		}
-
-		result += this.buffer.slice(lastIndex);
-		this.buffer = "";
-		return result;
-	}
-
-	flush(): string {
-		const remaining = this.buffer;
-		this.buffer = "";
-		this.pendingContent = "";
-		return remaining;
-	}
-}
-
-export function formatArgs(args: Record<string, unknown> | undefined): string {
-	if (!args || Object.keys(args).length === 0) return "";
-	const entries = Object.entries(args)
-		.filter(([, v]) => v !== undefined)
-		.map(([k, v]) => {
-			const str = typeof v === "string" ? v : JSON.stringify(v);
-			if (str.length >= 80) {
-				if (k === "content") {
-					return `${k}=\n${str.slice(0, 80)}\n... (${str.length - 80} more chars)`;
-				}
-				return `${k}=${str.slice(0, 80)}...`;
-			}
-			return `${k}=${str}`;
-		});
-	return entries.length > 0 ? ` (${entries.join(", ")})` : "";
-}
-
-type ToolExecutionDisplay = {
-	name: string;
-	status: "running" | "complete" | "error";
-	args?: Record<string, unknown>;
-	output?: string;
-	error?: string;
-};
-
-function formatOutputPreview(output: string): string {
-	const lines = output.split("\n");
-	const preview =
-		lines.length > TOOL_PREVIEW_LINES ? `${lines.slice(0, TOOL_PREVIEW_LINES).join("\n")}\n  ...` : output;
-	return `  │ ${preview.split("\n").join("\n  │ ")}\n`;
-}
-
-function toolExecutionHeader(te: ToolExecutionDisplay, symbol: string): string {
-	const argsStr = formatArgs(te.args);
-	return `  [${symbol}] ${te.name}${argsStr}\n`;
-}
-
-function displayToolExecutionPlain(te: ToolExecutionDisplay): void {
-	const isRunning = te.status === "running";
-	const isComplete = te.status === "complete";
-	const isError = te.status === "error";
-
-	if (isRunning) {
-		process.stdout.write(toolExecutionHeader(te, ""));
-		return;
-	}
-
-	const symbol = isComplete ? "✓" : isError ? "✗" : "";
-	process.stdout.write(toolExecutionHeader(te, symbol));
-
-	const outputToShow = isComplete ? te.output : isError ? te.error : undefined;
-	if (outputToShow) {
-		process.stdout.write(formatOutputPreview(outputToShow));
-	}
-}
-
-function displayToolExecutionInk(te: ToolExecutionDisplay): void {
-	if (te.status === "running") {
-		return;
-	}
-	const success = te.status === "complete";
-	const { unmount } = render(
-		<ToolOutput name={te.name} success={success} output={te.output} error={te.error} args={te.args} />
-	);
-	unmount();
-}
-
-function displayToolExecution(te: ToolExecutionDisplay, useInk: boolean): void {
-	if (useInk) {
-		displayToolExecutionInk(te);
-	} else {
-		displayToolExecutionPlain(te);
-	}
-}
-
-interface JsonOutput {
-	type: "user" | "assistant" | "tool";
-	content: string;
-	toolName?: string;
-}
-
-function outputJson(data: JsonOutput): void {
-	console.log(JSON.stringify(data));
-}
+// Re-export for backward compatibility — tests import ThinkingTagFilter
+// and formatArgs from main.tsx. The canonical home is now tool-display.ts.
+export { formatArgs, ThinkingTagFilter } from "./tool-display.js";
 
 async function readStdin(): Promise<string> {
 	if (process.stdin.isTTY) return "";
@@ -267,7 +131,7 @@ async function handleRun(config: ReturnType<typeof loadConfig>, args: string[], 
 						process.stdout.write("\n  Tools:\n");
 					}
 					for (const te of chunk.toolExecutions) {
-						displayToolExecution(te, useInk);
+						displayToolExecution(te);
 					}
 				}
 			}

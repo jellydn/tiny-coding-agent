@@ -302,14 +302,17 @@ describe("Agent", () => {
 			agent._setSkillRestriction(["read"]);
 
 			// Get tool definitions - should only contain 'read'
-			const agentPrivate = agent as unknown as {
-				_activeSkillAllowedTools: string[] | undefined;
+			const agentSkill = agent as unknown as {
+				_skillManager: {
+					hasRestriction: boolean;
+					filterTools: (tools: { name: string }[]) => { name: string }[];
+				};
 				_toolRegistry: ToolRegistry;
-				_getToolDefinitions(): ReturnType<typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions>;
 			};
-			expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
+			expect(agentSkill._skillManager.hasRestriction).toBe(true);
 
-			const toolDefs = agentPrivate._getToolDefinitions();
+			const allTools = agentSkill._toolRegistry.list().map((tool) => ({ name: tool.name }));
+			const toolDefs = agentSkill._skillManager.filterTools(allTools);
 
 			expect(toolDefs.length).toBe(1);
 			const firstTool = toolDefs[0];
@@ -340,17 +343,21 @@ describe("Agent", () => {
 				execute: async () => ({ success: true, output: "command output" }),
 			});
 
-			const agentPrivate = agent as unknown as {
-				_activeSkillAllowedTools: string[] | undefined;
-				_getToolDefinitions(): ReturnType<typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions>;
+			const agentSkill = agent as unknown as {
+				_skillManager: {
+					hasRestriction: boolean;
+					filterTools: (tools: { name: string }[]) => { name: string }[];
+				};
+				_toolRegistry: ToolRegistry;
 			};
-			expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
+			expect(agentSkill._skillManager.hasRestriction).toBe(false);
 
 			// Get tool definitions - should contain all tools
-			const toolDefs = agentPrivate._getToolDefinitions();
+			const allTools = agentSkill._toolRegistry.list().map((tool) => ({ name: tool.name }));
+			const toolDefs = agentSkill._skillManager.filterTools(allTools);
 
 			expect(toolDefs.length).toBe(2);
-			expect(toolDefs.map((t) => t.name).sort()).toEqual(["bash", "read"]);
+			expect(toolDefs.map((tool) => tool.name).sort()).toEqual(["bash", "read"]);
 		});
 
 		it("should clear restriction when _clearSkillRestriction is called", async () => {
@@ -380,17 +387,21 @@ describe("Agent", () => {
 			agent._setSkillRestriction(["read"]);
 			agent._clearSkillRestriction();
 
-			const agentPrivate = agent as unknown as {
-				_activeSkillAllowedTools: string[] | undefined;
-				_getToolDefinitions(): ReturnType<typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions>;
+			const agentSkill = agent as unknown as {
+				_skillManager: {
+					hasRestriction: boolean;
+					filterTools: (tools: { name: string }[]) => { name: string }[];
+				};
+				_toolRegistry: ToolRegistry;
 			};
-			expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
+			expect(agentSkill._skillManager.hasRestriction).toBe(false);
 
 			// Get tool definitions - should contain all tools
-			const toolDefs = agentPrivate._getToolDefinitions();
+			const allTools = agentSkill._toolRegistry.list().map((tool) => ({ name: tool.name }));
+			const toolDefs = agentSkill._skillManager.filterTools(allTools);
 
 			expect(toolDefs.length).toBe(2);
-			expect(toolDefs.map((t) => t.name).sort()).toEqual(["bash", "read"]);
+			expect(toolDefs.map((tool) => tool.name).sort()).toEqual(["bash", "read"]);
 		});
 
 		it("should clear restriction at start of runStream", async () => {
@@ -410,17 +421,21 @@ describe("Agent", () => {
 				execute: async () => ({ success: true, output: "file content" }),
 			});
 
-			const agentPrivate = agent as unknown as {
-				_activeSkillAllowedTools: string[] | undefined;
-				_getToolDefinitions(): ReturnType<typeof import("../../src/core/agent.js").Agent.prototype._getToolDefinitions>;
+			const agentSkill = agent as unknown as {
+				_skillManager: {
+					hasRestriction: boolean;
+					filterTools: (tools: { name: string }[]) => { name: string }[];
+				};
+				_toolRegistry: ToolRegistry;
 			};
 
 			// Set a restriction
 			agent._setSkillRestriction(["read"]);
-			expect(agentPrivate._activeSkillAllowedTools).toEqual(["read"]);
+			expect(agentSkill._skillManager.hasRestriction).toBe(true);
 
 			// Verify restriction is set
-			let toolDefs = agentPrivate._getToolDefinitions();
+			const allTools = agentSkill._toolRegistry.list().map((tool) => ({ name: tool.name }));
+			let toolDefs = agentSkill._skillManager.filterTools(allTools);
 			expect(toolDefs.length).toBe(1);
 
 			// Start a new runStream - this should clear the restriction
@@ -428,8 +443,8 @@ describe("Agent", () => {
 			}
 
 			// After runStream, restriction should be cleared
-			expect(agentPrivate._activeSkillAllowedTools).toBeUndefined();
-			toolDefs = agentPrivate._getToolDefinitions();
+			expect(agentSkill._skillManager.hasRestriction).toBe(false);
+			toolDefs = agentSkill._skillManager.filterTools(allTools);
 			expect(toolDefs.length).toBe(1);
 		});
 	});
