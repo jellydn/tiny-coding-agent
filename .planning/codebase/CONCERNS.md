@@ -1,5 +1,28 @@
 # Technical Concerns
 
+## Recently Resolved (PRs #61–#81)
+
+The following extractions were completed between v0.6.0 and v0.7.0, consolidating duplicated patterns into deep modules:
+
+| Module | File | Lines | PR | Eliminates |
+|--------|------|-------|-----|------------|
+| Config I/O | `src/config/config-io.ts` | 87 | #61 | 3-way config read/write duplication |
+| CLI Prompt Helper | `src/cli/prompt.ts` | — | #62 | 3-way readline duplication |
+| TurnExecutor | `src/core/turn-executor.ts` | 236 | #63 | Tool dispatch from `runStream()` |
+| createAgent factory | `src/cli/shared.ts` | — | #64 | Duplicated agent construction in CLI |
+| StepExecutor | `src/agents/step-executor.ts` | 217 | #65 | Build-agent step execution logic |
+| AgentObservability | `src/core/agent-observability.ts` | 326 | #71 | 46 cross-cutting telemetry calls |
+| streamLlmResponse | `src/core/agent-utils.ts` | 228 | #74 | Duplicate stream pattern |
+| streamFinalAnswer | `src/core/agent-utils.ts` | — | #74 | Loop-detection final-answer block |
+| ContextBudget | `src/core/context-budget.ts` | 276 | #72, #77 | Context budgeting from `memory.ts` |
+| CommandDispatcher | `src/cli/command-dispatch.ts` | 265 | #72 | CLI command dispatch table from `main.tsx` |
+| CodebaseExplorer | `src/agents/codebase-explorer.ts` | 381 | — | 4 duplicate `ToolRegistry` instances |
+| ChatCommandRegistry | `src/ui/chat-command-registry.ts` | 77 | #76 | 12-case switch in `useCommandHandler` |
+| DebugLogger | `src/core/debug-logger.ts` | 132 | #78 | 6 verbose-logging blocks from `runStream()` |
+| ProviderCache | `src/core/provider-cache.ts` | 134 | #80 | Provider instance caching from `Agent` |
+| StateManager | `src/agents/state-manager.ts` | 162 | #81 | 19 state I/O calls across 7 modules |
+| createAgentClient | `src/agents/agent-client.ts` | 50 | #81 | 3-way `loadConfig→parseModelString→createProvider` duplication |
+
 ## Tech Debt
 
 ### 1. `agent.ts` Still 738 Lines After Decomposition
@@ -34,13 +57,35 @@ The `handleCommand` dispatcher was extracted into `chat-command-registry.ts` (77
 
 `main.tsx` still mixes 3 concerns: (1) CLI entry-point orchestration (`main()`, arg parsing), (2) the `handleRun` streaming loop, and (3) tool display formatting (`ThinkingTagFilter`, `formatArgs`, `formatOutputPreview`, `displayToolExecutionPlain/Ink`, `outputJson`). The display utilities are pure functions that could be extracted into `src/cli/tool-display.ts`.
 
-### 5. State File I/O Still Duplicated in CLI Handlers
+### 5. State File I/O Double-Read in CLI Handlers
 
 **Files**: `src/cli/handlers/plan.ts`, `src/cli/handlers/agent.ts`, `src/ui/hooks/useCommandHandler.ts`
 **Severity**: Low
-**Status**: Improving (StateManager extracted but not yet merged)
+**Status**: Merged (PR #81) — residual double-read remains
 
-The `StateManager` class (`src/agents/state-manager.ts`) was created to consolidate state file I/O, but CLI handlers still do a `readStateFile()` existence check before creating a `StateManager` — a double-read trade-off to preserve original error messages for tests. This could be resolved by adding a `loadOrFail()` method to StateManager.
+The `StateManager` class (`src/agents/state-manager.ts`, 162 lines) consolidates 19 state I/O calls across 7 modules (plan-agent, explore-agent, build-agent, handlers/plan, handlers/review, handlers/agent, useCommandHandler). The `createAgentClient` factory (`src/agents/agent-client.ts`, 50 lines) eliminates the 3-way `loadConfig → parseModelString → createProvider` duplication. However, 3 CLI handlers still do a `readStateFile()` existence check before creating a `StateManager` — a double-read trade-off to preserve original error messages for tests. This could be resolved by adding a `loadOrFail()` method to StateManager (Architecture Review Round 4, Candidate #5).
+
+### 6. `_state` Unused Variable in useCommandHandler.ts
+
+**File**: `src/ui/hooks/useCommandHandler.ts` (line 306)
+**Severity**: Low
+**Status**: Linter-suppressed (renamed to `_state`)
+
+The StateManager refactor left an unused `const _state = await mgr.loadOrCreate()` — all access goes through `mgr.getPlan()` and `mgr.getBuildSteps()`. The linter renamed it with the `_` prefix to suppress the warning, but the assignment should be removed entirely (`await mgr.loadOrCreate();` without `const`).
+
+## Next Deepening Opportunities (Architecture Review Round 4)
+
+| # | Candidate | Strength | Target |
+|---|-----------|----------|--------|
+| 1 | Extract SkillManager from Agent | Strong | `agent.ts` 738→~640 |
+| 2 | Extract Tool Display from `main.tsx` | Strong | `main.tsx` 541→~420 |
+| 3 | Extract Login Flow Controller from `login.ts` | Worth exploring | `login.ts` 604→~350 |
+| 4 | Extract Command Handlers from `useCommandHandler` | Worth exploring | 458→~150 |
+| 5 | Add `loadOrFail()` to StateManager | Quick win | Eliminates double-read in 3 handlers |
+
+**Recommended order**: #1 + #2 in parallel (both mechanical, no dependencies) → #5 (quick win) → #3 (design decision) → #4 (larger extraction)
+
+**Note**: The codebase has only 1 `TODO` comment in `src/` (a display label in `useCommandHandler.ts`, not a tech debt marker). No `FIXME`, `HACK`, or `XXX` markers exist.
 
 ## Security
 
