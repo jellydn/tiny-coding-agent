@@ -1,212 +1,187 @@
-# Structure
+# Directory Structure
+
+## Overview
 
 ```
 tiny-coding-agent/
-├── index.ts                          # CLI entry — calls main() from src/cli/index.js
-├── package.json                      # scripts, deps, release metadata
-├── tsconfig.json                     # strict TS, ESM, paths (@/* → ./src/*)
-├── biome.json                        # lint + format (tabs, double quotes, 120 width)
-├── bump.config.ts                    # bumpp version bump configuration
-├── Justfile                          # task runner recipes (dev/build/test/lint/release)
-├── Makefile                          # legacy wrapper (same recipes)
-├── prek.toml                         # pre-commit hooks (biome + tsc)
-├── cspell.json                       # spell-check dictionary
-├── renovate.json                     # dep update automation
-├── bun.lock                          # bun lockfile
-├── AGENTS.md                         # contributor conventions (kebab-case, ESM, etc.)
-├── CLAUDE.md                         # Claude-specific notes (→ @AGENTS.md)
-├── SECURITY.md                       # security policy
-├── README.md                         # user-facing guide (install, login, config, CLI commands)
-├── RELEASE.md                        # release process docs
-│
-├── src/
-│   ├── cli/                          # CLI dispatch + per-feature handlers
-│   │   ├── main.tsx                  # Ink app mount, arg parsing, command dispatch
-│   │   ├── chat-commands.ts          # /-slash command parser
-│   │   ├── shared.ts                 # createLLMClient, setupTools, createAgent() factory
-│   │   ├── prompt.ts                 # prompt(), promptHidden(), promptChoice() — readline helpers
-│   │   ├── status-line.ts            # status line rendering
-│   │   ├── index.ts                  # barrel
-│   │   └── handlers/
-│   │       ├── agent.ts, plan.ts, state.ts, memory.ts
-│   │       ├── config.ts, mcp.ts, skill.ts, trace.ts
-│   │       ├── status.ts, upgrade.ts
-│   │       └── login.ts              # handleLogin() + handleLogout() (onboarding, ADR-014)
-│   │
-│   ├── core/                         # agent loop primitives
-│   │   ├── agent.ts                  # main loop (uses TurnExecutor for tool dispatch)
-│   │   ├── agent-utils.ts            # isLooping(), truncateOutput(), LOOP_DETECTION
-│   │   ├── turn-executor.ts          # TurnExecutor — per-turn tool execution + error recovery
-│   │   ├── memory.ts                 # persistent memory store
-│   │   ├── tokens.ts                 # token counting / budget
-│   │   ├── conversation.ts           # conversation state management
-│   │   └── index.ts                  # barrel (exports Agent, AgentOptions, MemoryStore, etc.)
-│   │
-│   ├── agents/                       # multi-agent system
-│   │   ├── plan-agent.ts             # LLM-driven plan generation
-│   │   ├── build-agent.ts            # plan execution via ToolRegistry + StepExecutor
-│   │   ├── explore-agent.ts          # read-only recon
-│   │   ├── step-executor.ts          # StepExecutor — per-step execution + retry/skip/abort
-│   │   ├── plan-grammar.ts           # canonical plan format (deep module)
-│   │   ├── state.ts                  # atomic .tiny-state.json reader/writer
-│   │   ├── types.ts                  # StateFile, StateError, BuildStep, BuildAction, etc.
-│   │   └── index.ts
-│   │
-│   ├── tools/                        # Tool implementations + registry
-│   │   ├── registry.ts               # ToolRegistry class (the spine)
-│   │   ├── types.ts                  # Tool, ToolResult, OpenAI/Anthropic defs
-│   │   ├── confirmation.ts           # dangerous-op confirmation routing
-│   │   ├── file-tools.ts             # read_file / write_file / edit_file / list_directory / delete_file
-│   │   ├── bash-tool.ts              # bash with safety classifier
-│   │   ├── search-tools.ts           # glob / grep
-│   │   ├── web-search-tool.ts        # web search dispatcher
-│   │   ├── search-providers/         # DuckDuckGo + provider abstraction
-│   │   ├── skill-tool.ts             # skills-as-tools bridge
-│   │   ├── plugin-loader.ts          # drop-in .ts plugins
-│   │   ├── gitignore.ts              # .gitignore-aware file ops
-│   │   └── index.ts                  # barrel
-│   │
-│   ├── providers/                    # LLM providers
-│   │   ├── types.ts                  # Provider interface, Message, ChatOptions
-│   │   ├── factory.ts                # model-string → provider instance
-│   │   ├── capabilities.ts           # per-model capability matrix
-│   │   ├── model-registry.ts         # in-memory model catalog + detectProvider()
-│   │   ├── models-dev.ts             # fetch from models.dev JSON
-│   │   ├── model-pricing.json        # bundled pricing snapshot
-│   │   ├── openai.ts, openai-protocol.ts
-│   │   ├── anthropic.ts
-│   │   ├── ollama.ts, ollama-cloud.ts, ollama-models.ts
-│   │   ├── openrouter.ts
-│   │   ├── opencode.ts
-│   │   ├── zai.ts
-│   │   ├── clinepass.ts              # live model lookup (ADR-013)
-│   │   └── index.ts
-│   │
-│   ├── mcp/                          # Model Context Protocol
-│   │   ├── client.ts                 # single-server client
-│   │   ├── manager.ts                # multi-server lifecycle
-│   │   ├── types.ts                  # MCP types + error envelope
-│   │   └── index.ts
-│   │
-│   ├── skills/                       # agentskills.io implementation
-│   │   ├── parser.ts                 # YAML frontmatter + body
-│   │   ├── loader.ts                 # directory walk + SKILL.md discovery
-│   │   ├── builtin-registry.ts       # bundled builtin skills
-│   │   ├── prompt.ts                 # prompt-grounding helpers
-│   │   ├── signature.ts              # skill identity (name/version)
-│   │   ├── types.ts
-│   │   ├── index.ts
-│   │   ├── embedded-content.ts       # GENERATED; bundled skill markdown
-│   │   └── builtin/
-│   │       └── code-simplifier/SKILL.md
-│   │
-│   ├── ui/                           # Ink (React) CLI UI
-│   │   ├── App.tsx                   # root component
-│   │   ├── index.ts
-│   │   ├── components/               # Header, MessageList, ChatLayout, StatusLine,
-│   │   │                             # CommandMenu, ModelPicker, SkillPicker, ToolCall,
-│   │   │                             # ToolOutput, TextInput, ToastList, etc.
-│   │   ├── contexts/                 # Chat, Toast, StatusLine
-│   │   ├── hooks/                    # useCommandHandler
-│   │   ├── utils.ts
-│   │   ├── errors/                   # chat-errors
-│   │   ├── types/                    # enums
-│   │   └── config/                   # constants
-│   │
-│   ├── config/                       # runtime config
-│   │   ├── schema.ts                 # zod schema for config
-│   │   ├── loader.ts                 # user + project config merge, env var interpolation
-│   │   ├── config-io.ts              # readConfigFile/writeConfigFile (YAML/JSON, 0o600)
-│   │   └── index.ts
-│   │
-│   ├── observability/                # tracing, logging, cost, redaction
-│   │   ├── telemetry.ts              # OpenTelemetry tracing
-│   │   ├── trace-context.ts          # traceId propagation
-│   │   ├── token-usage.ts            # token counting
-│   │   ├── cost.ts                   # cost estimation
-│   │   ├── pricing.ts                # pricing data loader
-│   │   ├── model-pricing.json        # bundled pricing snapshot
-│   │   ├── redact.ts                 # secret redaction
-│   │   ├── logger.ts                 # structured logger (pino)
-│   │   ├── langfuse.ts               # Langfuse integration
-│   │   ├── timer.ts                  # latency tracking
-│   │   └── index.ts
-│   │
-│   └── utils/                        # tiny cross-cutting helpers
-│       ├── command.ts                # CLI arg parsing
-│       ├── retry.ts                  # retry with backoff
-│       ├── version.ts                # generated-version consumer
-│       ├── version-constant.ts       # GENERATED from package.json
-│       └── xml.ts                    # XML parsing helpers
-│
-├── test/                             # bun:test suites, mirrors src/
-│   ├── agents/                       # plan-agent, build-agent, step-executor, plan-grammar, state, explore
-│   ├── cli/                          # main, upgrade, chat-commands, integration, handlers/*
-│   ├── core/                         # agent, turn-executor, memory, conversation, ...
-│   ├── tools/                        # bash, file, registry, search, skill, plugin
-│   ├── providers/                    # openai, anthropic, ollama, model-registry, clinepass
-│   ├── mcp/                          # manager, mcp-errors
-│   ├── observability/                # telemetry, cost, logger, redact, token-usage, ...
-│   ├── skills/                       # parser, loader, prompt, builtin-registry
-│   ├── security/                     # command-injection, file-validation, bash-env
-│   ├── config/                       # config-io, loader
-│   ├── utils/                        # command, xml
-│   ├── performance/                  # benchmarks
-│   ├── e2e/                          # agent-loop integration
-│   ├── ui/                           # ink UI smoke tests
-│   └── agent.test.ts, memory.test.ts, ...
-│
-├── scripts/
-│   ├── generate-embedded-skills.ts   # walk src/skills/builtin → embedded-content.ts
-│   ├── generate-version.ts           # package.json → src/utils/version-constant.ts
-│   └── install.sh                    # install helper
-│
-├── docs/
-│   ├── README.md                     # docs landing page + ADR index
-│   ├── adr/                          # Architecture Decision Records (001-014)
-│   └── development-tasks.md          # current sprint / WIP tasks
-│
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml                    # typecheck + lint + tests + build
-│   │   └── release.yml               # release pipeline
-│   └── homebrew-tiny-agent/
-│       └── tiny-agent.rb             # Homebrew formula
-│
-├── .planning/                        # this codebase map
-│   └── codebase/                     # STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, TESTING, INTEGRATIONS, CONCERNS
-│
-├── .husky/
-│   └── pre-commit                    # runs prek (biome + tsc)
-│
-└── .agents/                          # lifecycle scripts
-    ├── resume
-    └── setup
+├── index.ts                 # Entry point → main()
+├── package.json             # Dependencies + scripts
+├── tsconfig.json            # TypeScript config (strict, NodeNext)
+├── biome.json               # Linter + formatter
+├── bun.lock                 # Bun lockfile
+├── src/                     # Source code (139 files, ~20k lines)
+│   ├── agents/              # Multi-agent system (plan, build, explore)
+│   ├── cli/                 # CLI interface + command handlers
+│   ├── config/              # Configuration schema + loading
+│   ├── core/                # Agent loop + extracted modules
+│   ├── hooks/               # Lifecycle hooks system
+│   ├── mcp/                 # MCP client integration
+│   ├── observability/       # Telemetry, logging, cost tracking
+│   ├── providers/           # LLM provider implementations
+│   ├── skills/              # Skill discovery + loading
+│   ├── tools/               # Built-in tools + registry
+│   ├── ui/                  # Ink React CLI components
+│   └── utils/               # Shared utilities
+├── test/                    # Test files (80 files, ~17k lines)
+├── docs/                    # Documentation + ADRs
+├── scripts/                 # Build scripts + ralph automation
+├── .github/                 # CI workflows + Homebrew formula
+└── .planning/codebase/      # This codebase map
+```
+
+## Source Layout (`src/`)
+
+### `src/core/` — Agent Loop & Extracted Modules
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `agent.ts` | 738 | Agent class — orchestrates the LLM conversation loop |
+| `memory.ts` | 422 | MemoryStore — user-initiated memory storage + retrieval |
+| `agent-observability.ts` | 326 | AgentObservability — span/timer management wrapper |
+| `context-budget.ts` | 276 | prepareContext() — context window budgeting + memory merge |
+| `turn-executor.ts` | 236 | TurnExecutor — one LLM call + tool batch execution |
+| `agent-utils.ts` | 228 | streamLlmResponse(), streamFinalAnswer(), isLooping() |
+| `provider-cache.ts` | 134 | ProviderCache — LLM client cache with eviction |
+| `debug-logger.ts` | 132 | DebugLogger — verbose logging (no-op when disabled) |
+| `conversation.ts` | — | ConversationManager — history persistence |
+| `tokens.ts` | — | Token counting utilities (tiktoken) |
+| `index.ts` | — | Re-exports |
+
+### `src/agents/` — Multi-Agent System
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `build-agent.ts` | 461 | Build executor — parses plan, executes steps |
+| `codebase-explorer.ts` | 381 | Filesystem exploration (shallow + deep modes) |
+| `plan-grammar.ts` | 437 | Plan markdown parser → phases/steps AST |
+| `explore-agent.ts` | 234 | Codebase analysis agent |
+| `plan-agent.ts` | 231 | Plan generation agent |
+| `step-executor.ts` | 217 | StepExecutor — retry/skip/abort flow |
+| `state.ts` | — | State file I/O with file locking + rotation |
+| `types.ts` | — | StateFile, AgentPhase, AgentStatus types |
+
+### `src/cli/` — CLI Interface
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `main.tsx` | 541 | Entry point — main(), handleRun(), handleInteractiveChat() |
+| `command-dispatch.ts` | 265 | Command dispatch table (pre/post config) |
+| `shared.ts` | 280 | parseArgs(), createLLMClient(), setupTools(), createAgent() |
+| `prompt.ts` | — | readline prompt helpers (prompt, promptHidden) |
+| `handlers/` | — | One file per CLI command (login, logout, plan, hooks, etc.) |
+
+### `src/providers/` — LLM Provider Implementations
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `anthropic.ts` | 370 | Anthropic Claude provider |
+| `ollama.ts` | 324 | Ollama local provider |
+| `factory.ts` | — | createProvider() factory + parseModelString() |
+| `model-registry.ts` | — | detectProvider() + model capability lookup |
+| `openai.ts` | — | OpenAI provider |
+| `openrouter.ts` | — | OpenRouter provider |
+| `opencode.ts` | — | OpenCode provider |
+| `zai.ts` | — | Z.AI (Zhipu) provider |
+| `clinepass.ts` | — | ClinePass provider (live model lookup, ADR-013) |
+| `qwencloud.ts` | — | QwenCloud provider |
+| `capabilities.ts` | — | Model capability checks |
+| `openai-protocol.ts` | — | Shared OpenAI-compatible protocol |
+| `types.ts` | — | LLMClient, Message, TokenUsage interfaces |
+
+### `src/tools/` — Built-in Tools
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `file-tools.ts` | 449 | read_file, write_file, edit_file, delete_file |
+| `search-tools.ts` | 354 | grep, glob tools |
+| `bash-tool.ts` | 281 | Bash command execution |
+| `registry.ts` | 204 | ToolRegistry class |
+| `confirmation.ts` | — | User confirmation system (ADR-009) |
+| `skill-tool.ts` | — | Skill loading tool |
+| `plugin-loader.ts` | — | Dynamic plugin loading |
+| `web-search-tool.ts` | — | Web search tool |
+| `gitignore.ts` | — | .gitignore-aware file filtering |
+| `types.ts` | — | Tool, ToolResult, ToolParameters interfaces |
+
+### `src/ui/` — Ink React Components
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `hooks/useCommandHandler.ts` | 458 | Slash command dispatcher (/help, /model, /plan, etc.) |
+| `components/Message.tsx` | 382 | Message rendering (markdown, code blocks) |
+| `components/ModelPicker.tsx` | 380 | Model selection UI |
+| `contexts/ChatContext.tsx` | 303 | Chat state management |
+| `components/ChatLayout.tsx` | 249 | Main chat layout |
+| `App.tsx` | 239 | Root app component |
+| `chat-command-registry.ts` | 77 | Command registry + help text generation |
+
+### `src/config/` — Configuration
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `loader.ts` | 324 | loadConfig(), getConfigPath(), createDefaultConfig() |
+| `schema.ts` | 247 | Zod-validated Config interface + schemas |
+| `config-io.ts` | — | readConfigFile(), writeConfigFile() (YAML/JSON) |
+
+### `src/hooks/` — Lifecycle Hooks (ADR-015)
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | HookConfig, HookEvent, HookRegistry types |
+| `manager.ts` | buildRegistry(), runHooks(), hasHooks() |
+| `presets.ts` | PLANNOTATOR_PRESET, findPreset() |
+| `index.ts` | Re-exports |
+
+### `src/observability/` — Telemetry & Logging
+
+| File | Purpose |
+|------|---------|
+| `telemetry.ts` | OpenTelemetry span management |
+| `logger.ts` | Structured JSON logging |
+| `cost.ts` | Token cost estimation |
+| `pricing.ts` | Model pricing data |
+| `redact.ts` | API key masking |
+| `langfuse.ts` | Optional Langfuse integration |
+| `token-usage.ts` | Token usage tracking |
+| `trace-context.ts` | Trace context propagation |
+
+## Test Layout (`test/`)
+
+Tests mirror the `src/` structure:
+
+```
+test/
+├── agents/          # Agent tests (build, explore, plan, state, step-executor)
+├── cli/             # CLI tests (handlers, command-dispatch, integration)
+├── config/          # Config tests (loader, config-io)
+├── core/            # Core tests (agent, memory, turn-executor, observability)
+├── e2e/             # End-to-end agent loop test
+├── hooks/           # Hooks tests (manager, presets, types)
+├── mcp/             # MCP tests (manager, errors)
+├── observability/   # Observability tests (telemetry, cost, redact, langfuse)
+├── providers/       # Provider tests (anthropic, clinepass, model-registry, ollama)
+├── security/        # Security tests (command-injection, bash-env, file-validation)
+├── skills/          # Skills tests (loader, parser, prompt, builtin-registry)
+├── tools/           # Tool tests (bash, file, search, registry, skill-tool)
+├── ui/              # UI tests (chat-command-registry, model-picker, utils)
+└── utils/           # Utility tests (command, xml)
+```
+
+## Documentation
+
+```
+docs/
+├── README.md        # Documentation index
+├── adr/             # 16 Architecture Decision Records (001-016)
+└── development-tasks.md
 ```
 
 ## Naming Conventions
 
-- **Files**: kebab-case (`build-agent.ts`, `plan-grammar.ts`, `config-io.ts`).
-- **Classes / types / React components**: PascalCase.
-- **Functions / variables**: camelCase.
-- **Constants**: SCREAMING_SNAKE_CASE.
-- **Private members**: `_prefixed` (e.g. `_registry`, `_promptFn`).
-- **Test files**: mirror source path with `.test.ts` suffix (`src/agents/build-agent.ts` → `test/agents/build-agent.test.ts`).
-
-## Key Locations Cheat-Sheet
-
-| Goal | File |
-|---|---|
-| Add a new tool | `src/tools/<name>.ts` + register in `src/tools/index.ts` |
-| Add a new provider | `src/providers/<name>.ts` + wire into `factory.ts` + `model-registry.ts` |
-| Add a CLI subcommand | `src/cli/handlers/<cmd>.ts` + register in `src/cli/main.tsx` |
-| Add a chat `/command` | `src/cli/chat-commands.ts` + `src/ui/hooks/useCommandHandler.ts` + `src/ui/components/CommandMenu.tsx` |
-| Add a skill | drop `SKILL.md` under `src/skills/builtin/<name>/` and run `bun run generate:skills` |
-| Change plan format | `src/agents/plan-grammar.ts` (must keep `serialize`/`parse`/`validate` round-trip) |
-| Change agent loop | `src/core/agent.ts` (main loop) + `src/core/turn-executor.ts` (tool dispatch) |
-| Change step execution | `src/agents/step-executor.ts` (retry/skip/abort) + `src/agents/build-agent.ts` (orchestration) |
-| Change Ink UI | `src/ui/components/` or `src/ui/App.tsx` |
-| Change config I/O | `src/config/config-io.ts` (read/write) + `src/config/loader.ts` (loading/merge) |
-| Add observability event | `src/observability/telemetry.ts` |
-| Prompt user input | `src/cli/prompt.ts` (prompt / promptHidden / promptChoice) |
-| Build a wired Agent | `src/cli/shared.ts` → `createAgent(config, options)` |
+- **Files**: kebab-case (`file-tools.ts`, `agent-observability.ts`)
+- **Classes/Types**: PascalCase (`ToolRegistry`, `StateManager`, `LLMClient`)
+- **Functions/Variables**: camelCase (`loadConfig`, `createProvider`)
+- **Constants**: SCREAMING_SNAKE_CASE (`DEFAULT_STATE_FILE`, `MAX_STATE_FILE_SIZE`)
+- **Private members**: `_prefix` (`_providerCache`, `_toolRegistry`)
+- **Imports**: `.js` extension for internal modules, `node:` prefix for Node builtins
+- **Types**: explicit `import type` (enforced by `verbatimModuleSyntax`)

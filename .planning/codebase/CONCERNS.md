@@ -1,93 +1,143 @@
-# Concerns
-
-Real signals from `rg TODO/FIXME/HACK`, file-size outliers, and observed issues during recent merges.
+# Technical Concerns
 
 ## Tech Debt
 
-### Case-insensitive-filesystem `Justfile` / `justfile` collision
-- **What**: `git ls-files` shows BOTH `Justfile` (uppercase) and `justfile` (lowercase) tracked as separate paths in the tree.
-- **Why it's a problem**: On case-insensitive macOS APFS, they collapse to one disk file, so `git status` is permanently chatty.
-- **Fix**: A single chore commit to remove the duplicate path (`git rm justfile` + commit). Safe to do as a follow-up.
+### 1. `agent.ts` Still 738 Lines After Decomposition
 
-### `_stepError` write-only assignments (resolved)
-- **Where**: `src/agents/build-agent.ts` — previously had `let _stepError` assigned but never read.
-- **Status**: Likely resolved by the StepExecutor extraction (PR #65). The variable was part of the old inline execution loop that was moved to `step-executor.ts`. Verify it's gone.
+**File**: `src/core/agent.ts` (738 lines)
+**Severity**: Medium
+**Status**: Improving (was 1,173 lines before ADR-016 extraction)
 
-### Lint info: `continue` in `plan-grammar.ts`
-- **Where**: `src/agents/plan-grammar.ts` around line 284 — biome flags a redundant `continue` at the end of the `for` loop iteration.
-- **Fix**: Delete the line. 1-line fix, removes a lint warning.
+After extracting 10 modules (TurnExecutor, AgentObservability, DebugLogger, ProviderCache, context-budget, agent-utils, etc.), `agent.ts` dropped from 1,173 → 738 lines. However, it still owns 4 skill-related private fields + 8 skill methods (`_initializeSkills`, `loadSkill`, `_setSkillRestriction`, `_clearSkillRestriction`, `getSkillRegistry`, `waitForSkills`, `_getToolDefinitions` filtering). The skill management concern could be extracted into a `SkillManager` class to continue the decomposition pattern.
 
-### `parsePlanToSteps` more permissive than main's prior regex
-- **What**: After PR #56, build-agent uses `PlanGrammar.parse` for plan parsing, which accepts `## Phase 1` (no title required) where the old regex required a colon + description.
-- **Risk**: Persisted plans relying on strict title-required parsing now silently produce empty-title phases.
-- **Fix**: Add a regression test that asserts empty-title phase detection is reported in `validate()` errors.
+### 2. `login.ts` Has 16 `process.exit()` Calls
 
-## Performance
+**File**: `src/cli/handlers/login.ts` (604 lines)
+**Severity**: Medium
+**Status**: Documented in ADR-014
 
-### Largest files (lines of code)
-```
-src/core/agent.ts                1052  ← still largest, but TurnExecutor extraction reduced it from ~1173
-src/cli/main.tsx                  605  ← reduced by createAgent factory extraction
-src/cli/handlers/login.ts         590  ← includes both login AND logout handlers
-src/agents/explore-agent.ts       551
-src/core/memory.ts                514
-src/tools/file-tools.ts           449
-src/agents/plan-grammar.ts        408
-src/providers/anthropic.ts        370
-src/tools/search-tools.ts         354
-src/ui/hooks/useCommandHandler.ts 334
-```
+The interactive login/logout flows call `process.exit()` 16 times, making them untestable without spawning a process. The pure functions (`applyProviderToConfig`, `removeApiKeyFromConfig`, `formatProviderStatus`) are well-extracted and tested, but the interactive flows (`loginProvider`, `logoutProvider`, `loginInteractive`, `logoutInteractive`) are not unit-testable.
 
-- **`src/core/agent.ts`** at 1052 lines is still the largest file. The TurnExecutor extraction (PR #63) removed ~120 lines of inline tool dispatch logic, and agent-utils.ts extracted `isLooping`/`truncateOutput`. Further refactoring could extract the streaming/observability instrumentation.
-- **`src/cli/handlers/login.ts`** at 590 lines houses both login and logout. If logout grows further, consider splitting into `login.ts` + `logout.ts`.
+### 3. `useCommandHandler.ts` 458 Lines with Inline Command Handlers
 
-### Streaming provider perf
-- Provider streaming tests exist but no benchmark on first-token latency. `test/performance/benchmarks.test.ts` covers token counting and grep/glob but not streaming TTFT.
+**File**: `src/ui/hooks/useCommandHandler.ts` (458 lines)
+**Severity**: Low
+**Status**: Partially refactored (ChatCommandRegistry extracted)
+
+The `handleCommand` dispatcher was extracted into `chat-command-registry.ts` (77 lines), but the individual command handlers (`handleSkillCommand`, `handlePlanCommand`, `handleReviewCommand`, etc.) are still inline `useCallback` functions within the hook. Each handler is 30-80 lines of `onAddMessage` + `readStateFile` + business logic.
+
+### 4. `main.tsx` Mixes CLI Entry Point + Display Logic
+
+**File**: `src/cli/main.tsx` (541 lines)
+**Severity**: Low
+**Status**: Partially refactored (command-dispatch extracted)
+
+`main.tsx` still mixes 3 concerns: (1) CLI entry-point orchestration (`main()`, arg parsing), (2) the `handleRun` streaming loop, and (3) tool display formatting (`ThinkingTagFilter`, `formatArgs`, `formatOutputPreview`, `displayToolExecutionPlain/Ink`, `outputJson`). The display utilities are pure functions that could be extracted into `src/cli/tool-display.ts`.
+
+### 5. State File I/O Still Duplicated in CLI Handlers
+
+**Files**: `src/cli/handlers/plan.ts`, `src/cli/handlers/agent.ts`, `src/ui/hooks/useCommandHandler.ts`
+**Severity**: Low
+**Status**: Improving (StateManager extracted but not yet merged)
+
+The `StateManager` class (`src/agents/state-manager.ts`) was created to consolidate state file I/O, but CLI handlers still do a `readStateFile()` existence check before creating a `StateManager` — a double-read trade-off to preserve original error messages for tests. This could be resolved by adding a `loadOrFail()` method to StateManager.
 
 ## Security
 
-- **Config file permissions**: `writeConfigFile()` in `src/config/config-io.ts` now enforces `0o600` via `chmod` after write when `containsLiteralApiKey()` returns true (PR #67 on `fix/design-smells` branch — verify it's merged). Previously, `mode: 0o600` only applied on file creation, leaving existing files world-readable.
-- **`promptHidden` Ctrl+C**: Now rejects the promise instead of calling `process.exit(0)` (PR #67). Callers use `try/catch` to handle cancellation. Verify merged.
-- **Secret redaction** in `src/observability/redact.ts` covers `.env`, `.aws/`, `.ssh/`, etc. — good coverage but only applies to log lines, not to tool output sent back to the model.
-- **Sensitive bash classifier** (`src/tools/bash-tool.ts`) is a regex/allowlist — adequate for common patterns but won't catch every destructive command. Default-deny would be safer.
-- **MCP servers** run with the same fs/network privileges as the agent. No sandboxing layer beyond what Bun provides.
+### API Key Storage
+
+**Status**: Documented in ADR-014
+**Risk**: Low (mitigated)
+
+API keys are stored literally in `~/.tiny-agent/config.yaml` with `0o600` file permissions. The login flow suggests using environment variables (`${VAR_NAME}` syntax) as a more secure alternative. The config loader resolves env-var references at load time.
+
+### Command Injection Prevention
+
+**Files**: `test/security/command-injection.test.ts`, `test/security/bash-env.test.ts`
+**Status**: Tested
+
+The bash tool has security tests for command injection prevention and environment variable sanitization. The `src/tools/bash-tool.ts` implementation includes validation and confirmation prompts (ADR-009).
+
+### Path Traversal Prevention
+
+**Files**: `test/security/file-validation.test.ts`
+**Status**: Tested
+
+File tools validate paths to prevent directory traversal attacks. The `src/tools/gitignore.ts` module respects `.gitignore` patterns.
+
+### API Key Redaction in Logs
+
+**File**: `src/observability/redact.ts`
+**Status**: Tested
+
+API keys are redacted in structured logs and telemetry. The `redactApiKey()` function masks keys as `XXXX...REDACTED`.
+
+## Performance
+
+### Token Counting Overhead
+
+**File**: `src/core/tokens.ts`
+**Impact**: Low
+
+Token counting via `tiktoken` is used for context budgeting. The `prepareContext()` function in `src/core/context-budget.ts` counts tokens for system prompt, memory, and conversation messages to fit within the context window. This is done once per `runStream()` call, not per chunk.
+
+### State File I/O Double-Read
+
+**Files**: `src/cli/handlers/plan.ts`, `src/cli/handlers/agent.ts`, `src/ui/hooks/useCommandHandler.ts`
+**Impact**: Negligible
+
+CLI handlers read the state file twice: once for the existence check (`readStateFile()`) and once via `StateManager.loadOrCreate()` (which calls `readStateFile()` internally). This is a trade-off for preserving error messages. The state file is small JSON (~1-10 KB), so the overhead is negligible.
+
+### Provider Cache Eviction
+
+**File**: `src/core/provider-cache.ts`
+**Impact**: Low
+
+The `ProviderCache` has a max size with LRU eviction (default configurable). Cache hits avoid re-creating LLM clients for the same provider. The `_evictOldest()` method removes the least recently used client when the cache is full.
 
 ## Fragile Areas
 
-- **PlanGrammar round-trip** — `serialize(plan) → parse(text) → deep-equal(original)` is the load-bearing invariant. Any new field added to `Plan`/`Phase`/`Step` MUST update the `serialize` template AND a test.
-- **`ToolRegistry.executeBatch`** confirmation logic has multiple branches (`false`, `{type: "partial"}`, all-approved) — easy to break. The CLI's confirmation handler in `src/tools/confirmation.ts` is the counterpart and must stay in sync.
-- **Provider streaming** events are emitted into `src/observability/` — if a provider fails to flush on error, traces go incomplete. Coverage of partial-failure scenarios is thin.
-- **Circular dependency breaking pattern** — `turn-executor.ts` ↔ `agent-utils.ts` and `step-executor.ts` ↔ `build-agent.ts` rely on `import type` being erased at compile time. If someone accidentally adds a runtime import, the cycle returns. No automated guard exists.
+### Plan Grammar Parser
 
-## Observability
+**File**: `src/agents/plan-grammar.ts` (437 lines)
+**Risk**: Medium
 
-- **Langfuse** is opt-in via env vars. No local trace viewer — users without a Langfuse account have no way to inspect what the agent did beyond stdout.
-- **Token cost** uses `src/observability/model-pricing.json` — bundled snapshot. Drift from real provider pricing is possible.
+The plan grammar parser uses regex-based parsing to extract phases and steps from markdown plan text. It supports two shapes (phase-form and flat-form) and has legacy sub-bullet handling in `buildFlatFormSteps()`. Changes to the plan format require updating both the parser and the `planToBuildSteps()` converter in `build-agent.ts`.
 
-## Test Coverage Gaps
+### Ink CLI Rendering
 
-- No test for `src/tools/plugin-loader.ts` (plugin discovery edge cases — symlinks, missing files, duplicates).
-- No test for `src/cli/handlers/upgrade.ts` (binary swap, partial-download rollback).
-- No e2e covering an MCP server lifecycle (connect, tool call, disconnect, reconnect).
-- No concurrency test for `src/core/memory.ts` writes from concurrent agents (the state file is shared).
-- **`promptHidden` Ctrl+C rejection** — the TTY raw-mode path's `reject(new Error("Interrupted by user (Ctrl+C)"))` is untested. All existing tests use the non-TTY fallback. Adding a test requires mocking `stdin.setRawMode` and simulating a `\u0003` character.
+**Files**: `src/ui/` (all components)
+**Risk**: Low
 
-## Build & Release
+The UI uses Ink (React for terminal). Components are tested via `test/cli/main.test.tsx` but Ink rendering is inherently terminal-dependent. The `ThinkingTagFilter` class in `main.tsx` filters `<thinking>` tags from streaming content and has edge cases with partial tag boundaries.
 
-- **Embedded skills** generated at build time — if a contributor forgets to run `bun run generate:skills`, the built binary ships stale content. CI runs it, but a pre-commit hook would catch it locally.
-- **Version constant** — `src/utils/version-constant.ts` is generated; commit-time check exists in CI but a developer who bypasses CI gets a stale `0.0.0` build.
+### Embedded Skills Generation
 
-## Documentation
+**File**: `src/skills/embedded-content.ts` (generated)
+**Risk**: Low
 
-- ADRs in `docs/adr/` are comprehensive (001-014). `docs/README.md` has the full index.
-- `README.md` has been updated with login/logout command documentation and ADR list (PR #68).
-- No architecture diagram in docs (this codebase map fills that gap).
+This file is generated at build time by `scripts/generate-embedded-skills.ts` and excluded from linting. Changes to skill content require regenerating this file via `bun run generate:skills`.
 
-## Quick Wins (sorted by ROI)
+### Model Registry Provider Detection
 
-1. Delete the redundant `continue` in `src/agents/plan-grammar.ts` (1 line, removes a lint warning).
-2. Remove the lowercase `justfile` tracking (chore commit, clears up `git status`).
-3. Add a regression test for empty-title phase detection in `plan-grammar.test.ts`.
-4. Verify `_stepError` is gone from `build-agent.ts` after StepExecutor extraction.
-5. Add a `--dump-trace <path>` flag that writes the current session's trace to a local HTML file (offline trace viewer).
-6. Merge PR #67 (design smell fixes) if not yet merged — addresses `0o600` chmod, `promptChoice` null, `promptHidden` rejection.
+**File**: `src/providers/model-registry.ts`
+**Risk**: Low
+
+The `detectProvider()` function maps model string prefixes to provider types. Adding a new provider requires updating the registry patterns. The ClinePass provider (ADR-013) uses live model lookup from `baseUrl` as an alternative to static registry patterns.
+
+## Missing Features / Gaps
+
+### No Coverage Thresholds
+
+The project has 1,288 tests across 80 files but no configured coverage thresholds. Coverage depends on the test-per-module pattern rather than measured line/branch coverage.
+
+### No E2E Browser Testing
+
+The CLI is terminal-based (Ink), so there are no browser tests. The `test/e2e/agent-loop.test.ts` file tests the agent loop end-to-end with a mock LLM client.
+
+### `generateBuildActionsFromPlan` Uses LLM for JSON Parsing
+
+**File**: `src/agents/build-agent.ts` (function `generateBuildActionsFromPlan`)
+**Risk**: Low
+
+This function asks the LLM to generate build actions as JSON, then parses the response with a regex match (`content.match(/\[[\s\S]*\]/)`) and `JSON.parse()`. If the LLM returns malformed JSON, the function silently returns an empty array. This is a known limitation of LLM-based code generation.

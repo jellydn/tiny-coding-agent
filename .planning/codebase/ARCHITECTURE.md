@@ -1,174 +1,165 @@
 # Architecture
 
-## Pattern
+## System Overview
 
-Layered, dependency-inverted architecture. The CLI is the outermost layer; everything else is composed behind narrow interfaces.
-
-```
-                     ┌──────────────────────────────┐
-                     │  index.ts  (entry / args)    │
-                     └──────────────┬───────────────┘
-                                    │
-                     ┌──────────────▼───────────────┐
-                     │  src/cli/ (dispatcher)       │
-                     │  handlers/* command shims    │
-                     │  shared.ts (createAgent)     │
-                     └──────────────┬───────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        │                           │                           │
-┌───────▼────────┐         ┌────────▼────────┐         ┌────────▼─────────┐
-│  src/core/     │         │  src/agents/    │         │  src/skills/     │
-│  agent loop,   │         │  plan/build/    │         │  loader, parser, │
-│  memory,       │         │  explore agents │         │  registry        │
-│  tokens,       │         │  + PlanGrammar  │         └──────────────────┘
-│  TurnExecutor  │         │  + StepExecutor │
-└───────┬────────┘         └────────┬────────┘
-        │                           │
-        │                  ┌────────▼─────────────────────────┐
-        │                  │  src/tools/ (ToolRegistry,       │
-        │                  │  bash, file, search, web, skill) │
-        │                  └────────┬─────────────────────────┘
-        │                           │
-        │                  ┌────────▼────────┐
-        │                  │  src/providers/ │
-        │                  │  OpenAI,        │
-        │                  │  Anthropic,     │
-        │                  │  Ollama, ...    │
-        │                  └────────┬────────┘
-        │                           │
-        │                  ┌────────▼────────┐
-        │                  │  src/mcp/       │
-        │                  │  client/manager │
-        │                  └─────────────────┘
-        │
-┌───────▼────────────────────────────────────────────────────────────┐
-│  Cross-cutting: src/observability/  src/config/  src/utils/        │
-│  src/config/config-io.ts  src/cli/prompt.ts  src/hooks/          │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-## Key Layers
-
-### 1. Entry (`index.ts`)
-- Imports and executes `main()` from `src/cli/index.js`.
-- Global error handler catches and reports fatal errors.
-
-### 2. CLI Dispatcher (`src/cli/`, `src/cli/handlers/`)
-- `src/cli/main.tsx` mounts the Ink UI, parses CLI args, dispatches to handlers.
-- `src/cli/shared.ts` houses `createLLMClient`, `setupTools`, and `createAgent()` — the agent factory that consolidates the full construction sequence (createLLMClient → setupTools → new Agent → createSkillTool → register → waitForSkills). Returns `{ agent, mcpManager, toolRegistry, agentsMdPath }`.
-- `src/cli/prompt.ts` — the single source of truth for readline-based user input: `prompt()`, `promptHidden()` (raw-mode `*` masking), `promptChoice()`. Extracted from login.ts, build-agent.ts, and plan-agent.ts.
-- `src/cli/chat-commands.ts` — `/-slash` command parser.
-- Per-feature handlers: `agent.ts`, `plan.ts`, `state.ts`, `memory.ts`, `config.ts`, `mcp.ts`, `skill.ts`, `trace.ts`, `status.ts`, `upgrade.ts`, `login.ts`.
-- Handlers return structured results; the CLI layer never throws to the user.
-- **Login/logout** (`src/cli/handlers/login.ts`): dispatched before `loadConfig()` so onboarding works with no config file (ADR-014).
-
-### 3. Agent Loop (`src/core/agent.ts`)
-- Drives the conversation: user message → provider call → tool dispatch → response → repeat.
-- **TurnExecutor** (`src/core/turn-executor.ts`) — owns the per-turn tool execution + error recovery. Extracted from `runStream()` (~400 lines → testable unit). Handles tool batch execution, not-found/declined/loop-break detection, and returns a structured `TurnResult`.
-- **agent-utils.ts** (`src/core/agent-utils.ts`) — `isLooping()`, `truncateOutput()`, `LOOP_DETECTION`, `MAX_OUTPUT_LENGTH`. Extracted to break the circular dependency between `agent.ts` and `turn-executor.ts`.
-- Token-bounded via `src/core/tokens.ts`.
-- Memory persistence via `src/core/memory.ts`.
-
-### 4. Agents (`src/agents/`)
-Three specialized agents share an atomic state file (`.tiny-state.json`) and a canonical plan format defined by `src/agents/plan-grammar.ts`:
-
-| Agent | File | Role |
-|---|---|---|
-| plan-agent | `plan-agent.ts` | LLM generates an implementation plan in PlanGrammar format |
-| build-agent | `build-agent.ts` | Parses a plan and executes its steps (file ops, bash) |
-| explore-agent | `explore-agent.ts` | Read-only codebase reconnaissance |
-
-- **StepExecutor** (`src/agents/step-executor.ts`) — owns the per-step action execution + error recovery (retry/skip/abort). Extracted from `buildAgent()`. Uses dependency-injected `promptFn` for testability. `mapBuildAction()` lives here to break the runtime circular dependency with `build-agent.ts` (type-only imports back).
-- Shared state types in `src/agents/types.ts`; reader/writer with atomic writes in `src/agents/state.ts`.
-
-### 5. Tool Registry (`src/tools/registry.ts`)
-Single `ToolRegistry` instance is constructed per session and accumulates:
-- Built-in tools (`file-tools.ts`, `bash-tool.ts`, `search-tools.ts`, `web-search-tool.ts`, `skill-tool.ts`)
-- Skills exposed as tools (`skill-tool.ts` wraps the skills loader)
-- MCP server tools (registered dynamically as MCP servers connect)
-- Plugin tools (`plugin-loader.ts`)
-
-Tools conform to `Tool` interface (`src/tools/types.ts`) with a `name`, `description`, `parameters` JSON Schema, optional `dangerous` callback (for confirmation routing), and an async `execute(args) → ToolResult`.
-
-### 6. Provider Abstraction (`src/providers/`)
-Each provider exposes:
-- `chat({ model, messages, ... }) → response`
-- `chatStream(...)` for streaming responses
-- Optional capability flags surfaced via `src/providers/capabilities.ts`
-
-Selection is driven by `model-string` parsing in `src/providers/factory.ts`.
-
-### 7. UI (`src/ui/`)
-Ink/React components for the chat layout, message list, streaming text, tool call rendering, status line, toast list, command menu, etc. State surfaces via React contexts (`src/ui/contexts/`).
-
-### 8. Skills (`src/skills/`)
-SKILL.md discovery + frontmatter parsing. Built-in skills live in `src/skills/builtin/` and are embedded into the binary at build time via `scripts/generate-embedded-skills.ts`.
-
-### 9. Observability (`src/observability/`)
-- Trace every provider call and tool invocation.
-- Token usage + cost estimation.
-- Opt-in Langfuse export.
-- Redacted structured logger.
-
-### 10. Config I/O (`src/config/config-io.ts`)
-- Single source of truth for config file reading/writing.
-- `readConfigFile()` — YAML/JSON dispatch, returns `{}` on missing/parse error.
-- `writeConfigFile()` — creates `CONFIG_DIR`, writes with `0o600` permissions when a literal API key is present (via `chmod` after write for existing files).
-- `containsLiteralApiKey()` — detects non-env-var-reference API keys.
-
-## Data Flow: A Single Turn
+Tiny Coding Agent is a CLI-based AI coding assistant built with TypeScript, Bun, and Ink (React for terminal). It follows a layered architecture with clear separation between the agent loop, provider abstraction, tool system, and CLI/UI layers.
 
 ```
-User input
-   │
-   ▼
-src/core/agent.ts                 (main loop)
-   │
-   ▼ build provider call
-src/providers/<x>.ts              (chat / chatStream)
-   │
-   ▼ tool calls returned by model
-src/core/turn-executor.ts         (executeTurn: batch execution + error recovery)
-   │  confirmation via src/tools/confirmation.ts
-   ▼
-src/tools/registry.ts.execute     (single) / .executeBatch (multi)
-   │
-   ▼
-src/tools/<tool>.ts               (file / bash / search / web / skill / mcp-*)
-   │
-   ▼ tool result back to model
-src/core/agent.ts                 (compose next message, loop or finalize)
+┌─────────────────────────────────────────────────────┐
+│                    CLI / UI Layer                     │
+│  src/cli/ (main.tsx, command-dispatch, handlers)     │
+│  src/ui/  (Ink React components, hooks, contexts)    │
+├─────────────────────────────────────────────────────┤
+│                   Agent System Layer                   │
+│  src/agents/ (plan, build, explore, state, grammar)   │
+│  src/core/   (agent loop, memory, context, tokens)    │
+├─────────────────────────────────────────────────────┤
+│                  Cross-Cutting Layer                   │
+│  src/providers/  (LLM clients + factory)              │
+│  src/tools/      (tool registry + built-in tools)     │
+│  src/skills/     (skill discovery + loading)          │
+│  src/mcp/        (MCP client + manager)               │
+│  src/hooks/      (lifecycle hooks + presets)          │
+│  src/observability/ (telemetry, logging, cost)        │
+├─────────────────────────────────────────────────────┤
+│                    Config Layer                        │
+│  src/config/ (schema, loader, config-io)              │
+└─────────────────────────────────────────────────────┘
 ```
 
-## Shared Abstractions
+## Entry Point
 
-- **`PlanGrammar`** (`src/agents/plan-grammar.ts`) — single source of truth for the canonical plan markdown format. Consumed by plan-agent (emit), build-agent (parse for execution), and `handlePlan` (parse for display).
-- **`ToolRegistry`** — single source of truth for available tools. Re-used by the agent loop, the CLI tool inspector, and any embedded plugin.
-- **`StateFile`** (`src/agents/state.ts`) — atomic JSON state shared across plan/build/explore agents.
-- **`provider/model-string`** — single source of truth for "which model runs".
-- **`createAgent()`** (`src/cli/shared.ts`) — single source of truth for "how to build a fully-wired Agent". Used by both `handleRun` and `handleInteractiveChat`.
-- **`config-io.ts`** — single source of truth for config file I/O. Used by `login.ts` and `mcp.ts`.
-- **`prompt.ts`** — single source of truth for readline prompting. Used by `login.ts`, `plan-agent.ts`, `step-executor.ts`.
+`index.ts` → `src/cli/index.ts` → `src/cli/main.tsx` → `main()`
 
-## Plugin Surface
+The `main()` function:
+1. Parses CLI args (`src/cli/shared.ts` → `parseArgs()`)
+2. Dispatches pre-config commands (login, logout) before `loadConfig()`
+3. Loads config (`src/config/loader.ts` → `loadConfig()`)
+4. Dispatches the main command via `src/cli/command-dispatch.ts`
 
-- **Tool plugins** via `src/tools/plugin-loader.ts` — drop a `.ts` file exporting `Tool` and it gets registered at startup.
-- **Skills** are a softer extension: any `SKILL.md` under a configured directory is loaded automatically.
+## Agent Loop (ADR-016 Decomposition)
 
-## Embedded Mode
+The `Agent` class (`src/core/agent.ts`, 738 lines) orchestrates the LLM conversation loop. After ADR-016, it was decomposed into 10 focused modules:
 
-For the compiled binary (`bun build --compile`), the skills and version metadata are embedded as TS modules so the binary has no runtime dependency on the source tree. See `scripts/generate-embedded-skills.ts` and `scripts/generate-version.ts`.
+| Module | File | Lines | Responsibility |
+|--------|------|-------|----------------|
+| Agent | `src/core/agent.ts` | 738 | Orchestrator — owns conversation, skills, public interface |
+| TurnExecutor | `src/core/turn-executor.ts` | 236 | One LLM call + tool batch execution |
+| AgentObservability | `src/core/agent-observability.ts` | 326 | Span/timer management, telemetry wrapper |
+| agent-utils | `src/core/agent-utils.ts` | 228 | `streamLlmResponse()`, `streamFinalAnswer()`, `isLooping()` |
+| context-budget | `src/core/context-budget.ts` | 276 | `prepareContext()`, `buildContextStats()` |
+| DebugLogger | `src/core/debug-logger.ts` | 132 | Verbose logging (no-op when disabled) |
+| ProviderCache | `src/core/provider-cache.ts` | 134 | LLM client cache with eviction + health tracking |
+| ConversationManager | `src/core/conversation.ts` | — | Conversation history persistence |
+| MemoryStore | `src/core/memory.ts` | 422 | User-initiated memory storage + retrieval |
+| CodebaseExplorer | `src/agents/codebase-explorer.ts` | 381 | Filesystem exploration for plan/explore agents |
 
-## ADRs
+### Agent Loop Flow (`Agent.runStream()`)
 
-Architecture decisions are documented in `docs/adr/` (ADR-001 through ADR-014). See `docs/README.md` for the full index. Key ADRs:
+```
+runStream(prompt, model)
+  │
+  ├── await skills initialization
+  ├── observability: beginRequest()
+  ├── prepareContext() → context-budget.ts
+  │     ├── memory retrieval (if enabled)
+  │     └── context window budgeting
+  │
+  └── for each iteration (max 20):
+        ├── streamLlmResponse() → agent-utils.ts
+        │     └── yields content chunks + returns tool calls
+        ├── if no tool calls → yield final answer, return
+        ├── TurnExecutor.executeTurn() → turn-executor.ts
+        │     └── runs tools, returns results + error recovery
+        ├── if loop detected → streamFinalAnswer() → agent-utils.ts
+        └── update context stats
+```
 
-- ADR-005: Tool system design (Tool interface, registry, dangerous-routing)
-- ADR-010: Ink CLI integration (React/Ink UI architecture)
-- ADR-011: Multi-agent system (plan/build/explore sharing state file + PlanGrammar)
-- ADR-012: GatewayOpenAIProvider base class (held back by 30% duplication threshold)
-- ADR-013: ClinePass live model lookup (replace baked capability table with live fetch)
-- ADR-014: Login command onboarding design (top-level dispatch, status-only chat, literal key storage)
-- ADR-015: Lifecycle hooks system (external command spawning, sequential pipeline, plannotator preset)
-- ADR-016: Agent decomposition (deletion test, type-only imports, 10 extracted modules)
+## Multi-Agent System (ADR-011)
+
+Three specialized agents coordinate via a shared state file (`.tiny-state.json`):
+
+| Agent | File | Purpose |
+|-------|------|---------|
+| Plan Agent | `src/agents/plan-agent.ts` | Generates implementation plans from task descriptions |
+| Build Agent | `src/agents/build-agent.ts` | Executes plan steps with tool calls |
+| Explore Agent | `src/agents/explore-agent.ts` | Read-only codebase analysis |
+
+### State Management
+
+- **State File**: `.tiny-state.json` (JSON with file locking + rotation)
+- **Types**: `src/agents/types.ts` — `StateFile`, `AgentPhase`, `AgentStatus`, `AgentResult`
+- **I/O**: `src/agents/state.ts` — `readStateFile()`, `writeStateFile()` with lock files
+- **Plan Grammar**: `src/agents/plan-grammar.ts` — parses plan markdown into phases/steps
+- **Step Execution**: `src/agents/step-executor.ts` — `StepExecutor` class for retry/skip/abort flow
+
+### Agent Communication Flow
+
+```
+planAgent(task) → writes plan to state file
+buildAgent(plan) → reads plan, executes steps, writes results to state file
+exploreAgent(task) → reads codebase, writes findings to state file
+```
+
+## Provider Abstraction (ADR-002)
+
+All LLM providers implement the `LLMClient` interface (`src/providers/types.ts`):
+
+```typescript
+interface LLMClient {
+  chat(params: ChatParams): Promise<ChatResponse>;
+  chatStream(params: ChatParams): AsyncGenerator<string>;
+}
+```
+
+- **Factory**: `createProvider({model, provider, providers})` in `src/providers/factory.ts`
+- **Model Registry**: `detectProvider(model)` in `src/providers/model-registry.ts` — auto-detects provider from model string prefix
+- **9 providers**: OpenAI, Anthropic, Ollama, Ollama Cloud, OpenRouter, OpenCode, Z.AI, ClinePass, QwenCloud
+- **GatewayOpenAIProvider**: Not used (ADR-012 — held back by 30% threshold rule)
+
+## Tool System (ADR-005)
+
+- **Registry**: `ToolRegistry` class in `src/tools/registry.ts` — register, list, execute
+- **Interface**: `Tool` interface in `src/tools/types.ts` — name, description, parameters, execute
+- **Built-in tools**: file operations, bash, grep, glob, web search, skill loading
+- **Plugin loading**: `src/tools/plugin-loader.ts` — dynamically loads tool plugins
+- **Confirmation**: `src/tools/confirmation.ts` — user confirmation for dangerous tools (ADR-009)
+- **MCP tools**: Auto-registered from MCP servers with `mcp_` prefix
+
+## Skill System
+
+- **Discovery**: `discoverSkills(directories, builtinDir)` in `src/skills/loader.ts`
+- **Parsing**: `parseSkillFrontmatter(content)` in `src/skills/parser.ts` — YAML frontmatter
+- **Built-in**: `src/skills/builtin-registry.ts` — embedded skills (code-simplifier)
+- **Loading**: `Agent.loadSkill(name)` — reads file, wraps in XML, restricts tools
+- **Embedded content**: `src/skills/embedded-content.ts` — generated at build time
+
+## Config System
+
+- **Schema**: `src/config/schema.ts` — Zod-validated `Config` interface
+- **Loader**: `src/config/loader.ts` — `loadConfig()`, `getConfigPath()`, `createDefaultConfig()`
+- **Config I/O**: `src/config/config-io.ts` — `readConfigFile()`, `writeConfigFile()` with YAML/JSON dispatch
+- **Location**: `~/.tiny-agent/config.yaml`
+
+## Observability Layer
+
+- **Telemetry**: `src/observability/telemetry.ts` — OpenTelemetry spans + timers
+- **Logging**: `src/observability/logger.ts` — structured JSON logging
+- **Cost**: `src/observability/cost.ts` — token cost estimation
+- **Redaction**: `src/observability/redact.ts` — API key masking
+- **Langfuse**: `src/observability/langfuse.ts` — optional LLM observability platform
+
+## Key ADRs
+
+| ADR | Title | Key Decision |
+|-----|-------|-------------|
+| ADR-001 | Project Architecture | Layered architecture with clear separation |
+| ADR-002 | LLM Provider Abstraction | Unified `LLMClient` interface |
+| ADR-004 | Context Management | Handoff/pickup pattern for context budget |
+| ADR-005 | Tool System Design | Tool interface + registry pattern |
+| ADR-010 | Ink CLI Integration | React-based terminal UI |
+| ADR-011 | Multi-Agent System | Plan/Build/Explore agents with shared state file |
+| ADR-012 | GatewayOpenAIProvider | No shared base class (30% threshold rule) |
+| ADR-014 | Login Command | Top-level command, literal key storage |
+| ADR-015 | Lifecycle Hooks | External command spawning at lifecycle events |
+| ADR-016 | Agent Decomposition | Extract focused modules via deletion test + type-only imports |

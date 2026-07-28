@@ -2,186 +2,201 @@
 
 ## Framework
 
-**bun:test** (Bun's built-in test runner — Jest-compatible API).
+| Property | Value |
+|----------|-------|
+| Framework | `bun:test` (Bun's built-in test runner) |
+| Assertion library | `bun:test` (`expect`, `toEqual`, `toBe`, etc.) |
+| Test runner | `bun test` |
+| Watch mode | `bun test:watch` (`bun test --watch`) |
+| Coverage | Not configured (relies on test count + behavior testing) |
 
-```ts
-import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
-```
+## Test Statistics
 
-## Test File Layout
+| Metric | Value |
+|--------|-------|
+| Test files | 80 |
+| Total tests | 1,288 |
+| Assertions | 2,795 `expect()` calls |
+| Pass rate | 100% (0 failures) |
+| Test lines | ~17,139 |
+| Execution time | ~5 seconds |
+
+## Test Structure
+
+Tests mirror the `src/` directory structure:
 
 ```
 test/
-├── <mirror-of-src-tree>/<file>.test.ts
-├── performance/benchmarks.test.ts
-├── e2e/agent-loop.test.ts
-├── ui/utils.test.ts                    # UI helpers
-├── agent.test.ts, memory.test.ts       # top-level integration
-└── ...
+├── agents/              # Agent tests (8 files)
+│   ├── build-agent.test.ts
+│   ├── codebase-explorer.test.ts
+│   ├── explore-agent.test.ts
+│   ├── plan-agent.test.ts
+│   ├── plan-grammar.test.ts
+│   ├── state.test.ts
+│   └── step-executor.test.ts
+├── cli/                 # CLI tests (10 files)
+│   ├── handlers/        # One test file per CLI handler
+│   ├── chat-commands.test.ts
+│   ├── command-dispatch.test.ts
+│   ├── integration.test.ts
+│   └── main.test.tsx
+├── config/              # Config tests (2 files)
+├── core/                # Core module tests (15 files)
+│   ├── agent.test.ts
+│   ├── agent-fallback.test.ts
+│   ├── agent-observability.test.ts
+│   ├── agent-utils-stream.test.ts
+│   ├── context-budget.test.ts
+│   ├── debug-logger.test.ts
+│   ├── provider-cache.test.ts
+│   ├── turn-executor.test.ts
+│   └── ...
+├── e2e/                 # End-to-end tests (1 file)
+│   └── agent-loop.test.ts
+├── hooks/               # Hooks tests (4 files)
+├── mcp/                 # MCP tests (2 files)
+├── observability/       # Observability tests (8 files)
+├── providers/           # Provider tests (5 files)
+├── security/            # Security tests (4 files)
+│   ├── bash-env.test.ts
+│   ├── command-injection.test.ts
+│   ├── file-validation.test.ts
+│   └── security-suite.test.ts
+├── skills/              # Skills tests (4 files)
+├── tools/               # Tool tests (8 files)
+├── ui/                  # UI tests (3 files)
+└── utils/               # Utility tests (2 files)
 ```
 
-**65 test files** mirroring `src/`. Rule of thumb: every `src/foo/bar.ts` has a matching `test/foo/bar.test.ts`.
+## Test Patterns
 
-### Distribution by Directory
+### Basic Test Structure
 
-| Directory | Test Files |
-|---|---|
-| `test/tools/` | 9 |
-| `test/observability/` | 8 |
-| `test/core/` | 8 |
-| `test/agents/` | 6 |
-| `test/` (top-level) | 5 |
-| `test/skills/` | 4 |
-| `test/security/` | 4 |
-| `test/providers/` | 4 |
-| `test/cli/handlers/` | 4 |
-| `test/cli/` | 4 |
-| `test/utils/` | 2 |
-| `test/mcp/` | 2 |
-| `test/config/` | 2 |
-| `test/ui/` | 1 |
-| `test/performance/` | 1 |
-| `test/e2e/` | 1 |
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-## Patterns
+describe("MemoryStore", () => {
+  const tempFile = "/tmp/test-memory.json";
 
-### Describe / It / Expect
+  beforeEach(() => {
+    try {
+      unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
+  });
 
-```ts
-describe("ToolRegistry", () => {
-  it("registers and retrieves a tool", () => {
-    const r = new ToolRegistry();
-    r.register(myTool);
-    expect(r.get("my-tool")?.name).toBe("my-tool");
+  it("should evict oldest memories when over max limit", () => {
+    const store = new MemoryStore({ filePath: tempFile, maxMemories: 3 });
+    store.add("1");
+    store.add("2");
+    store.add("3");
+    store.add("4");
+    expect(store.count()).toBe(3);
   });
 });
 ```
 
-### Setup / Teardown
+### Cleanup Pattern
 
-```ts
-const tempFile = "/tmp/test-state.json";
+Tests that create files must clean up in `beforeEach`/`afterEach`:
 
-beforeEach(() => { try { unlinkSync(tempFile); } catch {} });
-afterEach(() => { try { unlinkSync(tempFile); } catch {} });
-```
+```typescript
+beforeEach(() => {
+  try { unlinkSync(tempFile); } catch { /* ignore */ }
+});
 
-Always clean up temp files; never let a failing test leak state.
-
-### Async / Await
-
-```ts
-it("parses a plan end-to-end", async () => {
-  const steps = await parsePlanToSteps(plan);
-  expect(steps.length).toBeGreaterThan(0);
+afterEach(() => {
+  try { unlinkSync(tempFile); } catch { /* ignore */ }
 });
 ```
 
-### Mocking
+### Mocking Patterns
 
-The project avoids `jest.mock`; instead, **dependency injection is preferred**:
-- `ToolRegistry` is injectable — tests pass a registry pre-loaded with stubs.
-- Provider factory accepts a `providers` map — tests inject a stub provider.
-- `StepExecutor` accepts `promptFn` in `StepExecutorOptions` — tests pass a `vi.fn()` mock.
-- `TurnExecutor` is tested with a mock LLM client + mock tool registry, without the full Agent setup.
+#### Mocking LLM Clients
 
-When mocking is unavoidable, define a local stub at the top of the test file:
-
-```ts
-// Command-aware bash mock: "fail" → failure, "flaky" → transient, else → success
-const bashTool = {
-  name: "bash",
-  description: "Run a bash command",
-  parameters: { type: "object" as const, properties: {}, required: [] },
-  execute: async (args: Record<string, unknown>) => {
-    const command = String(args?.command ?? "");
-    if (command === "fail") return { success: false, error: "Something went wrong" };
-    return { success: true, output: "Command executed" };
-  },
+```typescript
+const mockClient: LLMClient = {
+  chat: async () => ({ content: "mock response", usage: undefined }),
+  chatStream: async function* () { yield "mock"; },
 };
 ```
 
-### Readline Mocking
+#### Mocking Tool Registry
 
-`prompt.ts` functions are tested by mocking `readline.createInterface`:
-
-```ts
-const createInterfaceSpy = vi.spyOn(readline, "createInterface").mockImplementation(
-  () => ({
-    question: (_q: string, cb: (answer: string) => void) => {
-      queueMicrotask(() => cb("  hello world  "));
-    },
-    close: () => {},
-  }) as unknown as readline.Interface
-);
-```
-
-### Table-Driven / Parameterized
-
-```ts
-it.each([
-  ["## Phase 1: X\n1. Step", 1],
-  ["1. A\n2. B", 2],
-])("parses %s as %i phases", (input, expected) => {
-  expect(parsePlanGrammar(input).phases.length).toBe(expected);
+```typescript
+const registry = new ToolRegistry();
+registry.register({
+  name: "test_tool",
+  description: "Test tool",
+  parameters: { type: "object", properties: {} },
+  execute: async () => ({ success: true, output: "ok" }),
 });
 ```
 
-## Behavioral Focus
+#### Mocking stdin (readline prompts)
 
-Tests exercise behavior, not implementation:
-
-```ts
-// ✅ good: tests observable contract
-expect(registry.execute("read_file", { path }).success).toBe(true);
-
-// ❌ bad: tests internal cache
-expect((registry as any)._cache.has("read_file")).toBe(true);
+```typescript
+// Mock prompt to return a specific value
+const mockPrompt = async () => "y";
+const executor = new StepExecutor(registry, { promptFn: mockPrompt });
 ```
 
-## Coverage
+#### Mocking process.exit
 
-Not configured by default. Run with:
+Tests that exercise CLI handlers mock `process.exit` to prevent the test runner from exiting:
+
+```typescript
+const exitSpy = mock((code?: number) => { throw new Error(`exit:${code}`); });
+mock.module("node:process", () => ({ ...process, exit: exitSpy }));
+```
+
+### Test Categories
+
+#### Unit Tests
+
+Test individual modules in isolation:
+- `test/core/turn-executor.test.ts` — TurnExecutor with mock registry
+- `test/core/provider-cache.test.ts` — ProviderCache with mock clients
+- `test/core/debug-logger.test.ts` — DebugLogger no-op behavior
+- `test/agents/step-executor.test.ts` — StepExecutor with mock prompt
+
+#### Integration Tests
+
+Test multiple modules working together:
+- `test/cli/integration.test.ts` — CLI arg parsing + dispatch
+- `test/e2e/agent-loop.test.ts` — Full agent loop with mock LLM
+
+#### Security Tests
+
+Dedicated security test suite in `test/security/`:
+- `command-injection.test.ts` — bash tool injection prevention
+- `bash-env.test.ts` — environment variable sanitization
+- `file-validation.test.ts` — path traversal prevention
+- `security-suite.test.ts` — combined security validation
+
+## Running Tests
 
 ```bash
-bun test --coverage
+bun test                         # All tests
+bun test <file>                  # Single file (e.g., "bun test tools/file.test.ts")
+bun test <pattern>               # Pattern match (e.g., "bun test memory")
+bun test:watch                   # Watch mode for TDD
 ```
 
-## What to Test
+## CI Testing
 
-| Layer | What | Key Test Files |
-|---|---|---|
-| `src/tools/registry.ts` | register / execute / executeBatch / dangerous routing | `test/tools/registry.test.ts` |
-| `src/tools/file-tools.ts` | sensitive-file detection, .gitignore respect, error mapping | `test/tools/file-tools.test.ts` |
-| `src/tools/bash-tool.ts` | destructive-command classifier, exit codes, env stripping | `test/tools/bash-tool.test.ts` |
-| `src/agents/plan-grammar.ts` | serialize/parse round-trip, validate edge cases | `test/agents/plan-grammar.test.ts` |
-| `src/agents/build-agent.ts` | plan → step conversion, dry-run | `test/agents/build-agent.test.ts` |
-| `src/agents/step-executor.ts` | retry/skip/abort, change tracking, mapBuildAction | `test/agents/step-executor.test.ts` |
-| `src/agents/plan-agent.ts` | exploration hooks, state writes | `test/agents/plan-agent.test.ts` |
-| `src/core/agent.ts` | agent loop, streaming, error recovery | `test/core/agent.test.ts` |
-| `src/core/turn-executor.ts` | tool batch execution, loop detection, not-found/declined | `test/core/turn-executor.test.ts` |
-| `src/cli/handlers/login.ts` | login/logout flows, provider status, pure functions | `test/cli/handlers/login.test.ts` |
-| `src/config/config-io.ts` | read/write YAML/JSON, 0o600 permissions, containsLiteralApiKey | `test/config/config-io.test.ts` |
-| `src/cli/prompt.ts` | prompt, promptHidden (non-TTY), promptChoice null handling | `test/cli/prompt.test.ts` |
-| `src/providers/*` | message-format conversion, streaming token events | `test/providers/*` |
-| `src/observability/*` | redaction, token counting, cost math | `test/observability/*` |
-| `src/security/*` | command injection, path traversal, env isolation | `test/security/*` |
+Tests run on CI in `.github/workflows/ci.yml`:
+- **ubuntu-latest**: Full test suite
+- **macos-latest**: Full test suite
+- Bun latest version
+- Dependency caching via `actions/cache`
 
-## Performance & E2E
+## Testing Philosophy
 
-- `test/performance/benchmarks.test.ts` — measures hot-path latency (tokens, glob, grep, fs).
-- `test/e2e/agent-loop.test.ts` — full agent loop with stubbed providers; runs single-turn, multi-turn, file ops, bash ops, memory, persistence, iteration limits, graceful shutdown.
-
-## Running
-
-```bash
-bun test                          # everything (1066 tests, 0 failures)
-bun test test/agents              # one directory
-bun test memory                   # pattern match
-bun test --watch                  # watch mode
-bun test --coverage               # with coverage
-```
-
-## CI
-
-`.github/workflows/ci.yml` runs `bun test` + `bun run check` (lint + typecheck) on every PR.
+- **Test behavior, not implementation details** — tests should give confidence that the code works
+- **Clean up resources** — `beforeEach`/`afterEach` for temp files
+- **Mock at the seam** — mock `LLMClient`, `ToolRegistry`, `prompt` — not internals
+- **Structured results** — tests use `{ success: boolean, error?: string }` pattern matching the codebase convention
+- **No coverage thresholds** — relies on 1,288 tests across 80 files covering all modules

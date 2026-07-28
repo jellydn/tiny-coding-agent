@@ -1,94 +1,142 @@
-# Stack
+# Technology Stack
 
 ## Languages & Runtime
 
-- **TypeScript** (strict mode, ES modules) — see `tsconfig.json`. Notable compiler options:
-  - `verbatimModuleSyntax` — requires explicit `import type` for type-only imports
-  - `noUncheckedIndexedAccess` — indexed access returns `T | undefined`
-  - `noImplicitOverride` — `override` keyword required on subclass overrides
-- **Runtime**: Bun (>=1.x). Source extensions: `.ts`, `.tsx` (for Ink UI).
-- **Path aliases**: `@/*` → `./src/*` (e.g. `import { Tool } from "@/tools/types.js"`).
+| Property | Value |
+|----------|-------|
+| Language | TypeScript 5+ (strict mode) |
+| Runtime | Bun (latest) |
+| Module system | ES modules (`"type": "module"`) |
+| Target | ESNext |
+| Module resolution | NodeNext |
+| JSX | react-jsx (Ink CLI components) |
+| Package manager | Bun (bun.lock) |
+| Version | 0.6.0 |
 
-## Frontend / UI
-
-- **React 18+ via Ink** (`ink` package) for the CLI UI layer (`src/ui/`).
-- **ink-box / ink-spinner / ink-text-input** for terminal layout, spinners, and text input.
-- No browser-side code.
-
-## Validation & Schemas
-
-- **zod** for runtime validation of tool arguments and CLI inputs.
-- **zod-to-json-schema** for OpenAI/Anthropic tool schema conversion.
-
-## Linting / Formatting
-
-- **Biome** (single tool for lint + format). Config: `biome.json`.
-  - Indent: tabs
-  - Quotes: double
-  - Line width: 120
-  - Lint rules: `recommended` + `correctness`, `style`, `suspicious`, `performance`
-  - Disabled rules: `noNonNullAssertion`, `noNonNullAssertedOptionalChain`, `noArrayIndexKey`, `noAssignInExpressions`
-  - Import organization enabled (`assist/source/organizeImports`)
-- **prek** (pre-commit hooks). Config: `prek.toml`.
-  - Trailing whitespace, EOF fixer, YAML/large file checks
-  - Local hooks for `biome check` (lint+format) and `tsc --noEmit` (typecheck)
-
-## Build & Distribution
-
-- **Bun compile** — `bun build index.ts --compile --outfile=tiny-agent` produces a self-contained native binary.
-- **Embedded skills generation** — `bun run scripts/generate-embedded-skills.ts` walks `src/skills/builtin/` and emits `src/skills/embedded-content.ts` so skill content ships inside the binary.
-- **Version generation** — `bun run scripts/generate-version.ts` writes `src/utils/version-constant.ts` from `package.json`.
-- **Task runner**: `just` (Justfile). Recipes: `dev`, `build`, `test`, `lint`, `format`, `typecheck`, `check`, `pre`, release patch/minor/major.
-- **Release**: `bumpp` (via `bump.config.ts`) for version bumping. GitHub Actions release workflow in `.github/workflows/release.yml`.
-
-## Testing
-
-- **bun:test** built-in test runner. 65 test files mirroring `src/` under `test/`.
-- **Coverage**: not configured; bun's `--coverage` flag is available.
-- **Performance benchmarks**: `test/performance/benchmarks.test.ts`.
-- **E2E**: `test/e2e/agent-loop.test.ts` exercises the full agent loop with stub providers.
-
-## Dependencies (top-level from `package.json`)
-
-| Package | Purpose |
-|---|---|
-| `@anthropic-ai/sdk` | Anthropic provider |
-| `openai` | OpenAI / OpenAI-compatible providers |
-| `ollama` | Ollama API client |
-| `tiktoken` | Token counting (OpenAI tokenizer) |
-| `ink`, `react` | CLI UI (React for terminals) |
-| `ink-box`, `ink-spinner`, `ink-text-input` | Terminal layout components |
-| `zod`, `zod-to-json-schema` | Runtime schema validation + JSON Schema conversion |
-| `@modelcontextprotocol/sdk` | MCP client integration |
-| `@opentelemetry/api` | OpenTelemetry tracing |
-| `chokidar` | File watching for config reloads |
-| `yaml` | YAML parsing (skills frontmatter, config) |
-| `pino` | Structured logging |
-| `boxen` | Terminal boxes (CLI output) |
-
-Dev: `@types/*`, `bun-types`, `@biomejs/biome`, `bumpp`.
-
-## Configuration Surface
+## Configuration Files
 
 | File | Purpose |
-|---|---|
-| `tsconfig.json` | Strict TS config, ESM, path aliases |
-| `biome.json` | Lint + format rules |
-| `package.json` | Scripts, deps, release metadata |
-| `bump.config.ts` | Version bump configuration |
-| `cspell.json` | Spell-check dictionary |
+|------|---------|
+| `package.json` | Dependencies, scripts, project metadata |
+| `tsconfig.json` | TypeScript compiler options (strict, NodeNext, `@/*` path alias) |
+| `biome.json` | Linter + formatter config (tab indentation, 120 char width, double quotes) |
+| `bun.lock` | Bun lockfile (v1) |
 | `prek.toml` | Pre-commit hook configuration |
-| `renovate.json` | Automated dependency updates |
-| `.github/workflows/ci.yml` | CI: typecheck + lint + tests + build |
-| `.github/workflows/release.yml` | Release pipeline |
-| `Justfile` | Task runner recipes |
-| `Makefile` | Legacy wrapper (same recipes) |
-| `~/.tiny-agent/config.yaml` | User runtime config (YAML or JSON) |
-| `tiny-agent.json` | Project-local config override |
+| `cspell.json` | Spell-check configuration |
+| `renovate.json` | Dependency auto-update configuration |
+| `bump.config.ts` | Version bump configuration (bumpp) |
 
-## CI/CD
+## Key Dependencies
 
-- **GitHub Actions CI** (`.github/workflows/ci.yml`): runs `bun test` + `bun run check` (lint + typecheck) on every PR.
-- **GitHub Actions Release** (`.github/workflows/release.yml`): triggered on version tags, builds binary for multiple platforms, publishes GitHub Release + Homebrew tap.
-- **Renovate** (`renovate.json`): automated dependency PRs.
-- **Husky pre-commit** (`.husky/pre-commit`): runs `prek` hooks (biome + tsc).
+### AI / LLM SDKs
+
+| Package | Purpose | Used in |
+|---------|---------|---------|
+| `openai` | OpenAI API client (also used for OpenRouter, OpenCode, Z.AI, ClinePass, QwenCloud) | `src/providers/openai.ts`, `src/providers/openrouter.ts`, etc. |
+| `@anthropic-ai/sdk` | Anthropic Claude API client | `src/providers/anthropic.ts` |
+| `ollama` | Ollama local + cloud API client | `src/providers/ollama.ts`, `src/providers/ollama-cloud.ts` |
+
+### CLI / UI
+
+| Package | Purpose | Used in |
+|---------|---------|---------|
+| `ink` | React for CLI terminal apps | `src/ui/` (all components) |
+| `ink-box` | Box component for Ink | `src/ui/components/` |
+| `ink-spinner` | Spinner component for Ink | `src/ui/components/Spinner.tsx` |
+| `react` | React runtime (for Ink) | `src/ui/` |
+| `react-devtools-core` | DevTools integration | Dev mode only |
+
+### Utilities
+
+| Package | Purpose | Used in |
+|---------|---------|---------|
+| `yaml` | YAML parsing/serializing for config files | `src/config/loader.ts`, `src/config/config-io.ts` |
+| `zod` | Runtime validation for configs and tool inputs | `src/config/schema.ts`, `src/tools/` |
+| `tiktoken` | Token counting for context budgeting | `src/core/tokens.ts` |
+| `@tokenlens/models` | Model token limits | `src/providers/capabilities.ts` |
+
+### Telemetry / Observability
+
+| Package | Purpose | Used in |
+|---------|---------|---------|
+| `@opentelemetry/api` | OpenTelemetry tracing API | `src/observability/telemetry.ts` |
+| `@opentelemetry/sdk-trace-base` | OpenTelemetry SDK (tracer provider, exporters) | `src/observability/telemetry.ts` |
+| `langfuse` (optional) | LLM observability platform integration | `src/observability/langfuse.ts` |
+
+### MCP
+
+| Package | Purpose | Used in |
+|---------|---------|---------|
+| `@modelcontextprotocol/sdk` | Model Context Protocol client SDK | `src/mcp/client.ts`, `src/mcp/manager.ts` |
+
+## Dev Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `@biomejs/biome` | Linter + formatter (replaces ESLint + Prettier) |
+| `@types/bun` | Type definitions for Bun runtime |
+| `@types/react` | Type definitions for React |
+| `typescript` | TypeScript compiler (peer dependency) |
+| `bumpp` | Version bumping for releases |
+| `husky` | Git hooks management |
+
+## Build & Release
+
+### Scripts (from `package.json`)
+
+```bash
+bun run dev              # Watch mode (bun --watch index.ts)
+bun run build            # Compile to binary (outputs tiny-agent)
+bun run generate:skills  # Regenerate embedded skills
+bun run generate:version # Generate version constant
+bun run typecheck        # tsc --noEmit (with version generation)
+bun run lint             # biome check .
+bun run lint:fix         # biome check --write --unsafe .
+bun run format           # biome format . --write
+bun test                 # Run all tests (bun test)
+bun test:watch           # Watch mode tests
+bun run release:patch    # Patch release (test → typecheck → lint → bumpp)
+bun run release:minor    # Minor release
+bun run release:major    # Major release
+```
+
+### Build Output
+
+The build compiles to a single binary using `bun build --compile`:
+
+```
+index.ts → bun build --compile → tiny-agent (standalone binary)
+```
+
+### CI Pipeline (`.github/workflows/ci.yml`)
+
+- **Triggers**: Push to `main`, pull requests to `main`
+- **Jobs**: `lint` (ubuntu-latest), `test` (ubuntu-latest + macos-latest), `build` (conditional)
+- **Setup**: Bun latest, dependency caching via `oven-sh/setup-bun@v2`
+
+### Release Pipeline (`.github/workflows/release.yml`)
+
+- Automated releases via bumpp + GitHub Actions
+- Homebrew formula in `.github/homebrew-tiny-agent/tiny-agent.rb`
+
+## TypeScript Configuration
+
+Key compiler options from `tsconfig.json`:
+
+- `strict: true` — strict mode
+- `verbatimModuleSyntax` — requires explicit `import type` for types
+- `noUncheckedIndexedAccess` — indexed access requires validation
+- `noImplicitOverride` — override methods must use `override` keyword
+- `path alias`: `@/*` → `./src/*`
+- `module: NodeNext`, `moduleResolution: NodeNext`
+
+## Linting & Formatting (Biome)
+
+- Tab indentation (width 2)
+- 120 character line width
+- Double quotes
+- Semicolons enabled
+- ES5 trailing commas
+- Disabled rules: `noNonNullAssertion`, `noNonNullAssertedOptionalChain`, `noArrayIndexKey`, `noAssignInExpressions`
+- Auto-organize imports on save
+- `src/skills/embedded-content.ts` excluded (generated file)

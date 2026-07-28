@@ -1,159 +1,232 @@
-# Conventions
+# Coding Conventions
 
-Driven by `AGENTS.md`, `CLAUDE.md`, and `biome.json`. All enforced by Biome lint + format on save / pre-commit (via `prek`).
+## Imports & Naming
 
-## Imports
-
-- Node built-ins: prefix with `node:`.
-  ```ts
-  import * as fs from "node:fs/promises";
-  import { createInterface } from "node:readline";
-  import { chmod, readFile, writeFile } from "node:fs/promises";
-  ```
-- External deps: bare specifier.
-  ```ts
-  import OpenAI from "openai";
-  ```
-- Internal imports: `.js` extension (ESM) and `@/*` alias when crossing `src/`.
-  ```ts
-  import type { Tool } from "@/tools/types.js";
-  import { parse as parsePlanGrammar } from "./plan-grammar.js";
-  ```
-- Type-only imports: `import type { Foo }` (enforced by `verbatimModuleSyntax`).
-- Imports are auto-sorted by Biome — do not hand-reorder.
-
-## Naming
-
-| Kind | Convention | Example |
-|---|---|---|
-| Files | kebab-case | `plan-grammar.ts`, `config-io.ts` |
-| Classes / types / React components | PascalCase | `ToolRegistry`, `BuildStep`, `TurnExecutor` |
-| Functions / variables | camelCase | `parsePlanToSteps`, `createAgent` |
-| Constants | SCREAMING_SNAKE_CASE | `BUILD_SYSTEM_PROMPT`, `LOOP_DETECTION` |
-| Private members | `_prefix` | `_tools`, `_registry`, `_promptFn` |
-| React props | `interface XProps` or inline | `<Message ... />` |
-
-## Strings & Variables
-
-```ts
-const message = "text";          // double quotes
-let count = 0;                   // let only when reassigning
-const timeout = args.timeout ?? 60000;  // ?? for nullish defaults
+```typescript
+import * as fs from "node:fs/promises"; // Node builtins with node: prefix
+import OpenAI from "openai"; // External deps
+import type { Tool } from "./types.js"; // Internal: .js extension, type-only with `import type`
+import { ToolRegistry } from "@/tools/registry.js"; // Path alias @/* → ./src/*
 ```
 
-## TypeScript Style
+### Naming Rules
 
-- Strict mode (see `tsconfig.json`).
-- Prefer `satisfies` for type narrowing with runtime validation.
-- Use `zod` for runtime input validation (tools, configs, env vars).
-- `noUncheckedIndexedAccess` — every `arr[i]` is `T | undefined`; check before use.
-- `noImplicitOverride` — `override` keyword required on subclass overrides.
-- Use `as const` for literal type narrowing (e.g. `{ type: "object" as const }`).
+| Category | Convention | Example |
+|----------|-----------|---------|
+| Files | kebab-case | `file-tools.ts`, `agent-observability.ts` |
+| Classes/Types/Interfaces | PascalCase | `ToolRegistry`, `StateManager`, `LLMClient` |
+| Functions/Variables | camelCase | `loadConfig`, `createProvider` |
+| Constants | SCREAMING_SNAKE_CASE | `DEFAULT_STATE_FILE`, `MAX_STATE_FILE_SIZE` |
+| Private members | `_prefix` | `_providerCache`, `_toolRegistry` |
+| Enum values | PascalCase | `MessageRole.ASSISTANT`, `StatusType.READY` |
 
-## React / JSX (Ink)
+### TypeScript Rules (enforced by tsconfig)
 
-- Function components with TypeScript prop interfaces.
-- No class components.
-- Use contexts (`src/ui/contexts/`) for cross-cutting state.
+- `strict: true` — strict mode
+- `verbatimModuleSyntax` — requires explicit `import type` for types
+- `noUncheckedIndexedAccess` — accessing indexed types requires validation
+- `noImplicitOverride` — override methods must use `override` keyword
+- `let` only when reassigning; `const` by default
+- `??` for nullish coalescing defaults (not `||`)
+
+## Strings & Quotes
+
+```typescript
+const message = "text"; // Double quotes (enforced by Biome)
+const timeout = args.timeout ?? 60000; // ?? for nullish defaults
+```
 
 ## Error Handling
 
-Return structured results, never throw for expected failures.
+Return structured results, never throw for expected failures:
 
-```ts
-async function readSomething(path: string): Promise<Result<string>> {
+```typescript
+// ✅ Correct — structured result
+async function fetchData(url: string): Promise<Result<Data>> {
   try {
-    const data = await fs.readFile(path, "utf-8");
-    return { success: true, data };
+    const response = await fetch(url);
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+    return { success: true, data: await response.json() };
   } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    if (e.code === "ENOENT") return { success: false, error: `Not found: ${path}` };
-    return { success: false, error: e.message };
+    return { success: false, error: (err as Error).message };
   }
+}
+
+// ❌ Wrong — throwing for expected failure
+async function fetchData(url: string): Promise<Data> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
 }
 ```
 
-Use specific error codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`. Avoid `any`; cast as `NodeJS.ErrnoException` for fs errors.
+### Error Codes
 
-**Exception**: CLI handlers (`src/cli/handlers/*`) may call `process.exit(code)` after `console.error` for user-facing errors (e.g. invalid args, login cancellation). This is the accepted pattern for top-level CLI commands.
+Use specific `NodeJS.ErrnoException` codes: `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`.
 
-**Note**: `promptHidden()` currently calls `process.exit(0)` on Ctrl+C. PR #67 (`fix/design-smells`) changes this to reject the promise with `new Error("Interrupted by user (Ctrl+C)")` so callers can `try/catch` — pending merge.
+```typescript
+try {
+  await fs.readFile(filePath, "utf-8");
+} catch (err) {
+  const error = err as NodeJS.ErrnoException;
+  if (error.code === "ENOENT") {
+    return { success: false, error: `File not found: ${filePath}` };
+  }
+  return { success: false, error: error.message };
+}
+```
+
+## React & JSX (Ink CLI)
+
+The project uses Ink (React for CLI) for terminal UI components.
+
+```typescript
+import React from "react";
+import { Box, Text } from "ink";
+
+interface Props {
+  message: string;
+}
+
+export const Message: React.FC<Props> = ({ message }) => (
+  <Box><Text>{message}</Text></Box>
+);
+```
+
+- Function components with TypeScript interfaces for props
+- No class components
+- Hooks: `useCallback`, `useContext`, `useState`
+- Context providers: `ChatContext`, `StatusLineContext`, `ToastContext`
 
 ## Async Patterns
 
-```ts
+```typescript
 async function fetchData(url: string): Promise<Result<Data>> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
-    return { success: true, data: await res.json() };
+    const response = await fetch(url);
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+    return { success: true, data: await response.json() };
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
 }
 ```
 
-## Tool Authoring (`src/tools/`)
+### Async Generators (Streaming)
 
-- Each tool is a `Tool` object (`src/tools/types.ts`):
-  - `name` — kebab-case, globally unique.
-  - `description` — short, used by the LLM to decide when to call.
-  - `parameters` — JSON Schema for the args.
-  - `dangerous` — string | boolean | function. When truthy, the registry routes through `src/tools/confirmation.ts` before executing.
-  - `execute(args) → Promise<ToolResult>` — never throw; return `{ success, output?, error? }`.
-- Validate `args` with zod at the top of `execute`.
+The agent loop uses `while(true) + gen.next()` (not `for-await`) to access the generator's return value:
 
-## CLI Authoring (`src/cli/handlers/`)
+```typescript
+const streamGen = streamLlmResponse({ ... });
+while (true) {
+  const { value, done } = await streamGen.next();
+  if (done) {
+    const result = value as StreamLlmResult;
+    break;
+  }
+  // value is a content string
+  yield { content: value, ... };
+}
+```
 
-- Each handler exports an async function `(args, config?, options?) → Promise<void>`.
-- Handlers never throw to the user — they `console.error` and `process.exit(code)`.
-- Exit codes: `0` ok, `1` runtime error, `2` usage error.
-- **Login/logout** are special: dispatched before `loadConfig()` so they work without an existing config (ADR-014).
+## Validation (Zod)
 
-## Config I/O (`src/config/config-io.ts`)
+Runtime validation for configs and tool inputs:
 
-- All config file reading/writing goes through `readConfigFile()` / `writeConfigFile()`.
-- `writeConfigFile()` uses `mode: 0o600` on file creation when `containsLiteralApiKey()` returns true. PR #67 adds `chmod` after write to enforce `0o600` on existing files — pending merge.
-- Never inline `await import("yaml")` or `writeFile` for config operations — use the shared module.
+```typescript
+import { z } from "zod";
 
-## Prompting (`src/cli/prompt.ts`)
+export const providerConfigSchema = z.object({
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+});
 
-- All readline-based user input goes through `prompt()`, `promptHidden()`, or `promptChoice()`.
-- `promptHidden()` uses raw-mode `*` masking in TTY, falls back to plain readline in non-TTY.
-- `promptChoice()` currently returns `options[0] ?? ""` on no match (silent first-option fallback). PR #67 changes this to return `null` — pending merge.
-- Never inline `createInterface` from `node:readline` — use the shared module.
+export const configSchema = z.object({
+  defaultModel: z.string(),
+  providers: z.record(z.string(), providerConfigSchema).optional(),
+  // ...
+});
+```
 
-## Dependency Injection
+- Use `satisfies` for type narrowing with validation
+- Config validated on load via `validateConfig()`
 
-- Prefer dependency injection over module-level mocking.
-- `StepExecutor` accepts an optional `promptFn` in `StepExecutorOptions` — tests pass a `vi.fn()` mock.
-- `ToolRegistry` is injectable — tests pass a registry pre-loaded with stubs.
-- Provider factory accepts a `providers` map — tests inject a stub provider.
+## Module Decomposition Pattern (ADR-016)
 
-## Circular Dependency Breaking
+When extracting modules from a monolith:
 
-When extracting a module creates a runtime cycle, use the established pattern:
-1. Move shared utilities to a separate `*-utils.ts` file (e.g. `agent-utils.ts`).
-2. Use `import type` for type-only imports (erased at compile time, no runtime cycle).
-3. Re-export from the original file for backward compatibility.
-- Example: `turn-executor.ts` imports from `agent-utils.ts` (not `agent.ts`); `agent.ts` re-exports from `agent-utils.ts`.
-- Example: `step-executor.ts` uses `import type` for `BuildAction`/`BuildStep` from `build-agent.ts`; `build-agent.ts` re-exports `mapBuildAction` from `step-executor.ts`.
+1. **Deletion test** — would deleting the module concentrate complexity, or just move it?
+2. **Type-only imports** — use `import type` to break circular dependencies
+3. **Re-exports** for backward compatibility — `export { X } from "./new-module.js"`
+4. **No-op pattern** for optional features — `DebugLogger`/`AgentObservability` have zero overhead when disabled
 
-## Logging / Output
+```typescript
+// Re-export for backward compatibility
+export { isLooping, streamLlmResponse } from "./agent-utils.js";
+export type { ProviderConfigs } from "./provider-cache.js";
+```
 
-- Structured logger via `src/observability/logger.ts`; never `console.log` from the agent loop.
-- Ink UI uses `console.log` for terminal output that bypasses the UI (e.g. `--upgrade`, `login`).
-- CLI handlers use `console.log` for user-facing output and `console.error` for errors.
+## Tidying Practices
 
-## File Organization
+- **Guard Clauses**: Move preconditions to top, return early
+- **Helper Variables**: Extract complex expressions
+- **Dead Code**: Delete unused code
+- **Normalize Symmetries**: Use consistent patterns across similar modules
 
-- One concern per file.
-- `index.ts` barrel re-exports for ergonomic imports — but only when there are >2 exports.
-- Generated files (`src/utils/version-constant.ts`, `src/skills/embedded-content.ts`) are excluded from git diff lint.
+## Linting & Formatting (Biome)
 
-## Style Enforcement
+| Setting | Value |
+|---------|-------|
+| Indentation | Tabs (width 2) |
+| Line width | 120 characters |
+| Quotes | Double |
+| Semicolons | Enabled |
+| Trailing commas | ES5 |
+| Import organization | Automatic |
 
-- `bun run lint` — Biome checks.
-- `bun run format` — Biome write.
-- `bun run lint:fix` — Biome write + auto-fix.
-- Pre-commit hook runs `prek` which executes `biome check` (staged files) and `tsc --noEmit` (full project) via `.husky/pre-commit`.
+### Disabled Rules
+
+- `noNonNullAssertion` — non-null assertions (`!`) allowed
+- `noNonNullAssertedOptionalChain` — `?.` + `!` allowed
+- `noArrayIndexKey` — array index as key allowed
+- `noAssignInExpressions` — assignment in expressions allowed
+
+## Git Conventions
+
+### Commit Messages (Commitizen)
+
+```
+<type>(<scope>): <subject>
+
+[optional body]
+
+[optional footer]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `revert`
+
+### Pre-commit Hooks (Husky)
+
+- Runs `bun run lint` and `bun run format` before commit
+- Version generation + embedded skills regeneration on commit
+
+## Configuration File Format
+
+```yaml
+# ~/.tiny-agent/config.yaml
+defaultModel: openai/gpt-4o
+providers:
+  openai:
+    apiKey: ${OPENAI_API_KEY}  # env-var reference (recommended)
+  ollama:
+    baseUrl: http://localhost:11434
+memoryFile: ~/.tiny-agent/memories.json
+maxContextTokens: 32000
+hooks:
+  - name: plannotator-review
+    event: post-plan-generate
+    command: plannotator
+    args: ["--review"]
+    inputMode: stdin
+    enabled: true
+```
