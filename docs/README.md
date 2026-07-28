@@ -22,6 +22,8 @@ ADRs capture *why* a decision was made, what alternatives were considered, and w
 | 012 | [GatewayOpenAIProvider base class](adr/012-gateway-openai-provider-base.md) | Held back by the 30% duplication threshold — keep providers inline. |
 | 013 | [ClinePass live model lookup](adr/013-clinepass-live-model-lookup.md) | Replace baked capability table with a live `GET /api/v1/models` fetch. |
 | 014 | [Login command onboarding design](adr/014-login-command.md) | Top-level command before `loadConfig`; chat `/login` status-only; literal key storage with env-var tip. |
+| 015 | [Lifecycle hooks system](adr/015-lifecycle-hooks-system.md) | External command spawning at 3 lifecycle events; plannotator preset; sequential pipeline. |
+| 016 | [Agent decomposition](adr/016-agent-decomposition.md) | Extract 10 focused modules from the agent.ts monolith via the deletion test + type-only imports. |
 
 ## Other Docs
 
