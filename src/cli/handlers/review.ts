@@ -10,7 +10,7 @@
  * updated plan is saved back to the state file.
  */
 
-import { readStateFile, writeStateFile } from "../../agents/state.js";
+import { StateManager } from "../../agents/state-manager.js";
 import { readConfigFile } from "../../config/config-io.js";
 import { getConfigPath } from "../../config/loader.js";
 import { buildRegistry, hasHooks, runHooks } from "../../hooks/manager.js";
@@ -46,14 +46,9 @@ export async function handleReview(_config: unknown, args: string[], options: Cl
 	}
 
 	// Load the plan from the state file
-	const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-	if (!stateResult.success || !stateResult.data) {
-		console.error(`\n✗ No state file found at: ${stateFile}`);
-		console.error("Run 'tiny-agent plan <task>' to generate a plan first.\n");
-		process.exit(1);
-	}
-
-	const plan = stateResult.data.results?.plan?.plan;
+	const mgr = new StateManager(stateFile);
+	const state = await mgr.loadOrCreate();
+	const plan = mgr.getPlan();
 	if (!plan) {
 		console.error("\n✗ No plan found in state file.");
 		console.error("Run 'tiny-agent plan <task>' to generate a plan first.\n");
@@ -67,7 +62,7 @@ export async function handleReview(_config: unknown, args: string[], options: Cl
 		event,
 		content: plan,
 		stateFile,
-		taskDescription: stateResult.data.taskDescription,
+		taskDescription: state.taskDescription,
 	});
 
 	if (hookResult.skipped) {
@@ -89,9 +84,8 @@ export async function handleReview(_config: unknown, args: string[], options: Cl
 
 	if (hookResult.modifiedContent) {
 		// Save the modified plan back to the state file
-		const state = stateResult.data;
-		state.results.plan = { plan: hookResult.modifiedContent };
-		await writeStateFile(stateFile, state);
+		mgr.setPlan(hookResult.modifiedContent);
+		await mgr.save();
 		console.log(`✓ Plan updated (${hookResult.modifiedContent.length} chars) and saved to ${stateFile}`);
 	}
 

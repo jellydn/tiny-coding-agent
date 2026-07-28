@@ -2,6 +2,7 @@ import { buildAgent } from "../../agents/build-agent.js";
 import { exploreAgent } from "../../agents/explore-agent.js";
 import { planAgent } from "../../agents/plan-agent.js";
 import { readStateFile } from "../../agents/state.js";
+import { StateManager } from "../../agents/state-manager.js";
 import type { HookConfig } from "../../hooks/types.js";
 import type { CliOptions } from "../shared.js";
 
@@ -54,7 +55,9 @@ export async function handleAgent(
 				process.exit(1);
 			}
 
-			const plan = stateResult.data?.results?.plan?.plan;
+			const mgr = new StateManager(stateFile);
+			await mgr.loadOrCreate();
+			const plan = mgr.getPlan();
 			if (!plan) {
 				console.error("Error: No plan found in state file.");
 				console.error("Please run 'tiny-agent plan' first to generate a plan.");

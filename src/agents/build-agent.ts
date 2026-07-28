@@ -1,15 +1,13 @@
-import { loadConfig } from "../config/loader.js";
 import { buildRegistry, runHooks } from "../hooks/manager.js";
 import type { HookConfig } from "../hooks/types.js";
-import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
 import { bashTool } from "../tools/bash-tool.js";
 import { fileTools } from "../tools/file-tools.js";
 import { ToolRegistry } from "../tools/registry.js";
+import { createAgentClient } from "./agent-client.js";
 import { type Step as GrammarStep, type Plan, parse as parsePlanGrammar } from "./plan-grammar.js";
-import { readStateFile, writeStateFile } from "./state.js";
+import { StateManager } from "./state-manager.js";
 import { StepExecutor } from "./step-executor.js";
-import type { StateFile } from "./types.js";
 
 export interface BuildAgentOptions {
 	stateFilePath?: string;
@@ -204,45 +202,14 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 	registry.setDryRun(dryRun);
 
 	try {
-		const stateResult = await readStateFile(stateFilePath, { ignoreMissing: true });
-		let state: StateFile;
-
-		if (stateResult.success) {
-			state = stateResult.data!;
-		} else {
-			state = {
-				metadata: {
-					agentName: "tiny-agent",
-					agentVersion: "1.0.0",
-					invocationTimestamp: new Date().toISOString(),
-					parameters: {},
-				},
-				phase: "build",
-				taskDescription: "",
-				status: "in_progress",
-				results: {},
-				errors: [],
-				artifacts: [],
-			};
-		}
-
-		state.phase = "build";
-		state.status = "in_progress";
-
-		await writeStateFile(stateFilePath, state);
+		const mgr = new StateManager(stateFilePath);
+		const _state = await mgr.loadOrCreate();
+		mgr.updatePhase("build", "in_progress");
+		await mgr.save();
 
 		if (!planContent || planContent.trim().length === 0) {
 			const error = "No plan content provided";
-			state.errors = [
-				...state.errors,
-				{
-					timestamp: new Date().toISOString(),
-					phase: "build",
-					message: error,
-				},
-			];
-			state.status = "failed";
-			await writeStateFile(stateFilePath, state);
+			await mgr.saveWithError("build", error);
 
 			return {
 				success: false,
@@ -294,34 +261,25 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		for (const step of steps) {
 			console.log(`\n--- Step ${step.stepNumber}: ${step.description} ---`);
 
-			state.currentTask = {
+			mgr.setCurrentTask({
 				stepNumber: step.stepNumber,
 				description: step.description,
-				startedAt: new Date().toISOString(),
 				phase: "build",
-			};
+			});
 			if (!dryRun) {
-				await writeStateFile(stateFilePath, state);
+				await mgr.save();
 			}
 
 			const stepResult = await stepExecutor.executeStep(step);
 
 			// Log step errors to state file (the executor handles the prompt + retry)
 			if (stepResult.error) {
-				state.errors = [
-					...state.errors,
-					{
-						timestamp: new Date().toISOString(),
-						phase: "build" as const,
-						message: stepResult.error,
-						details: { step: step.stepNumber },
-					},
-				];
+				mgr.addError("build", stepResult.error, { step: step.stepNumber });
 			}
 
 			if (stepResult.shouldAbort) {
-				state.status = "failed";
-				await writeStateFile(stateFilePath, state);
+				mgr.updatePhase("build", "failed");
+				await mgr.save();
 
 				return {
 					success: false,
@@ -336,16 +294,16 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 				changes: stepResult.changes.length > 0 ? stepResult.changes : undefined,
 			});
 
-			state.results.build = convertStepsToBuildResult(executedSteps);
+			mgr.mergeResult("build", convertStepsToBuildResult(executedSteps));
 
 			if (!dryRun) {
-				await writeStateFile(stateFilePath, state);
+				await mgr.save();
 			}
 		}
 
-		state.status = "completed";
-		state.currentTask = undefined;
-		await writeStateFile(stateFilePath, state);
+		mgr.updatePhase("build", "completed");
+		mgr.clearCurrentTask();
+		await mgr.save();
 
 		console.log("\n✨ Build completed successfully!");
 
@@ -357,20 +315,9 @@ export async function buildAgent(planContent: string, options?: BuildAgentOption
 		const errorMessage = err instanceof Error ? err.message : "Unknown error";
 
 		try {
-			const stateResult = await readStateFile(stateFilePath, { ignoreMissing: true });
-			if (stateResult.success) {
-				const state = stateResult.data!;
-				state.status = "failed";
-				state.errors = [
-					...state.errors,
-					{
-						timestamp: new Date().toISOString(),
-						phase: "build",
-						message: errorMessage,
-					},
-				];
-				await writeStateFile(stateFilePath, state);
-			}
+			const mgr = new StateManager(stateFilePath);
+			await mgr.loadOrCreate();
+			await mgr.saveWithError("build", errorMessage);
 		} catch {
 			// Ignore state update errors
 		}
@@ -387,14 +334,7 @@ export async function generateBuildActionsFromPlan(
 	taskDescription: string,
 	verbose?: boolean
 ): Promise<BuildAction[]> {
-	const config = loadConfig();
-	const modelString = config.defaultModel;
-	const { model: modelName } = parseModelString(modelString);
-	const client = createProvider({
-		model: modelString,
-		provider: undefined,
-		providers: config.providers,
-	});
+	const { client, modelName } = await createAgentClient();
 
 	const prompt = `Based on the following implementation plan and task description, generate the specific file operations needed to build the solution.
 

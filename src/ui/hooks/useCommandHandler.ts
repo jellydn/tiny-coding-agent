@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-import { readStateFile, writeStateFile } from "../../agents/state.js";
+import { readStateFile } from "../../agents/state.js";
+import { StateManager } from "../../agents/state-manager.js";
 import { formatProviderStatus } from "../../cli/handlers/login.js";
 import { readConfigFile } from "../../config/config-io.js";
 import { getConfigPath } from "../../config/loader.js";
@@ -139,18 +140,22 @@ export function useCommandHandler({
 			const subcommand = args.trim().toLowerCase() || "show";
 			const stateFile = DEFAULT_STATE_FILE;
 
+			// Check if the state file actually exists on disk — StateManager's
+			// loadOrCreate() creates a fresh state if the file is missing, which
+			// would mask the "not found" error for the user.
 			const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-
 			if (!stateResult.success || !stateResult.data) {
 				onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
 				return;
 			}
 
-			const state = stateResult.data;
+			const mgr = new StateManager(stateFile);
+			const _state = await mgr.loadOrCreate();
 
 			if (subcommand === "show") {
-				if (state.results?.plan?.plan) {
-					onAddMessage(MessageRole.ASSISTANT, `**Current Plan**\n\n${state.results.plan.plan}`);
+				const plan = mgr.getPlan();
+				if (plan) {
+					onAddMessage(MessageRole.ASSISTANT, `**Current Plan**\n\n${plan}`);
 				} else {
 					onAddMessage(
 						MessageRole.ASSISTANT,
@@ -158,7 +163,7 @@ export function useCommandHandler({
 					);
 				}
 			} else if (subcommand === "tasks") {
-				const steps = state.results?.build?.steps;
+				const steps = mgr.getBuildSteps();
 
 				if (!steps || steps.length === 0) {
 					onAddMessage(
@@ -184,7 +189,7 @@ export function useCommandHandler({
 					`**Tasks** (${completed}/${steps.length} completed, ${pending} pending, ${failed} failed)\n\n${taskList}`
 				);
 			} else if (subcommand === "todo") {
-				const steps = state.results?.build?.steps;
+				const steps = mgr.getBuildSteps();
 				const pendingSteps = steps?.filter((s) => s.status === "pending") ?? [];
 
 				if (pendingSteps.length === 0) {
@@ -297,13 +302,9 @@ export function useCommandHandler({
 		}
 
 		// Load the plan from the state file
-		const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-		if (!stateResult.success || !stateResult.data) {
-			onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
-			return;
-		}
-
-		const plan = stateResult.data.results?.plan?.plan;
+		const mgr = new StateManager(stateFile);
+		const state = await mgr.loadOrCreate();
+		const plan = mgr.getPlan();
 		if (!plan) {
 			onAddMessage(MessageRole.ASSISTANT, "No plan found in state file. Run 'tiny-agent plan <task>' first.");
 			return;
@@ -316,7 +317,7 @@ export function useCommandHandler({
 			event: "post-plan-generate",
 			content: plan,
 			stateFile,
-			taskDescription: stateResult.data.taskDescription,
+			taskDescription: state.taskDescription,
 		});
 
 		if (hookResult.skipped) {
@@ -337,10 +338,9 @@ export function useCommandHandler({
 		}
 
 		if (hookResult.modifiedContent) {
-			const state = stateResult.data;
-			state.results.plan = { plan: hookResult.modifiedContent };
+			mgr.setPlan(hookResult.modifiedContent);
 			try {
-				await writeStateFile(stateFile, state);
+				await mgr.save();
 			} catch {
 				/* state write errors are non-fatal */
 			}

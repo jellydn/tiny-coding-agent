@@ -1,9 +1,7 @@
-import { loadConfig } from "../config/loader.js";
-import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
+import { createAgentClient } from "./agent-client.js";
 import { CodebaseExplorer } from "./codebase-explorer.js";
-import { readStateFile, writeStateFile } from "./state.js";
-import type { ExplorationResult, StateFile } from "./types.js";
+import { StateManager } from "./state-manager.js";
 
 export interface ExploreAgentOptions {
 	stateFilePath?: string;
@@ -107,16 +105,9 @@ export async function exploreAgent(
 			depth === "shallow" ? await explorer.exploreShallow(cwd) : await explorer.exploreDeep(cwd);
 		console.log("✓ Codebase exploration complete");
 
-		const config = loadConfig();
-		const modelString = config.defaultModel;
-		const { model: modelName } = parseModelString(modelString);
+		const { client, modelName } = await createAgentClient();
 
 		console.log(`🤖 Generating analysis with ${modelName}...`);
-		const client = createProvider({
-			model: modelString,
-			provider: undefined,
-			providers: config.providers,
-		});
 		const messages = createExploreMessages(taskDescription, codebaseContext);
 
 		const response = await client.chat({
@@ -132,49 +123,23 @@ export async function exploreAgent(
 		const recommendations = extractRecommendations(findings);
 
 		if (options?.stateFilePath) {
-			const existingState = await readStateFile(stateFilePath, { ignoreMissing: true });
-
-			const explorationResult: ExplorationResult = {
+			const mgr = new StateManager(stateFilePath, {
+				parameters: { depth },
+			});
+			await mgr.loadOrCreate(taskDescription);
+			mgr.updatePhase("explore", "completed");
+			mgr.mergeResult("exploration", {
 				findings: extractFindingsList(findings),
 				recommendations: extractRecommendationsList(recommendations),
 				metrics,
-			};
+			});
 
-			const state: StateFile = existingState.success
-				? {
-						...existingState.data!,
-						phase: "explore",
-						status: "completed",
-						results: {
-							...existingState.data!.results,
-							exploration: explorationResult,
-						},
-						errors: existingState.data!.errors,
-					}
-				: {
-						metadata: {
-							agentName: "tiny-agent",
-							agentVersion: "1.0.0",
-							invocationTimestamp: new Date().toISOString(),
-							parameters: {
-								depth,
-							},
-						},
-						phase: "explore",
-						taskDescription,
-						status: "completed",
-						results: {
-							exploration: explorationResult,
-						},
-						errors: [],
-						artifacts: [],
-					};
-
-			const writeResult = await writeStateFile(stateFilePath, state);
-			if (!writeResult.success) {
+			try {
+				await mgr.saveOrThrow();
+			} catch (err) {
 				return {
 					success: false,
-					error: `Failed to write state file: ${writeResult.error}`,
+					error: (err as Error).message,
 				};
 			}
 

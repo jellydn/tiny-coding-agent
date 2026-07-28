@@ -1,13 +1,11 @@
 import { prompt } from "../cli/prompt.js";
-import { loadConfig } from "../config/loader.js";
 import { buildRegistry, runHooks } from "../hooks/manager.js";
 import type { HookConfig } from "../hooks/types.js";
-import { createProvider, parseModelString } from "../providers/factory.js";
 import type { Message } from "../providers/types.js";
+import { createAgentClient } from "./agent-client.js";
 import { CodebaseExplorer } from "./codebase-explorer.js";
 import { exampleOutput } from "./plan-grammar.js";
-import { readStateFile, writeStateFile } from "./state.js";
-import type { StateFile } from "./types.js";
+import { StateManager } from "./state-manager.js";
 
 export interface PlanAgentOptions {
 	stateFilePath?: string;
@@ -107,16 +105,9 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 		const codebaseContext = await exploreCodebase();
 		console.log("✓ Codebase exploration complete");
 
-		const config = loadConfig();
-		const modelString = config.defaultModel;
-		const { model: modelName } = parseModelString(modelString);
+		const { client, modelName } = await createAgentClient();
 
 		console.log(`🤖 Generating plan with ${modelName}...`);
-		const client = createProvider({
-			model: modelString,
-			provider: undefined,
-			providers: config.providers,
-		});
 		const messages = createPlanMessages(taskDescription, codebaseContext, generatePrd);
 
 		const response = await client.chat({
@@ -164,43 +155,19 @@ export async function planAgent(taskDescription: string, options?: PlanAgentOpti
 		}
 
 		if (options?.stateFilePath) {
-			const existingState = await readStateFile(stateFilePath, { ignoreMissing: true });
+			const mgr = new StateManager(stateFilePath, {
+				parameters: { generatePrd: String(generatePrd) },
+			});
+			await mgr.loadOrCreate(taskDescription);
+			mgr.updatePhase("plan", "completed");
+			mgr.setPlan(plan);
 
-			const state: StateFile = existingState.success
-				? {
-						...existingState.data!,
-						phase: "plan",
-						status: "completed",
-						results: {
-							...existingState.data!.results,
-							plan: { plan },
-						},
-						errors: existingState.data!.errors,
-					}
-				: {
-						metadata: {
-							agentName: "tiny-agent",
-							agentVersion: "1.0.0",
-							invocationTimestamp: new Date().toISOString(),
-							parameters: {
-								generatePrd: String(generatePrd),
-							},
-						},
-						phase: "plan",
-						taskDescription,
-						status: "completed",
-						results: {
-							plan: { plan },
-						},
-						errors: [],
-						artifacts: [],
-					};
-
-			const writeResult = await writeStateFile(stateFilePath, state);
-			if (!writeResult.success) {
+			try {
+				await mgr.saveOrThrow();
+			} catch (err) {
 				return {
 					success: false,
-					error: `Failed to write state file: ${writeResult.error}`,
+					error: (err as Error).message,
 				};
 			}
 
