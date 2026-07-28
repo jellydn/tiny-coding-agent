@@ -9,9 +9,19 @@
  * The interface is the test surface: loadOrCreate() → updatePhase() /
  * mergeResult() / addError() → save(). No caller needs to construct
  * StateFile boilerplate or know about the file-locking internals.
+ *
+ * For read-only CLI commands that need to fail when the state file is
+ * missing (instead of creating a fresh one), use loadOrFail() — it
+ * returns a discriminated union so callers can map errors to their own
+ * user-facing messages without a double-read.
  */
 
 import { readStateFile, type StateResult, writeStateFile } from "./state.js";
+
+// Re-export for backward compatibility — CLI handlers and agents import
+// DEFAULT_STATE_FILE from state-manager.js (the module they already depend on).
+export { DEFAULT_STATE_FILE } from "./state.js";
+
 import type { AgentPhase, AgentResult, AgentStatus, BuildResult, StateError, StateFile } from "./types.js";
 
 const DEFAULT_AGENT_NAME = "tiny-agent";
@@ -25,6 +35,11 @@ export interface StateManagerOptions {
 	/** Extra parameters to include in auto-created metadata. */
 	parameters?: Record<string, unknown>;
 }
+
+/** Result of {@link StateManager.loadOrFail} — discriminates read errors from "not found". */
+export type LoadOrFailResult =
+	| { success: true; state: StateFile }
+	| { success: false; error: string; code: "read_error" | "not_found" };
 
 export class StateManager {
 	private _filePath: string;
@@ -143,6 +158,32 @@ export class StateManager {
 		this.updatePhase(phase, "failed");
 		this.addError(phase, message, details);
 		await this.save();
+	}
+
+	/**
+	 * Load the state file, or return an error result if it doesn't exist
+	 * or can't be read. Unlike {@link loadOrCreate}, this never creates a
+	 * fresh state — it's for read-only CLI commands that need to surface
+	 * "not found" errors to the user.
+	 *
+	 * Caches the result so subsequent calls are idempotent within a single
+	 * StateManager instance.
+	 */
+	async loadOrFail(): Promise<LoadOrFailResult> {
+		if (this._state) {
+			return { success: true, state: this._state };
+		}
+
+		const result = await readStateFile(this._filePath, { ignoreMissing: true });
+		if (!result.success) {
+			return { success: false, error: result.error ?? "Unknown read error", code: "read_error" };
+		}
+		if (!result.data) {
+			return { success: false, error: `No state file found at: ${this._filePath}`, code: "not_found" };
+		}
+
+		this._state = result.data;
+		return { success: true, state: this._state };
 	}
 
 	/** Get the plan text from the state, if present. */

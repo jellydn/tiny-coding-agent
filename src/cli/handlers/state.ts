@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
+import { DEFAULT_STATE_FILE } from "../../agents/state-manager.js";
 import type { CliOptions } from "../shared.js";
-
-const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 export async function handleState(_config: unknown, args: string[], options: CliOptions): Promise<void> {
 	const stateFile = options.stateFile || DEFAULT_STATE_FILE;

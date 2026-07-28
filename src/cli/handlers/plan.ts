@@ -1,9 +1,6 @@
 import { parse as parsePlanGrammar } from "../../agents/plan-grammar.js";
-import { readStateFile } from "../../agents/state.js";
-import { StateManager } from "../../agents/state-manager.js";
+import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import type { CliOptions } from "../shared.js";
-
-const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 interface TaskStatus {
 	stepNumber: number;
@@ -37,22 +34,18 @@ export async function handlePlan(_config: unknown, args: string[], options: CliO
 		process.exit(2);
 	}
 
-	// Check if the state file actually exists on disk — StateManager's
-	// loadOrCreate() creates a fresh state if the file is missing, which
-	// would mask the "not found" error for the user.
-	const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-	if (!stateResult.success) {
-		console.error(`Error reading state file: ${stateResult.error}`);
-		process.exit(1);
-	}
-	if (!stateResult.data) {
-		console.error(`No state file found at: ${stateFile}`);
-		console.error("Run 'tiny-agent plan <task>' to generate a plan first.");
-		process.exit(1);
-	}
-
 	const mgr = new StateManager(stateFile);
-	const state = await mgr.loadOrCreate();
+	const loadResult = await mgr.loadOrFail();
+	if (!loadResult.success) {
+		if (loadResult.code === "read_error") {
+			console.error(`Error reading state file: ${loadResult.error}`);
+		} else {
+			console.error(`No state file found at: ${stateFile}`);
+			console.error("Run 'tiny-agent plan <task>' to generate a plan first.");
+		}
+		process.exit(1);
+	}
+	const state = loadResult.state;
 
 	if (subcommand === "show") {
 		if (state.results?.plan?.plan) {

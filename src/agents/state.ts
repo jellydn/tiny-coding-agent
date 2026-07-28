@@ -2,6 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { StateFile } from "./types.js";
 
+export const DEFAULT_STATE_FILE = ".tiny-state.json";
+
 const MAX_STATE_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ARCHIVE_COUNT = 5;
 const LOCK_FILE_SUFFIX = ".lock";

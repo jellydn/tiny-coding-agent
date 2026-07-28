@@ -1,16 +1,11 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { loadAgentsMd } from "../config/loader.js";
 import type { ObservabilityConfig, ThinkingConfig } from "../config/schema.js";
 import type { McpManager } from "../mcp/manager.js";
 import { parseModelString } from "../providers/factory.js";
 import { detectProvider } from "../providers/model-registry.js";
-import type { LLMClient, Message, TokenUsage, ToolDefinition } from "../providers/types.js";
-import { getEmbeddedSkillContent } from "../skills/builtin-registry.js";
-import { discoverSkills, generateSkillsPrompt, getBuiltinSkillsDir, type SkillMetadata } from "../skills/index.js";
-import { parseSkillFrontmatter } from "../skills/parser.js";
+import type { LLMClient, Message, TokenUsage } from "../providers/types.js";
+import { getBuiltinSkillsDir, type SkillMetadata } from "../skills/index.js";
 import type { ToolRegistry } from "../tools/registry.js";
-import { escapeXml } from "../utils/xml.js";
 import { AgentObservability } from "./agent-observability.js";
 import {
 	type StreamFinalAnswerResult,
@@ -24,6 +19,7 @@ import { DebugLogger } from "./debug-logger.js";
 import type { ContextStats } from "./memory.js";
 import { MemoryStore } from "./memory.js";
 import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
+import { SkillManager } from "./skill-manager.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Re-export for backward compatibility — other modules and tests import
@@ -144,10 +140,7 @@ export class Agent {
 	private _trackContextUsage: boolean;
 	private _thinking?: ThinkingConfig;
 	private _conversationManager!: ConversationManager;
-	private _skills: Map<string, SkillMetadata> = new Map();
-	private _skillsInitialized: boolean = false;
-	private _skillsInitPromise?: Promise<void>;
-	private _activeSkillAllowedTools: string[] | undefined;
+	private _skillManager: SkillManager;
 	private _mcpManager?: McpManager;
 	private _obsWrapper: AgentObservability;
 	private _turnExecutor: TurnExecutor;
@@ -181,39 +174,13 @@ export class Agent {
 			}
 		}
 
+		this._skillManager = new SkillManager(effectiveSystemPrompt);
+		this._skillManager.initialize(options.skillDirectories ?? [], getBuiltinSkillsDir());
 		this._systemPrompt = effectiveSystemPrompt;
-
-		this._skillsInitPromise = this._initializeSkills(
-			options.skillDirectories ?? [],
-			getBuiltinSkillsDir(),
-			effectiveSystemPrompt
-		);
 
 		if (options.memoryFile) {
 			this._memoryStore = new MemoryStore({ filePath: options.memoryFile });
 		}
-	}
-
-	private async _initializeSkills(skillDirectories: string[], builtinDir: string, systemPrompt: string): Promise<void> {
-		if (this._skillsInitPromise) {
-			return this._skillsInitPromise;
-		}
-
-		this._skillsInitPromise = (async () => {
-			if (this._skillsInitialized) return;
-
-			const discoveredSkills = await discoverSkills(skillDirectories, builtinDir);
-			for (const skill of discoveredSkills) {
-				this._skills.set(skill.name, skill);
-			}
-			const skillsPrompt = generateSkillsPrompt(discoveredSkills);
-			if (skillsPrompt) {
-				this._systemPrompt = `${systemPrompt}\n\n${skillsPrompt}`;
-			}
-			this._skillsInitialized = true;
-		})();
-
-		return this._skillsInitPromise;
 	}
 
 	startChatSession(): void {
@@ -230,11 +197,10 @@ export class Agent {
 		runtimeConfig?: RuntimeConfig,
 		options?: { signal?: AbortSignal }
 	): AsyncGenerator<AgentStreamChunk, void, unknown> {
-		if (this._skillsInitPromise) {
-			await this._skillsInitPromise;
-		}
+		await this._skillManager.waitForSkills();
+		this._systemPrompt = this._skillManager.systemPrompt;
 
-		this._clearSkillRestriction();
+		this._skillManager.clearRestriction();
 
 		// --- Observability: begin request ----------------------------------
 		const providerName = this._providerCache.getProviderName(runtimeConfig?.model ?? model);
@@ -285,7 +251,13 @@ export class Agent {
 		const systemTokens = ctxResult.systemTokens;
 		const maxContextTokens = ctxResult.stats.maxContextTokens;
 
-		const tools = this._getToolDefinitions();
+		const tools = this._skillManager.filterTools(
+			this._toolRegistry.list().map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters,
+			}))
+		);
 
 		const providerTypeForDetails = detectProvider(effectiveModel);
 		this._debug.logRequestDetails({
@@ -592,7 +564,7 @@ export class Agent {
 	}
 
 	getSkillRegistry(): Map<string, SkillMetadata> {
-		return this._skills;
+		return this._skillManager.getRegistry();
 	}
 
 	getMemoryStore(): MemoryStore | undefined {
@@ -617,64 +589,21 @@ export class Agent {
 	}
 
 	async waitForSkills(): Promise<void> {
-		if (!this._skillsInitPromise) return;
-		await this._skillsInitPromise;
+		await this._skillManager.waitForSkills();
 	}
 
 	async loadSkill(
 		skillName: string
 	): Promise<{ content: string; wrappedContent: string; allowedTools?: string[] } | null> {
-		const skillMetadata = this._skills.get(skillName);
-		if (!skillMetadata) return null;
-
-		try {
-			let content: string;
-			let baseDir = ".";
-
-			if (skillMetadata.location.startsWith("builtin://")) {
-				const embeddedContent = getEmbeddedSkillContent(skillName);
-				if (!embeddedContent) {
-					throw new Error(`Built-in skill content not found: ${skillName}`);
-				}
-				content = embeddedContent;
-			} else {
-				content = await fs.readFile(skillMetadata.location, "utf-8");
-				baseDir = path.dirname(skillMetadata.location);
-			}
-
-			let allowedTools: string[] | undefined;
-			try {
-				const parsed = parseSkillFrontmatter(content);
-				allowedTools = parsed.frontmatter.allowedTools;
-			} catch {
-				console.warn(`[WARN] Could not parse frontmatter for skill: ${skillName}`);
-			}
-
-			if (allowedTools) {
-				this._setSkillRestriction(allowedTools);
-			} else {
-				this._clearSkillRestriction();
-			}
-
-			const escapedContent = escapeXml(content);
-			const wrappedContent = `<loaded_skill name="${skillName}" base_dir="${baseDir}">\n${escapedContent}\n</loaded_skill>`;
-
-			return { content, wrappedContent, allowedTools };
-		} catch (err) {
-			const error = err as NodeJS.ErrnoException;
-			if (error.code === "ENOENT") {
-				throw new Error(`Skill file not found: ${skillMetadata.location}`);
-			}
-			throw new Error(`Error reading skill: ${error.message}`);
-		}
+		return this._skillManager.loadSkill(skillName);
 	}
 
 	_setSkillRestriction(allowedTools: string[] | undefined): void {
-		this._activeSkillAllowedTools = allowedTools;
+		this._skillManager.setRestriction(allowedTools);
 	}
 
 	_clearSkillRestriction(): void {
-		this._activeSkillAllowedTools = undefined;
+		this._skillManager.clearRestriction();
 	}
 
 	async healthCheck(): Promise<HealthStatus> {
@@ -686,22 +615,11 @@ export class Agent {
 			issues.push("Provider configs empty");
 		}
 
-		if (issues.length > 0) {
-			return {
-				ready: false,
-				issues,
-				providerCount: this._providerCache.size,
-				skillCount: this._skills.size,
-				memoryEnabled: !!this._memoryStore,
-				mcpServers: this._mcpManager?.getServerStatus() ?? [],
-			};
-		}
-
 		return {
-			ready: true,
+			ready: issues.length === 0,
 			issues,
 			providerCount: this._providerCache.size,
-			skillCount: this._skills.size,
+			skillCount: this._skillManager.count,
 			memoryEnabled: !!this._memoryStore,
 			mcpServers: this._mcpManager?.getServerStatus() ?? [],
 		};
@@ -719,20 +637,5 @@ export class Agent {
 			process.removeAllListeners("SIGTERM");
 			process.removeAllListeners("SIGINT");
 		}
-	}
-
-	private _getToolDefinitions(): ToolDefinition[] {
-		const allTools = this._toolRegistry.list().map((tool) => ({
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters,
-		}));
-
-		if (!this._activeSkillAllowedTools?.length) {
-			return allTools;
-		}
-
-		const allowedSet = new Set(this._activeSkillAllowedTools);
-		return allTools.filter((tool) => allowedSet.has(tool.name));
 	}
 }

@@ -1,12 +1,9 @@
 import { buildAgent } from "../../agents/build-agent.js";
 import { exploreAgent } from "../../agents/explore-agent.js";
 import { planAgent } from "../../agents/plan-agent.js";
-import { readStateFile } from "../../agents/state.js";
-import { StateManager } from "../../agents/state-manager.js";
+import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import type { HookConfig } from "../../hooks/types.js";
 import type { CliOptions } from "../shared.js";
-
-const DEFAULT_STATE_FILE = ".tiny-state.json";
 
 export async function handleAgent(
 	command: string,
@@ -48,15 +45,13 @@ export async function handleAgent(
 			console.log(`Build command received`);
 			console.log(`State file: ${stateFile}`);
 
-			const stateResult = await readStateFile(stateFile, { ignoreMissing: true });
-			if (!stateResult.success) {
-				console.error(`Error: Could not read state file: ${stateResult.error}`);
+			const mgr = new StateManager(stateFile);
+			const loadResult = await mgr.loadOrFail();
+			if (!loadResult.success) {
+				console.error(`Error: Could not read state file: ${loadResult.error}`);
 				console.error("Please run 'tiny-agent plan' first to generate a plan.");
 				process.exit(1);
 			}
-
-			const mgr = new StateManager(stateFile);
-			await mgr.loadOrCreate();
 			const plan = mgr.getPlan();
 			if (!plan) {
 				console.error("Error: No plan found in state file.");

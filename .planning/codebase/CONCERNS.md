@@ -20,18 +20,21 @@ The following extractions were completed between v0.6.0 and v0.7.0, consolidatin
 | ChatCommandRegistry | `src/ui/chat-command-registry.ts` | 77 | #76 | 12-case switch in `useCommandHandler` |
 | DebugLogger | `src/core/debug-logger.ts` | 132 | #78 | 6 verbose-logging blocks from `runStream()` |
 | ProviderCache | `src/core/provider-cache.ts` | 134 | #80 | Provider instance caching from `Agent` |
-| StateManager | `src/agents/state-manager.ts` | 162 | #81 | 19 state I/O calls across 7 modules |
+| StateManager | `src/agents/state-manager.ts` | 198 | #81 | 19 state I/O calls across 7 modules |
 | createAgentClient | `src/agents/agent-client.ts` | 50 | #81 | 3-way `loadConfig→parseModelString→createProvider` duplication |
+| SkillManager | `src/core/skill-manager.ts` | 158 | #82 | 4 skill fields + 8 methods from Agent |
+| ToolDisplay | `src/cli/tool-display.tsx` | 156 | #82 | ~120 lines of display utilities from main.tsx |
+| loadOrFail() | `src/agents/state-manager.ts` | — | #82 | Double-read pattern in 3 CLI handlers |
 
 ## Tech Debt
 
-### 1. `agent.ts` Still 738 Lines After Decomposition
+### 1. `agent.ts` Still 652 Lines After Decomposition
 
-**File**: `src/core/agent.ts` (738 lines)
-**Severity**: Medium
-**Status**: Improving (was 1,173 lines before ADR-016 extraction)
+**File**: `src/core/agent.ts` (652 lines)
+**Severity**: Low
+**Status**: Improving (was 1,173 lines before ADR-016 extraction, now 652 after SkillManager extraction)
 
-After extracting 10 modules (TurnExecutor, AgentObservability, DebugLogger, ProviderCache, context-budget, agent-utils, etc.), `agent.ts` dropped from 1,173 → 738 lines. However, it still owns 4 skill-related private fields + 8 skill methods (`_initializeSkills`, `loadSkill`, `_setSkillRestriction`, `_clearSkillRestriction`, `getSkillRegistry`, `waitForSkills`, `_getToolDefinitions` filtering). The skill management concern could be extracted into a `SkillManager` class to continue the decomposition pattern.
+After extracting 12 modules (TurnExecutor, AgentObservability, DebugLogger, ProviderCache, context-budget, agent-utils, SkillManager, ToolDisplay, etc.), `agent.ts` dropped from 1,173 → 652 lines. The skill management concern was extracted into `SkillManager` (`src/core/skill-manager.ts`, 158 lines). Remaining concerns in agent.ts: the agent loop, conversation management, memory, and the public interface — all cohesive.
 
 ### 2. `login.ts` Has 16 `process.exit()` Calls
 
@@ -49,41 +52,39 @@ The interactive login/logout flows call `process.exit()` 16 times, making them u
 
 The `handleCommand` dispatcher was extracted into `chat-command-registry.ts` (77 lines), but the individual command handlers (`handleSkillCommand`, `handlePlanCommand`, `handleReviewCommand`, etc.) are still inline `useCallback` functions within the hook. Each handler is 30-80 lines of `onAddMessage` + `readStateFile` + business logic.
 
-### 4. `main.tsx` Mixes CLI Entry Point + Display Logic
+### 4. `main.tsx` Still Mixes CLI Entry Point + Streaming Loop
 
-**File**: `src/cli/main.tsx` (541 lines)
+**File**: `src/cli/main.tsx` (405 lines)
 **Severity**: Low
-**Status**: Partially refactored (command-dispatch extracted)
+**Status**: Improving (ToolDisplay extracted — was 541 lines)
 
-`main.tsx` still mixes 3 concerns: (1) CLI entry-point orchestration (`main()`, arg parsing), (2) the `handleRun` streaming loop, and (3) tool display formatting (`ThinkingTagFilter`, `formatArgs`, `formatOutputPreview`, `displayToolExecutionPlain/Ink`, `outputJson`). The display utilities are pure functions that could be extracted into `src/cli/tool-display.ts`.
+`main.tsx` now mixes 2 concerns (down from 3): (1) CLI entry-point orchestration (`main()`, arg parsing), and (2) the `handleRun` streaming loop. Tool display formatting (`ThinkingTagFilter`, `formatArgs`, `displayToolExecution`, `outputJson`) was extracted into `src/cli/tool-display.tsx` (156 lines). The remaining streaming loop in `handleRun` is ~90 lines and tightly coupled to the CLI entry point — further extraction would require a `RunHandler` abstraction, which is speculative at this point.
 
-### 5. State File I/O Double-Read in CLI Handlers
+### 5. State File I/O — Resolved by `loadOrFail()`
 
 **Files**: `src/cli/handlers/plan.ts`, `src/cli/handlers/agent.ts`, `src/ui/hooks/useCommandHandler.ts`
-**Severity**: Low
-**Status**: Merged (PR #81) — residual double-read remains
+**Severity**: Resolved
+**Status**: Merged (PR #82) — `loadOrFail()` eliminates double-read
 
-The `StateManager` class (`src/agents/state-manager.ts`, 162 lines) consolidates 19 state I/O calls across 7 modules (plan-agent, explore-agent, build-agent, handlers/plan, handlers/review, handlers/agent, useCommandHandler). The `createAgentClient` factory (`src/agents/agent-client.ts`, 50 lines) eliminates the 3-way `loadConfig → parseModelString → createProvider` duplication. However, 3 CLI handlers still do a `readStateFile()` existence check before creating a `StateManager` — a double-read trade-off to preserve original error messages for tests. This could be resolved by adding a `loadOrFail()` method to StateManager (Architecture Review Round 4, Candidate #5).
+The `StateManager` class (`src/agents/state-manager.ts`, 198 lines) consolidates 19 state I/O calls across 7 modules. The `loadOrFail()` method returns a discriminated union (`{ success: true, state } | { success: false, error, code }`) that lets CLI handlers replace the double-read pattern (`readStateFile()` check + `loadOrCreate()`) with a single call. Error messages preserved for backward compatibility. The `_state` unused variable (concern #6) was also eliminated — `loadOrFail()` returns the result inline.
 
-### 6. `_state` Unused Variable in useCommandHandler.ts
+### 6. ~~`_state` Unused Variable in useCommandHandler.ts~~ — Resolved
 
-**File**: `src/ui/hooks/useCommandHandler.ts` (line 306)
-**Severity**: Low
-**Status**: Linter-suppressed (renamed to `_state`)
+**Status**: Resolved by `loadOrFail()` extraction (PR #82)
 
-The StateManager refactor left an unused `const _state = await mgr.loadOrCreate()` — all access goes through `mgr.getPlan()` and `mgr.getBuildSteps()`. The linter renamed it with the `_` prefix to suppress the warning, but the assignment should be removed entirely (`await mgr.loadOrCreate();` without `const`).
+The unused `const _state = await mgr.loadOrCreate()` was eliminated when `loadOrFail()` replaced the double-read pattern. The variable is no longer present.
 
 ## Next Deepening Opportunities (Architecture Review Round 4)
 
-| # | Candidate | Strength | Target |
-|---|-----------|----------|--------|
-| 1 | Extract SkillManager from Agent | Strong | `agent.ts` 738→~640 |
-| 2 | Extract Tool Display from `main.tsx` | Strong | `main.tsx` 541→~420 |
-| 3 | Extract Login Flow Controller from `login.ts` | Worth exploring | `login.ts` 604→~350 |
-| 4 | Extract Command Handlers from `useCommandHandler` | Worth exploring | 458→~150 |
-| 5 | Add `loadOrFail()` to StateManager | Quick win | Eliminates double-read in 3 handlers |
+| # | Candidate | Strength | Status | Target |
+|---|-----------|----------|--------|--------|
+| 1 | Extract SkillManager from Agent | Strong | ✅ Done (#82) | `agent.ts` 738→652 |
+| 2 | Extract Tool Display from `main.tsx` | Strong | ✅ Done (#82) | `main.tsx` 541→405 |
+| 3 | Extract Login Flow Controller from `login.ts` | Worth exploring | Design validated (grilling) | `login.ts` 604→~100 |
+| 4 | Extract Command Handlers from `useCommandHandler` | Worth exploring | Not started | 452→~150 |
+| 5 | Add `loadOrFail()` to StateManager | Quick win | ✅ Done (#82) | Eliminates double-read |
 
-**Recommended order**: #1 + #2 in parallel (both mechanical, no dependencies) → #5 (quick win) → #3 (design decision) → #4 (larger extraction)
+**Next candidates**: #3 (Login Flow Controller — design validated, ready to implement) → #4 (Command Handlers extraction)
 
 **Note**: The codebase has only 1 `TODO` comment in `src/` (a display label in `useCommandHandler.ts`, not a tech debt marker). No `FIXME`, `HACK`, or `XXX` markers exist.
 
