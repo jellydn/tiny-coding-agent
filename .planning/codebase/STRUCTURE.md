@@ -9,7 +9,7 @@ tiny-coding-agent/
 ├── tsconfig.json            # TypeScript config (strict, NodeNext)
 ├── biome.json               # Linter + formatter
 ├── bun.lock                 # Bun lockfile
-├── src/                     # Source code (139 files, ~20k lines)
+├── src/                     # Source code (141 files, ~20k lines)
 │   ├── agents/              # Multi-agent system (plan, build, explore)
 │   ├── cli/                 # CLI interface + command handlers
 │   ├── config/              # Configuration schema + loading
@@ -35,12 +35,13 @@ tiny-coding-agent/
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `agent.ts` | 738 | Agent class — orchestrates the LLM conversation loop |
+| `agent.ts` | 652 | Agent class — orchestrates the LLM conversation loop |
 | `memory.ts` | 422 | MemoryStore — user-initiated memory storage + retrieval |
 | `agent-observability.ts` | 326 | AgentObservability — span/timer management wrapper |
 | `context-budget.ts` | 276 | prepareContext() — context window budgeting + memory merge |
 | `turn-executor.ts` | 236 | TurnExecutor — one LLM call + tool batch execution |
 | `agent-utils.ts` | 228 | streamLlmResponse(), streamFinalAnswer(), isLooping() |
+| `skill-manager.ts` | 158 | SkillManager — skill discovery, loading, tool restriction |
 | `provider-cache.ts` | 134 | ProviderCache — LLM client cache with eviction |
 | `debug-logger.ts` | 132 | DebugLogger — verbose logging (no-op when disabled) |
 | `conversation.ts` | — | ConversationManager — history persistence |
@@ -51,12 +52,14 @@ tiny-coding-agent/
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `build-agent.ts` | 461 | Build executor — parses plan, executes steps |
+| `build-agent.ts` | 401 | Build executor — parses plan, executes steps |
 | `codebase-explorer.ts` | 381 | Filesystem exploration (shallow + deep modes) |
 | `plan-grammar.ts` | 437 | Plan markdown parser → phases/steps AST |
+| `state-manager.ts` | 198 | StateManager — state file lifecycle (loadOrCreate, loadOrFail, save) |
 | `explore-agent.ts` | 234 | Codebase analysis agent |
 | `plan-agent.ts` | 231 | Plan generation agent |
 | `step-executor.ts` | 217 | StepExecutor — retry/skip/abort flow |
+| `agent-client.ts` | 50 | createAgentClient() — LLM client factory for agents |
 | `state.ts` | — | State file I/O with file locking + rotation |
 | `types.ts` | — | StateFile, AgentPhase, AgentStatus types |
 
@@ -64,7 +67,8 @@ tiny-coding-agent/
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.tsx` | 541 | Entry point — main(), handleRun(), handleInteractiveChat() |
+| `main.tsx` | 405 | Entry point — main(), handleRun(), handleInteractiveChat() |
+| `tool-display.tsx` | 156 | ThinkingTagFilter, formatArgs, displayToolExecution, outputJson |
 | `command-dispatch.ts` | 265 | Command dispatch table (pre/post config) |
 | `shared.ts` | 280 | parseArgs(), createLLMClient(), setupTools(), createAgent() |
 | `prompt.ts` | — | readline prompt helpers (prompt, promptHidden) |
@@ -107,7 +111,7 @@ tiny-coding-agent/
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `hooks/useCommandHandler.ts` | 458 | Slash command dispatcher (/help, /model, /plan, etc.) |
+| `hooks/useCommandHandler.ts` | 452 | Slash command dispatcher (/help, /model, /plan, etc.) |
 | `components/Message.tsx` | 382 | Message rendering (markdown, code blocks) |
 | `components/ModelPicker.tsx` | 380 | Model selection UI |
 | `contexts/ChatContext.tsx` | 303 | Chat state management |
@@ -121,7 +125,7 @@ tiny-coding-agent/
 |------|-------|---------|
 | `loader.ts` | 324 | loadConfig(), getConfigPath(), createDefaultConfig() |
 | `schema.ts` | 247 | Zod-validated Config interface + schemas |
-| `config-io.ts` | — | readConfigFile(), writeConfigFile() (YAML/JSON) |
+| `config-io.ts` | 87 | readConfigFile(), writeConfigFile() (YAML/JSON) |
 
 ### `src/hooks/` — Lifecycle Hooks (ADR-015)
 
