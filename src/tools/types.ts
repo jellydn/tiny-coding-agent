@@ -9,6 +9,7 @@ export type ToolDangerLevel = boolean | string | ((args: Record<string, unknown>
 export interface Tool {
 	name: string;
 	description: string;
+	category?: string;
 	parameters: ToolParameters;
 	dangerous?: ToolDangerLevel;
 	execute(args: Record<string, unknown>): Promise<ToolResult>;

@@ -40,6 +40,7 @@ export const webSearchTool: Tool = {
 	name: "web_search",
 	description:
 		"Search the web for documentation, answers, and information. Returns title, URL, and snippet for each result.",
+	category: "search",
 	parameters: {
 		type: "object",
 		properties: {

@@ -409,6 +409,7 @@ export const deleteFileTool: Tool = {
 	name: "delete_file",
 	description:
 		"Delete a file. Refuses to remove sensitive files or paths outside the project root. Returns success if the file was deleted, or failure with a descriptive error otherwise.",
+	category: "file",
 	dangerous: "Will delete file",
 	parameters: {
 		type: "object",
