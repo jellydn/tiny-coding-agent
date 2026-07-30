@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { generateDefaultYaml } from "./config-template.js";
 import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
 
@@ -62,60 +63,7 @@ function createDefaultConfig(): void {
 		mkdirSync(CONFIG_DIR, { recursive: true });
 	}
 
-	// Write a commented YAML template with helpful examples
-	const configTemplate = `# Tiny Agent Configuration
-# See https://github.com/jellydn/tiny-coding-agent for full docs
-
-# Default model to use
-defaultModel: qwen3-coder-next:cloud
-
-# Provider configurations
-providers:
-  ollama:
-    baseUrl: http://localhost:11434
-  # openai:
-  #   apiKey: \${OPENAI_API_KEY}
-  # anthropic:
-  #   apiKey: \${ANTHROPIC_API_KEY}
-  # opencode:
-  #   apiKey: \${OPENCODE_API_KEY}
-  # zai:
-  #   apiKey: \${ZAI_API_KEY}
-  # clinepass:
-  #   apiKey: \${CLINE_API_KEY}
-
-# MCP servers for extended capabilities
-mcpServers:
-  # Context7: Documentation lookups for libraries/frameworks (zero dependencies)
-  context7:
-    command: npx
-    args: ["-y", "@upstash/context7-mcp"]
-
-  # Serena: Semantic code operations (optional, requires uv)
-  # Install: curl -LsSf https://astral.sh/uv/install.sh | sh
-  # serena:
-  #   command: uvx
-  #   args:
-  #     - "--from"
-  #     - "git+https://github.com/oraios/serena"
-  #     - "serena-mcp-server"
-  #     - "--context"
-  #     - "ide"
-  #     - "--project"
-  #     - "."
-  #     - "--open-web-dashboard"
-  #     - "false"
-
-# Skill directories for custom skills
-skillDirectories:
-  - ~/.tiny-agent/skills/
-  - .skills/
-
-# Disable specific MCP tools by pattern (glob-style matching)
-# disabledMcpPatterns:
-#   - "mcp_serena_*memories*"    # Disable Serena memory tools
-#   - "mcp_serena_*onboarding*"  # Disable Serena onboarding tools
-`;
+	const configTemplate = generateDefaultYaml();
 
 	// Write with owner-only permissions (0o600) so the config file — which
 	// may later hold literal API keys after `tiny-agent login` — is not
