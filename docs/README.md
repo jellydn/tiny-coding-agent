@@ -24,6 +24,9 @@ ADRs capture *why* a decision was made, what alternatives were considered, and w
 | 014 | [Login command onboarding design](adr/014-login-command.md) | Top-level command before `loadConfig`; chat `/login` status-only; literal key storage with env-var tip. |
 | 015 | [Lifecycle hooks system](adr/015-lifecycle-hooks-system.md) | External command spawning at 3 lifecycle events; plannotator preset; sequential pipeline. |
 | 016 | [Agent decomposition](adr/016-agent-decomposition.md) | Extract 10 focused modules from the agent.ts monolith via the deletion test + type-only imports. |
+| 017 | [Incremental context design](adr/017-incremental-context-design.md) | Send-only-delta optimization using OpenAI Responses API previous_response_id pattern. |
+| 018 | [Deferred tool discovery](adr/018-deferred-tool-discovery-design.md) | On-demand tool loading: categorization vs. full deferred discovery. |
+| 019 | [Code mode design](adr/019-code-mode-design.md) | LLM-written JavaScript programs vs. declarative plan format for parallel tool execution. |
 
 ## Other Docs
 

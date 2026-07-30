@@ -728,6 +728,9 @@ See [docs/adr/](docs/adr/) for architectural decisions:
 - 014: Login Command Onboarding Design
 - 015: Lifecycle Hooks System
 - 016: Agent Decomposition
+- 017: Incremental Context Design
+- 018: Deferred Tool Discovery
+- 019: Code Mode Design
 
 ## Development
 
