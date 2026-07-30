@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
-import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import { buildRequestBody, mapFinishReason, parseStreamedToolCalls, parseToolCalls } from "./openai-protocol.js";
+import { capabilitiesWithCatalogFallback } from "./provider-utils.js";
 import type { ChatOptions, ChatResponse, LLMClient, StreamChunk, ToolCall } from "./types.js";
 
 export interface OpenAIProviderConfig {
@@ -117,26 +117,19 @@ export class OpenAIProvider implements LLMClient {
 			return capabilities;
 		}
 
-		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openai");
-		if (catalogCapabilities) {
-			this._capabilitiesCache.set(model, catalogCapabilities);
-			return catalogCapabilities;
-		}
-
-		const capabilities: ModelCapabilities = {
-			modelName: model,
-			supportsTools: true,
-			supportsStreaming: true,
-			supportsSystemPrompt: true,
-			supportsToolStreaming: true,
-			supportsThinking: false,
+		const catalogCaps = capabilitiesWithCatalogFallback({
+			model,
+			providerType: "openai",
 			contextWindow: 16385,
 			maxOutputTokens: 4096,
-			isVerified: false,
-			source: "fallback",
-		};
+		});
 
-		this._capabilitiesCache.set(model, capabilities);
-		return capabilities;
+		if (catalogCaps.source === "catalog") {
+			this._capabilitiesCache.set(model, catalogCaps);
+			return catalogCaps;
+		}
+
+		this._capabilitiesCache.set(model, catalogCaps);
+		return catalogCaps;
 	}
 }
