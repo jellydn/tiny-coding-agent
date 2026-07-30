@@ -17,7 +17,7 @@
 
 import { promptChoice } from "../cli/prompt.js";
 import type { ToolRegistry } from "../tools/registry.js";
-import type { BuildAction, BuildStep } from "./build-agent.js";
+import type { BuildAction, BuildStep } from "./plan-converter.js";
 
 /** A tool call shaped for the registry's execute method. */
 export interface ToolCall {
