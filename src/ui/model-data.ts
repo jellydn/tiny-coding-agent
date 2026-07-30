@@ -1,0 +1,207 @@
+import { getCachedOllamaModels } from "../providers/ollama-models.js";
+
+export interface ModelPickerItem {
+	id: string;
+	name: string;
+	description: string;
+	source?: "ollama-local" | "config";
+}
+
+export interface ProviderModels {
+	openai: ModelPickerItem[];
+	anthropic: ModelPickerItem[];
+	ollama: ModelPickerItem[];
+	ollamaCloud: ModelPickerItem[];
+	openrouter: ModelPickerItem[];
+	opencode: ModelPickerItem[];
+	zai: ModelPickerItem[];
+	qwencloud: ModelPickerItem[];
+	clinepass: ModelPickerItem[];
+}
+
+export interface EnabledProviders {
+	openai?: boolean;
+	anthropic?: boolean;
+	ollama?: boolean;
+	ollamaCloud?: boolean;
+	openrouter?: boolean;
+	opencode?: boolean;
+	zai?: boolean;
+	qwencloud?: boolean;
+	clinepass?: boolean;
+}
+
+export const PROVIDER_NAMES: Record<string, string> = {
+	openai: "OpenAI",
+	anthropic: "Anthropic",
+	ollama: "Ollama (Local)",
+	ollamaCloud: "Ollama (Cloud)",
+	openrouter: "OpenRouter",
+	opencode: "OpenCode",
+	zai: "Zai (Zhipu AI)",
+	qwencloud: "QwenCloud",
+	clinepass: "ClinePass",
+};
+
+const PROVIDER_MODELS: ProviderModels = {
+	anthropic: [
+		{
+			id: "claude-sonnet-4-20250514",
+			name: "Claude Sonnet 4",
+			description: "Anthropic's balanced",
+		},
+		{ id: "claude-opus-4", name: "Claude Opus 4", description: "Anthropic's most powerful" },
+	],
+	openai: [
+		{ id: "gpt-4o", name: "GPT-4o", description: "OpenAI's flagship" },
+		{ id: "gpt-4o-mini", name: "GPT-4o Mini", description: "OpenAI's efficient" },
+		{ id: "o1", name: "o1 (reasoning)", description: "OpenAI's reasoning" },
+	],
+	ollama: [
+		{ id: "gpt-oss:20b", name: "GPT-OSS 20B", description: "Local coding model" },
+		{ id: "qwen3-coder", name: "Qwen3 Coder", description: "Local coding model" },
+	],
+	ollamaCloud: [
+		{ id: "gpt-oss:120b-cloud", name: "GPT-OSS 120B", description: "Cloud model" },
+		{ id: "gpt-oss:20b-cloud", name: "GPT-OSS 20B", description: "Cloud model" },
+		{ id: "glm-4.6:cloud", name: "GLM 4.6", description: "Cloud model" },
+		{ id: "minimax-m2:cloud", name: "MiniMax M2", description: "Cloud model" },
+		{ id: "qwen3-coder:480b-cloud", name: "Qwen3 Coder 480B", description: "Cloud model" },
+		{ id: "deepseek-v3.1:671b-cloud", name: "DeepSeek V3.1 671B", description: "Cloud model" },
+	],
+	openrouter: [
+		{ id: "openrouter/openai/gpt-4o", name: "GPT-4o (OpenRouter)", description: "OpenAI via OR" },
+		{
+			id: "openrouter/anthropic/claude-sonnet-4-20250514",
+			name: "Claude Sonnet (OpenRouter)",
+			description: "Anthropic via OR",
+		},
+		{ id: "deepseek/deepseek-chat", name: "DeepSeek Chat", description: "DeepSeek's V3" },
+	],
+	opencode: [
+		{ id: "opencode/big-pickle", name: "Big Pickle (Free)", description: "OpenCode free" },
+		{ id: "opencode/claude-3-5-haiku", name: "Claude 3.5 Haiku", description: "Anthropic compact" },
+		{ id: "opencode/claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Anthropic compact" },
+		{ id: "opencode/claude-opus-4-1", name: "Claude Opus 4.1", description: "Anthropic" },
+		{ id: "opencode/claude-opus-4-5", name: "Claude Opus 4.5", description: "Anthropic flagship" },
+		{ id: "opencode/claude-sonnet-4", name: "Claude Sonnet 4", description: "Anthropic" },
+		{ id: "opencode/claude-sonnet-4-5", name: "Claude Sonnet 4.5", description: "Anthropic" },
+		{ id: "opencode/gemini-3-flash", name: "Gemini 3 Flash", description: "Google fast" },
+		{ id: "opencode/gemini-3-pro", name: "Gemini 3 Pro", description: "Google" },
+		{ id: "opencode/glm-4.6", name: "GLM 4.6", description: "Zhipu" },
+		{ id: "opencode/glm-4.7", name: "GLM 4.7", description: "Zhipu" },
+		{ id: "opencode/gpt-5", name: "GPT-5", description: "OpenAI" },
+		{ id: "opencode/gpt-5-codex", name: "GPT-5 Codex", description: "OpenAI coding" },
+		{ id: "opencode/gpt-5-nano", name: "GPT-5 Nano", description: "OpenAI compact" },
+		{ id: "opencode/gpt-5.1", name: "GPT-5.1", description: "OpenAI" },
+		{ id: "opencode/gpt-5.1-codex", name: "GPT-5.1 Codex", description: "OpenAI coding" },
+		{ id: "opencode/gpt-5.1-codex-max", name: "GPT-5.1 Codex Max", description: "OpenAI coding" },
+		{ id: "opencode/gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", description: "OpenAI coding" },
+		{ id: "opencode/gpt-5.2", name: "GPT-5.2", description: "OpenAI latest" },
+		{ id: "opencode/gpt-5.2-codex", name: "GPT-5.2 Codex", description: "OpenAI coding" },
+		{ id: "opencode/kimi-k2", name: "Kimi K2", description: "Moonshot AI" },
+		{ id: "opencode/kimi-k2-thinking", name: "Kimi K2 Thinking", description: "Moonshot AI" },
+		{ id: "opencode/qwen3-coder", name: "Qwen3 Coder", description: "Alibaba coding" },
+	],
+	zai: [
+		{ id: "glm-4.7", name: "GLM-4.7", description: "Zhipu's flagship coding model" },
+		{ id: "glm-4-plus", name: "GLM-4 Plus", description: "Enhanced GLM-4" },
+		{ id: "glm-4.6v", name: "GLM-4.6V", description: "Zhipu's multimodal vision model" },
+		{ id: "glm-4v", name: "GLM-4V", description: "Zhipu's vision model" },
+		{ id: "glm-4-air", name: "GLM-4 Air", description: "Lightweight efficient model" },
+		{ id: "glm-4-flash", name: "GLM-4 Flash", description: "Fast response model" },
+		{ id: "glm-4", name: "GLM-4", description: "Zhipu's powerful model" },
+		{ id: "glm-3-turbo", name: "GLM-3 Turbo", description: "Zhipu's efficient model" },
+	],
+	qwencloud: [
+		{ id: "qw/glm-5.2", name: "GLM-5.2", description: "QwenCloud GLM" },
+		{ id: "qw/qwen3.8-max-preview", name: "Qwen3.8 Max Preview", description: "QwenCloud reasoning" },
+		{ id: "qw/qwen3.7-plus", name: "Qwen3.7 Plus", description: "QwenCloud 1M context" },
+		{ id: "qw/qwen3.7-max", name: "Qwen3.7 Max", description: "QwenCloud reasoning" },
+		{ id: "qw/qwen3.6-flash", name: "Qwen3.6 Flash", description: "QwenCloud fast" },
+		{ id: "qw/deepseek-v4-pro", name: "DeepSeek V4 Pro", description: "QwenCloud DeepSeek" },
+	],
+	clinepass: [{ id: "cline-pass/glm-5.2", name: "GLM-5.2 (ClinePass)", description: "ClinePass GLM" }],
+};
+
+export function getModelsForProviders(enabledProviders: EnabledProviders): ModelPickerItem[] {
+	const seen = new Set<string>();
+	const models: ModelPickerItem[] = [];
+
+	function addModel(model: ModelPickerItem): void {
+		if (!seen.has(model.id)) {
+			seen.add(model.id);
+			models.push(model);
+		}
+	}
+
+	for (const [provider, enabled] of Object.entries(enabledProviders)) {
+		if (!enabled) continue;
+
+		if (provider === "ollama") {
+			const localModels = getCachedOllamaModels();
+			// Filter out :cloud and -cloud suffix models from local Ollama - they belong to ollamaCloud provider
+			const localOnlyModels = localModels.filter((m) => !m.id.endsWith(":cloud") && !m.id.endsWith("-cloud"));
+			const modelsToAdd = localOnlyModels.length > 0 ? localOnlyModels : PROVIDER_MODELS.ollama;
+			for (const model of modelsToAdd) {
+				addModel(model);
+			}
+		} else if (provider in PROVIDER_MODELS) {
+			for (const model of PROVIDER_MODELS[provider as keyof ProviderModels]) {
+				addModel(model);
+			}
+		}
+	}
+
+	return models;
+}
+
+export const DEFAULT_MODELS: ModelPickerItem[] = [...PROVIDER_MODELS.ollama];
+
+/** Compute which providers are enabled from a raw config providers object. */
+export function getEnabledProviders(providers: Record<string, unknown>): EnabledProviders {
+	return {
+		openai: !!providers.openai,
+		anthropic: !!providers.anthropic,
+		ollama: !!providers.ollama,
+		ollamaCloud: !!providers.ollamaCloud,
+		openrouter: !!providers.openrouter,
+		opencode: !!providers.opencode,
+		zai: !!providers.zai,
+		qwencloud: !!providers.qwencloud,
+		clinepass: !!providers.clinepass,
+	};
+}
+
+/**
+ * Short display names for the CLI init output ("Provider: X").
+ * Kept separate from PROVIDER_NAMES (which has longer descriptive names
+ * like "Ollama (Local)" for the model picker UI).
+ */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+	qwencloud: "QwenCloud",
+	clinepass: "ClinePass",
+	opencode: "OpenCode",
+	openai: "OpenAI",
+	anthropic: "Anthropic",
+	ollamaCloud: "Ollama (Cloud)",
+	ollama: "Ollama",
+	zai: "Zai",
+	openrouter: "OpenRouter",
+};
+
+/**
+ * Priority order for display: newer / less common providers are checked
+ * first so they appear as the "primary" provider when multiple are configured.
+ */
+const PROVIDER_DISPLAY_PRIORITY = Object.keys(PROVIDER_DISPLAY_NAMES) as readonly string[];
+
+/** Return a human-readable display name for the first configured provider. */
+export function getProviderDisplayName(providers: Record<string, unknown>): string {
+	for (const key of PROVIDER_DISPLAY_PRIORITY) {
+		if (providers[key]) {
+			return PROVIDER_DISPLAY_NAMES[key] ?? key;
+		}
+	}
+	return "Default";
+}
