@@ -1,10 +1,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { findGitignorePatterns, isIgnored } from "./gitignore.js";
+import {
+	formatNotFound,
+	formatPermissionDenied,
+	formatResults,
+	MAX_LINE_LENGTH,
+	MAX_RESULTS,
+	matchesGlob,
+	shouldDescendIntoDir,
+} from "./search-utils.js";
 import type { Tool, ToolResult } from "./types.js";
-
-const MAX_RESULTS = 100;
-const MAX_LINE_LENGTH = 200;
 
 export const grepTool: Tool = {
 	name: "grep",
@@ -55,12 +61,9 @@ export const grepTool: Tool = {
 				return { success: true, output: "No matches found." };
 			}
 
-			const truncated = results.length > MAX_RESULTS;
-			const output = results.slice(0, MAX_RESULTS).join("\n");
-
 			return {
 				success: true,
-				output: truncated ? `${output}\n\n... (${results.length - MAX_RESULTS} more results truncated)` : output,
+				output: formatResults(results),
 			};
 		} catch (err) {
 			if (err instanceof SyntaxError) {
@@ -68,10 +71,10 @@ export const grepTool: Tool = {
 			}
 			const error = err as NodeJS.ErrnoException;
 			if (error.code === "ENOENT") {
-				return { success: false, error: `Path not found: ${searchPath}` };
+				return { success: false, error: formatNotFound(searchPath) };
 			}
 			if (error.code === "EACCES") {
-				return { success: false, error: `Permission denied: ${searchPath}` };
+				return { success: false, error: formatPermissionDenied(searchPath) };
 			}
 			return { success: false, error: `Search failed: ${error.message}` };
 		}
@@ -200,16 +203,6 @@ async function searchInFile(filePath: string, regex: RegExp, results: string[]):
 		}
 	}
 }
-
-function matchesGlob(filename: string, pattern: string): boolean {
-	const normalizedPath = filename.split(path.sep).join("/");
-
-	const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*").replace(/\?/g, ".");
-
-	const regex = new RegExp(`^${regexPattern}$`, "i");
-	return regex.test(normalizedPath);
-}
-
 export const globTool: Tool = {
 	name: "glob",
 	description: "Find files by glob pattern (e.g., **/*.ts). Returns matching file paths.",
@@ -241,20 +234,17 @@ export const globTool: Tool = {
 				return { success: true, output: "No matching files found." };
 			}
 
-			const truncated = results.length > MAX_RESULTS;
-			const output = results.slice(0, MAX_RESULTS).join("\n");
-
 			return {
 				success: true,
-				output: truncated ? `${output}\n\n... (${results.length - MAX_RESULTS} more results truncated)` : output,
+				output: formatResults(results),
 			};
 		} catch (err) {
 			const error = err as NodeJS.ErrnoException;
 			if (error.code === "ENOENT") {
-				return { success: false, error: `Path not found: ${searchPath}` };
+				return { success: false, error: formatNotFound(searchPath) };
 			}
 			if (error.code === "EACCES") {
-				return { success: false, error: `Permission denied: ${searchPath}` };
+				return { success: false, error: formatPermissionDenied(searchPath) };
 			}
 			return { success: false, error: `Glob search failed: ${error.message}` };
 		}
@@ -336,19 +326,4 @@ async function globFiles(basePath: string, pattern: string, relativePath: string
 		}
 	}
 }
-
-function shouldDescendIntoDir(pattern: string, dirPath: string): boolean {
-	const patternParts = pattern.split("/").filter((p) => p !== "**");
-	const dirParts = dirPath.split(path.sep);
-
-	for (let i = 0; i < dirParts.length && i < patternParts.length; i++) {
-		const patternPart = patternParts[i];
-		const dirPart = dirParts[i];
-		if (patternPart && dirPart && !matchesGlob(dirPart, patternPart)) {
-			return false;
-		}
-	}
-	return true;
-}
-
 export const searchTools: Tool[] = [grepTool, globTool];
