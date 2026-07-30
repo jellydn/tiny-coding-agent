@@ -19,6 +19,7 @@ import { DebugLogger } from "./debug-logger.js";
 import type { ContextStats } from "./memory.js";
 import { MemoryStore } from "./memory.js";
 import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
+import { RunnerObservability } from "./runner-observability.js";
 import { SkillManager } from "./skill-manager.js";
 import { TurnExecutor } from "./turn-executor.js";
 
@@ -225,17 +226,14 @@ export class Agent {
 
 		this._skillManager.clearRestriction();
 
-		// --- Observability: begin request ----------------------------------
 		const providerName = this._providerCache.getProviderName(runtimeConfig?.model ?? model);
-		const obsCtx = { provider: providerName, model: runtimeConfig?.model ?? model };
-		this._obsWrapper.beginRequest(userPrompt, obsCtx);
-		// -------------------------------------------------------------------
-
 		const effectiveModel = runtimeConfig?.model ?? model;
+		const { model: modelName } = parseModelString(effectiveModel);
+		const runnerObs = new RunnerObservability(this._obsWrapper, providerName, modelName);
+		runnerObs.begin(userPrompt);
+
 		const effectiveThinking = runtimeConfig?.thinking ?? this._thinking;
 		const llmClient = this._providerCache.getClientForModel(effectiveModel);
-
-		const { model: modelName } = parseModelString(effectiveModel);
 
 		const conversationFile = this._conversationManager.conversationFile;
 		let messages: Message[] = conversationFile
@@ -323,14 +321,9 @@ export class Agent {
 
 				this._debug.logIteration(iteration, contextStats, this._trackContextUsage);
 
-				// --- Observability: LLM request span + timer ------------------------
-				const { span: llmSpan, timer: llmTimer } = this._obsWrapper.beginLlmCall({
-					provider: providerName,
-					model: modelName,
-				});
+				const { span: llmSpan, timer: llmTimer } = runnerObs.beginLlmCall();
 				let llmUsage: TokenUsage | undefined;
 				let llmTimeToFirstToken: number | undefined;
-				// --------------------------------------------------------------------
 
 				let fullContent = "";
 				let responseToolCalls: string[] = [];
@@ -372,30 +365,28 @@ export class Agent {
 						}
 					}
 				} catch (err) {
-					this._obsWrapper.recordLlmCallError(llmSpan, err);
+					runnerObs.recordLlmCallError(llmSpan, err);
 					const streamError = err as Error | DOMException;
 					if (streamError instanceof DOMException && streamError.name === "AbortError") {
 						throw streamError;
 					}
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
-					this._obsWrapper.markFailed();
+					runnerObs.markFailed();
 					yield {
 						content: `\n\nError during LLM stream: ${errorMessage}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats,
-						observability: this._obsWrapper.buildMeta(modelName),
+						observability: runnerObs.buildMeta(),
 					};
 					return;
 				}
 
 				const llmLatencyMs = Math.round(llmTimer.ms);
 
-				// --- Observability: record LLM call --------------------------------
-				this._obsWrapper.recordLlmResponse(
+				runnerObs.recordLlmCall(
 					llmSpan,
 					llmTimer,
-					{ provider: providerName, model: modelName },
 					{
 						usage: llmUsage,
 						content: fullContent,
@@ -404,7 +395,6 @@ export class Agent {
 					},
 					userPrompt
 				);
-				// --------------------------------------------------------------------
 
 				this._debug.logLlmResponse(fullContent, responseToolCalls);
 
@@ -429,7 +419,7 @@ export class Agent {
 						iterations: iteration + 1,
 						done: true,
 						contextStats,
-						observability: this._obsWrapper.buildMeta(modelName),
+						observability: runnerObs.buildMeta(),
 					};
 					return;
 				}
@@ -437,7 +427,7 @@ export class Agent {
 				checkAborted(options?.signal);
 
 				// --- Tool execution via TurnExecutor --------------------------------
-				const { span: toolSpan, timer: toolTimer } = this._obsWrapper.beginToolExecution();
+				const { span: toolSpan, timer: toolTimer } = runnerObs.beginToolExecution();
 
 				// Yield "running" display objects
 				yield {
@@ -451,8 +441,7 @@ export class Agent {
 				const turnResult = await this._turnExecutor.executeTurn(assistantToolCalls);
 				const toolDuration = Math.round(toolTimer.ms);
 
-				// --- Observability: record tool execution ---------------------------
-				this._obsWrapper.recordToolResult(
+				runnerObs.recordToolExecution(
 					toolSpan,
 					toolTimer,
 					assistantToolCalls.map((tc) => tc.name),
@@ -463,7 +452,6 @@ export class Agent {
 						error: exec.error,
 					}))
 				);
-				// --------------------------------------------------------------------
 
 				// Yield "complete/error" display objects
 				yield {
@@ -530,13 +518,13 @@ export class Agent {
 				}
 
 				if (finalResult.error) {
-					this._obsWrapper.markFailed();
+					runnerObs.markFailed();
 					yield {
 						content: `\n\nError during LLM stream: ${finalResult.error}`,
 						iterations: iteration + 1,
 						done: true,
 						contextStats: updateStats(),
-						observability: this._obsWrapper.buildMeta(modelName),
+						observability: runnerObs.buildMeta(),
 					};
 					return;
 				}
@@ -547,7 +535,7 @@ export class Agent {
 					iterations: iteration + 1,
 					done: true,
 					contextStats: updateStats(),
-					observability: this._obsWrapper.buildMeta(modelName),
+					observability: runnerObs.buildMeta(),
 				};
 				return;
 			}
@@ -562,17 +550,13 @@ export class Agent {
 				done: true,
 				maxIterationsReached: true,
 				contextStats: updateStats(),
-				observability: this._obsWrapper.buildMeta(modelName),
+				observability: runnerObs.buildMeta(),
 			};
 		} catch (err) {
-			// --- Observability: record failure against the trace --------------
-			this._obsWrapper.recordRequestError({ provider: providerName, model: modelName }, err);
-			// ----------------------------------------------------------------
+			runnerObs.requestError(err);
 			throw err;
 		} finally {
-			// --- Observability: close root span + emit request.end -----------
-			this._obsWrapper.finalize({ provider: providerName, model: modelName });
-			// ----------------------------------------------------------------
+			runnerObs.finalize();
 		}
 	}
 
