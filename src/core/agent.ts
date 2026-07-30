@@ -251,13 +251,15 @@ export class Agent {
 		const systemTokens = ctxResult.systemTokens;
 		const maxContextTokens = ctxResult.stats.maxContextTokens;
 
-		const tools = this._skillManager.filterTools(
-			this._toolRegistry.list().map((tool) => ({
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters,
-			}))
-		);
+		const tools = this._skillManager
+			.filterTools(
+				this._toolRegistry.list().map((tool) => ({
+					name: tool.name,
+					description: tool.description,
+					parameters: tool.parameters,
+				}))
+			)
+			.sort((a, b) => a.name.localeCompare(b.name));
 
 		const providerTypeForDetails = detectProvider(effectiveModel);
 		this._debug.logRequestDetails({
