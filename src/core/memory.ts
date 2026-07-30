@@ -1,30 +1,9 @@
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
+import { signalHandlerManager } from "./signal-handler-manager.js";
 import { countTokensSync } from "./tokens.js";
 
 const SAVE_DEBOUNCE_MS = 100;
-
-const signalHandlerManager = {
-	registeredStores: new Set<MemoryStore>(),
-	globalHandlerRegistered: false,
-
-	register(store: MemoryStore): void {
-		this.registeredStores.add(store);
-		if (!this.globalHandlerRegistered && typeof process !== "undefined") {
-			this.globalHandlerRegistered = true;
-			const handler = async () => {
-				await Promise.all(Array.from(this.registeredStores).map((s) => s.flush().catch(() => {})));
-				process.exit(1);
-			};
-			process.on("SIGTERM", handler);
-			process.on("SIGINT", handler);
-		}
-	},
-
-	unregister(store: MemoryStore): void {
-		this.registeredStores.delete(store);
-	},
-};
 
 export type MemoryCategory = "user" | "project" | "codebase";
 
