@@ -1,8 +1,8 @@
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
-import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import type { OpenAIProviderConfig } from "./openai.js";
 import { OpenAIProvider } from "./openai.js";
+import { capabilitiesWithCatalogFallback } from "./provider-utils.js";
 
 export interface ZaiProviderConfig {
 	apiKey?: string;
@@ -32,10 +32,16 @@ export class ZaiProvider extends OpenAIProvider {
 		const cached = this._zaiCapabilitiesCache.get(model);
 		if (cached) return cached;
 
-		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "zai");
-		if (catalogCapabilities) {
-			this._zaiCapabilitiesCache.set(model, catalogCapabilities);
-			return catalogCapabilities;
+		const catalogCaps = capabilitiesWithCatalogFallback({
+			model,
+			providerType: "zai",
+			contextWindow: 16385,
+			maxOutputTokens: 4096,
+		});
+
+		if (catalogCaps.source === "catalog") {
+			this._zaiCapabilitiesCache.set(model, catalogCaps);
+			return catalogCaps;
 		}
 
 		const modelContextWindow: Record<string, number> = {
@@ -52,7 +58,7 @@ export class ZaiProvider extends OpenAIProvider {
 
 		const hasThinking = modelRegistrySupportsThinking(model);
 
-		const capabilities: ModelCapabilities = {
+		const caps: ModelCapabilities = {
 			modelName: model,
 			supportsTools: true,
 			supportsStreaming: true,
@@ -65,7 +71,7 @@ export class ZaiProvider extends OpenAIProvider {
 			source: "fallback",
 		};
 
-		this._zaiCapabilitiesCache.set(model, capabilities);
-		return capabilities;
+		this._zaiCapabilitiesCache.set(model, caps);
+		return caps;
 	}
 }

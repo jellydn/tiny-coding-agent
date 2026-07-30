@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
-import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
+import { buildTokenUsage, capabilitiesWithCatalogFallback, num } from "./provider-utils.js";
 import type {
 	ChatOptions,
 	ChatResponse,
@@ -128,10 +128,6 @@ function mapStopReason(reason: string | null): ChatResponse["finishReason"] {
 	}
 }
 
-function num(v: unknown): number | undefined {
-	return typeof v === "number" && Number.isFinite(v) ? v : undefined;
-}
-
 /** Map an Anthropic usage object into the normalized TokenUsage shape. */
 function extractAnthropicUsage(raw: unknown): TokenUsage | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
@@ -141,15 +137,7 @@ function extractAnthropicUsage(raw: unknown): TokenUsage | undefined {
 	const cachedRead = num(u.cache_read_input_tokens) ?? 0;
 	const cachedCreate = num(u.cache_creation_input_tokens) ?? 0;
 	const cached = cachedRead + cachedCreate;
-	const usage: TokenUsage = {
-		inputTokens: input,
-		outputTokens: output,
-		totalTokens: input !== undefined && output !== undefined ? input + output : undefined,
-		cachedTokens: cached > 0 ? cached : undefined,
-		reasoningTokens: num(u.reasoning_tokens),
-	};
-	const hasAny = usage.inputTokens !== undefined || usage.outputTokens !== undefined;
-	return hasAny ? usage : undefined;
+	return buildTokenUsage({ input, output, cached, reasoning: num(u.reasoning_tokens) });
 }
 
 export function buildThinkingConfig(enabled: boolean, budgetTokens?: number) {
@@ -330,7 +318,7 @@ export class AnthropicProvider implements LLMClient {
 				supportsSystemPrompt: true,
 				supportsToolStreaming: true,
 				supportsThinking: hasThinking,
-				contextWindow: contextWindow,
+				contextWindow,
 				maxOutputTokens: 8192,
 				isVerified: false,
 				source: "fallback",
@@ -340,10 +328,16 @@ export class AnthropicProvider implements LLMClient {
 			return capabilities;
 		}
 
-		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "anthropic");
-		if (catalogCapabilities) {
-			this._capabilitiesCache.set(model, catalogCapabilities);
-			return catalogCapabilities;
+		const catalogCaps = capabilitiesWithCatalogFallback({
+			model,
+			providerType: "anthropic",
+			contextWindow: 200000,
+			maxOutputTokens: 8192,
+		});
+
+		if (catalogCaps.source === "catalog") {
+			this._capabilitiesCache.set(model, catalogCaps);
+			return catalogCaps;
 		}
 
 		console.warn(
@@ -351,20 +345,13 @@ export class AnthropicProvider implements LLMClient {
 				"Context limits may be inaccurate. Consider updating the model registry."
 		);
 
-		const capabilities: ModelCapabilities = {
-			modelName: model,
-			supportsTools: true,
-			supportsStreaming: true,
-			supportsSystemPrompt: true,
-			supportsToolStreaming: true,
-			supportsThinking: false,
-			contextWindow: 200000,
-			maxOutputTokens: 8192,
-			isVerified: false,
-			source: "fallback",
+		const hasThinkingOverride = modelRegistrySupportsThinking(model);
+		const fallback: ModelCapabilities = {
+			...catalogCaps,
+			supportsThinking: hasThinkingOverride,
 		};
 
-		this._capabilitiesCache.set(model, capabilities);
-		return capabilities;
+		this._capabilitiesCache.set(model, fallback);
+		return fallback;
 	}
 }

@@ -1,5 +1,6 @@
 import { Ollama } from "ollama";
 import type { ModelCapabilities } from "./capabilities.js";
+import { buildTokenUsage, num } from "./provider-utils.js";
 import type {
 	ChatOptions,
 	ChatResponse,
@@ -83,22 +84,13 @@ function mapFinishReason(doneReason: string | undefined): ChatResponse["finishRe
 	return "stop";
 }
 
-function num(v: unknown): number | undefined {
-	return typeof v === "number" && Number.isFinite(v) ? v : undefined;
-}
-
 /** Map an Ollama response usage into the normalized TokenUsage shape. */
 function extractOllamaUsage(raw: unknown): TokenUsage | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
 	const u = raw as Record<string, unknown>;
 	const input = num(u.prompt_eval_count);
 	const output = num(u.eval_count);
-	if (input === undefined && output === undefined) return undefined;
-	return {
-		inputTokens: input,
-		outputTokens: output,
-		totalTokens: input !== undefined && output !== undefined ? input + output : undefined,
-	};
+	return buildTokenUsage({ input, output });
 }
 
 export class OllamaProvider implements LLMClient {

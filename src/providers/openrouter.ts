@@ -1,6 +1,6 @@
 import type { ModelCapabilities } from "./capabilities.js";
-import { getModelCapabilitiesFromCatalog } from "./models-dev.js";
 import { OpenAIProvider } from "./openai.js";
+import { capabilitiesWithCatalogFallback } from "./provider-utils.js";
 
 export interface OpenRouterProviderConfig {
 	apiKey: string;
@@ -33,10 +33,16 @@ export class OpenRouterProvider extends OpenAIProvider {
 		const cached = this._openrouterCapabilitiesCache.get(model);
 		if (cached) return cached;
 
-		const catalogCapabilities = getModelCapabilitiesFromCatalog(model, "openrouter");
-		if (catalogCapabilities) {
-			this._openrouterCapabilitiesCache.set(model, catalogCapabilities);
-			return catalogCapabilities;
+		const catalogCaps = capabilitiesWithCatalogFallback({
+			model,
+			providerType: "openrouter",
+			contextWindow: 200000,
+			maxOutputTokens: 4096,
+		});
+
+		if (catalogCaps.source === "catalog") {
+			this._openrouterCapabilitiesCache.set(model, catalogCaps);
+			return catalogCaps;
 		}
 
 		return super.getCapabilities(model);
