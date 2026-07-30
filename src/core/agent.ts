@@ -22,6 +22,29 @@ import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
 import { SkillManager } from "./skill-manager.js";
 import { TurnExecutor } from "./turn-executor.js";
 
+// Tool categorization: core tools always included, others filtered by relevance heuristic
+const CORE_TOOLS = new Set(["read_file", "write_file", "edit_file", "list_directory", "bash", "grep", "glob"]);
+
+/**
+ * Infer which tool categories are relevant based on the user's prompt.
+ * Returns a set of category names to include in addition to core tools.
+ */
+function inferRelevantCategories(prompt: string): Set<string> {
+	const categories = new Set<string>();
+
+	// File operations (destructive): delete, remove
+	if (/\b(?:delete|remove|rm\b)/i.test(prompt)) {
+		categories.add("file");
+	}
+
+	// Web/search: search, web, find, lookup, docs, documentation
+	if (/\b(?:search\b|web\b|find\b|lookup\b|docs?\s|documentation)/i.test(prompt)) {
+		categories.add("search");
+	}
+
+	return categories;
+}
+
 // Re-export for backward compatibility — other modules and tests import
 // isLooping, truncateOutput, and streamLlmResponse from agent.ts. The
 // canonical home is agent-utils.ts (extracted to break the agent.ts ↔
@@ -251,9 +274,15 @@ export class Agent {
 		const systemTokens = ctxResult.systemTokens;
 		const maxContextTokens = ctxResult.stats.maxContextTokens;
 
+		// Filter tools by core set + relevance categories
+		const relevantCategories = inferRelevantCategories(userPrompt);
+		const filteredRegistryTools = this._toolRegistry
+			.list()
+			.filter((t) => CORE_TOOLS.has(t.name) || !t.category || relevantCategories.has(t.category));
+
 		const tools = this._skillManager
 			.filterTools(
-				this._toolRegistry.list().map((tool) => ({
+				filteredRegistryTools.map((tool) => ({
 					name: tool.name,
 					description: tool.description,
 					parameters: tool.parameters,
