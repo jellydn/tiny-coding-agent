@@ -34,13 +34,13 @@ src/
 │   └── schema.ts             # Zod schema
 │
 ├── core/              # Agent loop, memory, tools, providers
-│   ├── agent.ts               # Agent class — runStream, run, health
+│   ├── agent.ts               # Agent class — runStream, run, health, tool categorization
 │   ├── agent-observability.ts # Telemetry wrapper
 │   ├── agent-utils.ts         # Loop detection, stream helpers
 │   ├── context-budget.ts      # Context window management
 │   ├── conversation.ts        # Conversation persistence
 │   ├── debug-logger.ts        # Verbose logging
-│   ├── memory.ts              # MemoryStore class
+│   ├── memory.ts              # MemoryStore class (SignalHandler → extracted)
 │   ├── provider-cache.ts      # LLM client cache
 │   ├── signal-handler-manager.ts # Process signal handlers
 │   ├── skill-manager.ts       # Skill discovery/loading
@@ -71,16 +71,19 @@ src/
 │
 ├── tools/            # Tool system
 │   ├── registry.ts, types.ts, bash-tool.ts
-│   ├── file-tools.ts, search-tools.ts
+│   ├── file-tools.ts   (validation → file-utils.ts)
+│   ├── file-utils.ts        # Path validation helpers extracted from file-tools
+│   ├── search-tools.ts
 │   ├── web-search-tool.ts, confirmation.ts
 │   └── plugin-loader.ts
 │
 ├── ui/               # Ink React components
 │   ├── App.tsx, utils.ts
+│   ├── model-data.ts          # Model definitions extracted from ModelPicker
 │   ├── components/   # UI components
 │   │   ├── AgentSwitcher, ChatLayout, CommandMenu
 │   │   ├── Header, HeaderBox, Message, MessageList
-│   │   ├── ModelPicker, SkillPicker, Spinner
+│   │   ├── ModelPicker (→ model-data.ts), SkillPicker, Spinner
 │   │   ├── StatusLine, StreamingText, ThinkingIndicator
 │   │   ├── ToastList, TextInput, ToolCall, ToolOutput
 │   │   ├── ToolsPanel, ContextStatus
