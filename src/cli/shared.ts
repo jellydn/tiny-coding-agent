@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Config, McpServerConfig } from "../config/schema.js";
+import type { Config } from "../config/schema.js";
 import { Agent } from "../core/agent.js";
 import { MemoryStore } from "../core/memory.js";
-import { globToRegex, McpManager } from "../mcp/manager.js";
+import type { McpManager } from "../mcp/manager.js";
 import { createProvider } from "../providers/factory.js";
 import type { LLMClient } from "../providers/types.js";
 import { bashTool, createSkillTool, fileTools, loadPlugins, searchTools, webSearchTool } from "../tools/index.js";
 import { ToolRegistry } from "../tools/registry.js";
-import { statusLineManager } from "../ui/index.js";
+import { setupMcpServers } from "./mcp-setup.js";
 
 export interface CliOptions {
 	model?: string;
@@ -140,14 +140,9 @@ export async function setupTools(
 	config: Config
 ): Promise<{ registry: ToolRegistry; mcpManager: McpManager | undefined }> {
 	const registry = new ToolRegistry();
-	const isMcpDisabled = (name: string): boolean =>
-		config.disabledMcpPatterns?.length && name.startsWith("mcp_")
-			? config.disabledMcpPatterns.some((p) => globToRegex(p).test(name))
-			: false;
 
 	const isToolEnabled = (name: string): boolean =>
-		!isMcpDisabled(name) &&
-		(config.tools === undefined || config.tools[name] === undefined || config.tools[name]?.enabled);
+		config.tools === undefined || config.tools[name] === undefined || config.tools[name]?.enabled;
 
 	for (const tool of fileTools) if (isToolEnabled(tool.name)) registry.register(tool);
 	if (isToolEnabled(bashTool.name)) registry.register(bashTool);
@@ -160,31 +155,7 @@ export async function setupTools(
 		console.error(`Warning: Failed to load plugins: ${(err as Error).message}`);
 	}
 
-	let mcpManager: McpManager | undefined;
-	if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-		mcpManager = new McpManager({ disabledPatterns: config.disabledMcpPatterns ?? [] });
-
-		for (const [name, cfg] of Object.entries(config.mcpServers) as [string, McpServerConfig][]) {
-			await mcpManager.addServer(name, cfg);
-		}
-
-		const allTools = mcpManager.getAllTools();
-		for (const [server, toolDefs] of allTools) {
-			for (const toolDef of toolDefs) {
-				const tool = mcpManager.createToolFromMcp(server, toolDef);
-				if (isToolEnabled(tool.name)) {
-					try {
-						registry.register(tool);
-					} catch (err) {
-						console.error(`Warning: Failed to register MCP tool: ${(err as Error).message}`);
-					}
-				}
-			}
-		}
-
-		const connected = mcpManager.getServerStatus().filter((s) => s.connected && s.toolCount > 0).length;
-		statusLineManager.setMcpServerCount(connected);
-	}
+	const mcpManager = await setupMcpServers(config, registry);
 
 	return { registry, mcpManager };
 }
