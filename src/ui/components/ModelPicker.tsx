@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { detectProvider } from "../../providers/model-registry.js";
+import type { ModelPickerItem } from "../model-data.js";
 import { PROVIDER_NAMES } from "../model-data.js";
 
 export type {

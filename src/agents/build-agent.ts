@@ -5,6 +5,7 @@ import { bashTool } from "../tools/bash-tool.js";
 import { fileTools } from "../tools/file-tools.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { createAgentClient } from "./agent-client.js";
+import type { BuildAction, BuildStep } from "./plan-converter.js";
 import { parsePlanToSteps as parseSteps } from "./plan-converter.js";
 import { DEFAULT_STATE_FILE } from "./state.js";
 import { StateManager } from "./state-manager.js";
