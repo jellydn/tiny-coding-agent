@@ -1,23 +1,21 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { fileTools, globTool, grepTool, ToolRegistry } from "../tools/index.js";
+import { fileTools, globTool, ToolRegistry } from "../tools/index.js";
+import {
+	analyzeFiles,
+	formatDependencyAnalysis,
+	getDependencyAnalysis,
+	getFileCount,
+	getLocCount,
+} from "./file-analyzer.js";
 
 /**
- * CodebaseExplorer — owns a single shared ToolRegistry and all the file/glob/grep
- * exploration logic that was previously inlined across 4 separate functions in
+ * CodebaseExplorer — owns a shared ToolRegistry and all the exploration
+ * logic that was previously inlined across 4 separate functions in
  * explore-agent.ts (each with its own `new ToolRegistry()`).
  *
- * Deepening rationale (architecture review Candidate #4):
- * - 4 duplicate ToolRegistry instances → 1 shared registry
- * - 6 interleaved concerns (registry setup, fs.readFile, glob, grep, formatting, LLM) →
- *   exploration concerns live here; LLM + state-file concerns stay in explore-agent.ts
- * - N+1 file reads in getLocCount now share one registry instead of re-creating it per call
- * - Testable without an LLM: pass a temp dir, call exploreShallow(), assert the output
- *
- * Optimization (architecture review Candidate #5):
- * - exploreDeep() returns metrics alongside the report text, avoiding the double
- *   getFileCount/getLocCount traversal that occurred when the orchestrator called
- *   getMetrics() separately after exploreDeep().
+ * File analysis functions (getFileCount, getLocCount, getDependencyAnalysis)
+ * have been extracted to file-analyzer.ts for independent testability and reuse.
  */
 
 /** Result of an exploration — the report text plus structured metrics. */
@@ -31,18 +29,12 @@ export class CodebaseExplorer {
 
 	constructor() {
 		this.registry = new ToolRegistry();
-		// Register all tools once — shared across every exploration method
+		// Register tools needed for exploration (file analysis uses its own registry)
 		this.registry.register({
 			name: "glob",
 			description: globTool.description,
 			parameters: globTool.parameters,
 			execute: globTool.execute,
-		});
-		this.registry.register({
-			name: "grep",
-			description: grepTool.description,
-			parameters: grepTool.parameters,
-			execute: grepTool.execute,
 		});
 		this.registry.registerMany(fileTools);
 	}
@@ -51,53 +43,14 @@ export class CodebaseExplorer {
 	 * Get an approximate count of source files by extension.
 	 */
 	async getFileCount(cwd: string): Promise<number> {
-		let totalCount = 0;
-		const extensions = [".ts", ".tsx", ".js", ".jsx", ".json", ".md"];
-
-		for (const ext of extensions) {
-			try {
-				const result = await this.registry.execute("glob", { pattern: `**/*${ext}`, path: cwd });
-				if (result.success && result.output) {
-					const files = result.output.split("\n").filter((f) => f.trim());
-					totalCount += files.length;
-				}
-			} catch {
-				// Ignore errors
-			}
-		}
-
-		return totalCount;
+		return getFileCount(cwd);
 	}
 
 	/**
 	 * Get an approximate line-of-code count by sampling up to 50 files per extension.
 	 */
 	async getLocCount(cwd: string): Promise<number> {
-		let totalLoc = 0;
-		const extensions = [".ts", ".tsx", ".js", ".jsx"];
-
-		for (const ext of extensions) {
-			try {
-				const globResult = await this.registry.execute("glob", { pattern: `**/*${ext}`, path: cwd });
-				if (globResult.success && globResult.output) {
-					const files = globResult.output.split("\n").filter((f) => f.trim());
-					for (const file of files.slice(0, 50)) {
-						try {
-							const readResult = await this.registry.execute("read_file", { path: file });
-							if (readResult.success && readResult.output) {
-								totalLoc += readResult.output.split("\n").length;
-							}
-						} catch {
-							// Ignore errors
-						}
-					}
-				}
-			} catch {
-				// Ignore errors
-			}
-		}
-
-		return totalLoc;
+		return getLocCount(cwd);
 	}
 
 	/**
@@ -247,47 +200,12 @@ export class CodebaseExplorer {
 	 * Analyze external dependencies by grepping import statements across the codebase.
 	 */
 	async getDependencyAnalysis(cwd: string): Promise<string> {
-		const lines: string[] = [];
-		lines.push("Dependency Analysis:");
-
 		try {
-			const importResult = await this.registry.execute("grep", {
-				pattern: "^import.*from",
-				path: cwd,
-				include: "*.ts",
-			});
-
-			if (importResult.success && importResult.output) {
-				const imports = importResult.output.split("\n").filter((i) => i.trim());
-				const uniqueImports = new Set<string>();
-
-				for (const imp of imports) {
-					const match = imp.match(/from\s+["']([^"']+)["']/);
-					if (match?.[1]) {
-						const impPath = match[1];
-						if (!impPath.startsWith(".") && !impPath.startsWith("/")) {
-							const firstSegment = impPath.split("/")[0];
-							if (firstSegment) {
-								uniqueImports.add(firstSegment);
-							}
-						}
-					}
-				}
-
-				lines.push("  External dependencies used:");
-				for (const dep of Array.from(uniqueImports).slice(0, 20)) {
-					lines.push(`    - ${dep}`);
-				}
-
-				if (uniqueImports.size > 20) {
-					lines.push(`    ... and ${uniqueImports.size - 20} more`);
-				}
-			}
+			const deps = await getDependencyAnalysis(cwd);
+			return formatDependencyAnalysis(deps);
 		} catch (err) {
-			lines.push(`  Error analyzing dependencies: ${(err as Error).message}`);
+			return `Dependency Analysis:\n  Error analyzing dependencies: ${(err as Error).message}`;
 		}
-
-		return lines.join("\n");
 	}
 
 	/**
@@ -362,20 +280,7 @@ export class CodebaseExplorer {
 	 * Used by the orchestrator to populate the result's `metrics` field.
 	 */
 	async getMetrics(cwd: string): Promise<Record<string, number | string>> {
-		const metrics: Record<string, number | string> = {};
-
-		try {
-			metrics.fileCount = await this.getFileCount(cwd);
-		} catch {
-			metrics.fileCount = 0;
-		}
-
-		try {
-			metrics.locCount = await this.getLocCount(cwd);
-		} catch {
-			// locCount omitted on error
-		}
-
-		return metrics;
+		const result = await analyzeFiles(cwd);
+		return { fileCount: result.fileCount, locCount: result.locCount };
 	}
 }
