@@ -1,15 +1,13 @@
 import { useCallback } from "react";
 import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import { formatProviderStatus } from "../../cli/handlers/login.js";
-import { readConfigFile } from "../../config/config-io.js";
-import { getConfigPath } from "../../config/loader.js";
 import type { Agent } from "../../core/agent.js";
-import { buildRegistry, hasHooks, runHooks } from "../../hooks/manager.js";
-import { PLANNOTATOR_PRESET } from "../../hooks/presets.js";
-import type { HookConfig } from "../../hooks/types.js";
 import type { McpManager } from "../../mcp/manager.js";
 import { generateHelpText, resolveCommandAlias } from "../chat-command-registry.js";
 import type { Command } from "../components/CommandMenu.js";
+import { handleSkillCommand } from "../handlers/skill-handler.js";
+import { handlePlanCommand } from "../handlers/plan-handler.js";
+import { handleReviewCommand } from "../handlers/review-handler.js";
 import { MessageRole } from "../types/enums.js";
 
 interface UseCommandHandlerProps {
@@ -33,78 +31,8 @@ export function useCommandHandler({
 	agent,
 	mcpManager,
 }: UseCommandHandlerProps) {
-	const handleSkillCommand = useCallback(
-		async (args: string) => {
-			const skillName = args.trim();
-
-			if (!skillName) {
-				if (!agent) {
-					onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized. Cannot list skills.");
-					return;
-				}
-
-				const skills = agent.getSkillRegistry();
-				const skillList = Array.from(skills.values());
-
-				if (skillList.length === 0) {
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`No skills available.\n\nUse "tiny-agent skill init <name>" to create a new skill, or configure skillDirectories in your config.yaml.`
-					);
-				} else {
-					const skillDescriptions = skillList.map((s) => `  • **${s.name}**: ${s.description}`).join("\n");
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`Available skills:\n\n${skillDescriptions}\n\nType @skill-name to load a skill.`
-					);
-				}
-				return;
-			}
-
-			if (!agent) {
-				onAddMessage(MessageRole.ASSISTANT, "Error: Agent not initialized. Cannot load skills.");
-				return;
-			}
-
-			const skillRegistry = agent.getSkillRegistry();
-
-			if (!skillRegistry.has(skillName)) {
-				const availableSkills = Array.from(skillRegistry.keys()).join(", ");
-				onAddMessage(
-					MessageRole.ASSISTANT,
-					`Skill not found: ${skillName}\n\nAvailable skills: ${availableSkills || "none"}\n\nType @skill-name to load a skill.`
-				);
-				return;
-			}
-
-			try {
-				const result = await agent.loadSkill(skillName);
-				if (!result) {
-					const availableSkills = Array.from(skillRegistry.keys()).join(", ");
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`Skill not found: ${skillName}\n\nAvailable skills: ${availableSkills || "none"}`
-					);
-					return;
-				}
-
-				const { wrappedContent, allowedTools } = result;
-				if (allowedTools) {
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`Loaded skill: **${skillName}**\nRestricted tools to: ${allowedTools.join(", ")}\n\n${wrappedContent}`
-					);
-				} else {
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						`Loaded skill: **${skillName}**\nAll tools available.\n\n${wrappedContent}`
-					);
-				}
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				onAddMessage(MessageRole.ASSISTANT, `Error loading skill: ${message}`);
-			}
-		},
+	const handleSkill = useCallback(
+		async (args: string) => handleSkillCommand(args, { agent, onAddMessage }),
 		[agent, onAddMessage]
 	);
 
@@ -132,73 +60,8 @@ export function useCommandHandler({
 		onAddMessage(MessageRole.ASSISTANT, `MCP Servers:\n\n${lines}\n\nUse a tool from an MCP server to connect it.`);
 	}, [mcpManager, onAddMessage]);
 
-	const handlePlanCommand = useCallback(
-		async (args: string) => {
-			const subcommand = args.trim().toLowerCase() || "show";
-			const stateFile = DEFAULT_STATE_FILE;
-
-			const mgr = new StateManager(stateFile);
-			const loadResult = await mgr.loadOrFail();
-			if (!loadResult.success) {
-				onAddMessage(MessageRole.ASSISTANT, "No state file found. Run 'tiny-agent plan <task>' first.");
-				return;
-			}
-
-			if (subcommand === "show") {
-				const plan = mgr.getPlan();
-				if (plan) {
-					onAddMessage(MessageRole.ASSISTANT, `**Current Plan**\n\n${plan}`);
-				} else {
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						"No plan found in state file.\n\nRun 'tiny-agent plan <task>' to generate a plan first."
-					);
-				}
-			} else if (subcommand === "tasks") {
-				const steps = mgr.getBuildSteps();
-
-				if (!steps || steps.length === 0) {
-					onAddMessage(
-						MessageRole.ASSISTANT,
-						"No tasks found in state file.\n\nRun 'tiny-agent run-plan-build <task>' to generate tasks first."
-					);
-					return;
-				}
-
-				const taskList = steps
-					.map((step) => {
-						const icon = step.status === "completed" ? "✓" : step.status === "failed" ? "✗" : "○";
-						return `  ${icon} **[${step.stepNumber}]** ${step.description}`;
-					})
-					.join("\n");
-
-				const completed = steps.filter((s) => s.status === "completed").length;
-				const pending = steps.filter((s) => s.status === "pending").length;
-				const failed = steps.filter((s) => s.status === "failed").length;
-
-				onAddMessage(
-					MessageRole.ASSISTANT,
-					`**Tasks** (${completed}/${steps.length} completed, ${pending} pending, ${failed} failed)\n\n${taskList}`
-				);
-			} else if (subcommand === "todo") {
-				const steps = mgr.getBuildSteps();
-				const pendingSteps = steps?.filter((s) => s.status === "pending") ?? [];
-
-				if (pendingSteps.length === 0) {
-					onAddMessage(MessageRole.ASSISTANT, "No pending tasks. All tasks are completed!");
-					return;
-				}
-
-				const todoList = pendingSteps.map((step) => `  ○ **[${step.stepNumber}]** ${step.description}`).join("\n");
-
-				onAddMessage(MessageRole.ASSISTANT, `**TODO** (${pendingSteps.length} pending)\n\n${todoList}`);
-			} else {
-				onAddMessage(
-					MessageRole.ASSISTANT,
-					`Unknown plan subcommand: ${subcommand}\n\nAvailable: /plan show, /tasks, /todo`
-				);
-			}
-		},
+	const handlePlan = useCallback(
+		async (args: string) => handlePlanCommand(args, { onAddMessage }),
 		[onAddMessage]
 	);
 
@@ -268,87 +131,10 @@ export function useCommandHandler({
 		}
 	}, [agent, onAddMessage]);
 
-	const handleReviewCommand = useCallback(async () => {
-		const stateFile = DEFAULT_STATE_FILE;
-
-		// Load hooks from config file
-		let hooks: HookConfig[] = [];
-		try {
-			const configPath = getConfigPath();
-			const fileConfig = await readConfigFile(configPath);
-			hooks = (fileConfig.hooks as HookConfig[] | undefined) ?? [];
-		} catch {
-			onAddMessage(MessageRole.ASSISTANT, "Error: Could not read config file for hooks.");
-			return;
-		}
-
-		if (hooks.length === 0 || !hasHooks(buildRegistry(hooks), "post-plan-generate")) {
-			onAddMessage(
-				MessageRole.ASSISTANT,
-				"No review hooks configured.\n\n" +
-					"To install the plannotator preset, exit and run:\n" +
-					"  tiny-agent hooks install plannotator\n\n" +
-					"Or add hooks manually in config.yaml."
-			);
-			return;
-		}
-
-		// Load the plan from the state file
-		const mgr = new StateManager(stateFile);
-		const state = await mgr.loadOrCreate();
-		const plan = mgr.getPlan();
-		if (!plan) {
-			onAddMessage(MessageRole.ASSISTANT, "No plan found in state file. Run 'tiny-agent plan <task>' first.");
-			return;
-		}
-
-		onAddMessage(MessageRole.ASSISTANT, `📋 Reviewing plan (${plan.length} chars) with configured hooks...`);
-
-		const registry = buildRegistry(hooks);
-		const hookResult = await runHooks(registry, "post-plan-generate", {
-			event: "post-plan-generate",
-			content: plan,
-			stateFile,
-			taskDescription: state.taskDescription,
-		});
-
-		if (hookResult.skipped) {
-			onAddMessage(
-				MessageRole.ASSISTANT,
-				`⚠️ Review hook was skipped (binary not found).\n\n${PLANNOTATOR_PRESET.installInstructions ?? ""}`
-			);
-			return;
-		}
-
-		if (!hookResult.success) {
-			onAddMessage(MessageRole.ASSISTANT, `✗ Review hook failed: ${hookResult.error ?? "unknown error"}`);
-			return;
-		}
-
-		if (hookResult.feedback) {
-			onAddMessage(MessageRole.ASSISTANT, `📋 Feedback:\n${hookResult.feedback}`);
-		}
-
-		if (hookResult.modifiedContent) {
-			mgr.setPlan(hookResult.modifiedContent);
-			try {
-				await mgr.save();
-			} catch {
-				/* state write errors are non-fatal */
-			}
-			onAddMessage(
-				MessageRole.ASSISTANT,
-				`✓ Plan updated (${hookResult.modifiedContent.length} chars) and saved to ${stateFile}`
-			);
-		}
-
-		if (hookResult.approved === false) {
-			onAddMessage(MessageRole.ASSISTANT, "✗ Plan rejected by reviewer.");
-			return;
-		}
-
-		onAddMessage(MessageRole.ASSISTANT, "✓ Plan approved by reviewer.");
-	}, [onAddMessage]);
+	const handleReview = useCallback(
+		async () => handleReviewCommand({ onAddMessage }),
+		[onAddMessage]
+	);
 
 	// Dispatch map — each command name maps to a handler function.
 	// Aliases (/tasks, /todo → /plan) are resolved via resolveCommandAlias()
@@ -384,10 +170,10 @@ Use ←/→ to navigate, Enter to select.`
 				"/login": () => handleLoginCommand(),
 				"/logout": () => handleLogoutCommand(),
 				"/mcp": () => handleMcpCommand(),
-				"/skill": () => handleSkillCommand(args),
+				"/skill": () => handleSkill(args),
 				"/memory": () => handleMemoryCommand(),
-				"/plan": () => handlePlanCommand(args),
-				"/review": () => handleReviewCommand(),
+				"/plan": () => handlePlan(args),
+				"/review": () => handleReview(),
 				"/tools": () => {
 					if (onSetShowToolsPanel) {
 						onSetShowToolsPanel(true);
@@ -411,13 +197,13 @@ Use ←/→ to navigate, Enter to select.`
 			onSetShowAgentSwitcher,
 			onSetShowToolsPanel,
 			onExit,
-			handleSkillCommand,
+			handleSkill,
 			handleLoginCommand,
 			handleLogoutCommand,
 			handleMcpCommand,
 			handleMemoryCommand,
-			handlePlanCommand,
-			handleReviewCommand,
+			handlePlan,
+			handleReview,
 		]
 	);
 
