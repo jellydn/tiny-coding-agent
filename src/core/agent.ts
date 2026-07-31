@@ -21,6 +21,7 @@ import { MemoryStore } from "./memory.js";
 import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
 import { RunnerObservability } from "./runner-observability.js";
 import { SkillManager } from "./skill-manager.js";
+import { executeToolCalls } from "./tool-executor.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Tool categorization: core tools always included, others filtered by relevance heuristic
@@ -426,10 +427,7 @@ export class Agent {
 
 				checkAborted(options?.signal);
 
-				// --- Tool execution via TurnExecutor --------------------------------
-				const { span: toolSpan, timer: toolTimer } = runnerObs.beginToolExecution();
-
-				// Yield "running" display objects
+				// --- Tool execution via tool-executor --------------------------------
 				yield {
 					content: "",
 					iterations: iteration + 1,
@@ -438,44 +436,34 @@ export class Agent {
 					contextStats,
 				};
 
-				const turnResult = await this._turnExecutor.executeTurn(assistantToolCalls);
-				const toolDuration = Math.round(toolTimer.ms);
-
-				runnerObs.recordToolExecution(
-					toolSpan,
-					toolTimer,
-					assistantToolCalls.map((tc) => tc.name),
-					turnResult.toolExecutions.map((exec) => ({
-						name: exec.name,
-						status: (exec.status === "complete" ? "complete" : "error") as "complete" | "error",
-						latencyMs: toolDuration,
-						error: exec.error,
-					}))
+				const toolResult = await executeToolCalls(
+					assistantToolCalls,
+					this._turnExecutor,
+					runnerObs,
 				);
 
-				// Yield "complete/error" display objects
 				yield {
 					content: "",
 					iterations: iteration + 1,
 					done: false,
-					toolExecutions: turnResult.toolExecutions.map((te) => ({ ...te, duration: toolDuration })),
+					toolExecutions: toolResult.toolExecutions,
 					contextStats,
 				};
 
 				checkAborted(options?.signal);
 
 				// Append tool result messages to the conversation
-				for (const msg of turnResult.toolResultMessages) {
+				for (const msg of toolResult.toolResultMessages) {
 					messages.push(msg);
 				}
 
 				// Append system messages (error recovery instructions)
-				for (const msg of turnResult.systemMessages) {
+				for (const msg of toolResult.systemMessages) {
 					messages.push(msg);
 				}
 
 				// Handle loop break reasons
-				if (turnResult.loopBreakReason) {
+				if (toolResult.loopBreakReason) {
 					loopDetected = true;
 					break;
 				}
