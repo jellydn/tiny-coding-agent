@@ -13,125 +13,27 @@
  * - `parse(text)` — extract a Plan from markdown (LLM-resilient).
  * - `validate(plan)` — semantic checks (sequential phase numbers, dependencies
  *   resolve to earlier phases).
- */
-
-export interface Step {
-	number: number;
-	text: string;
-}
-
-export interface Phase {
-	number: number;
-	title: string;
-	/** Phase numbers this phase depends on. Empty array means no dependencies. */
-	dependencies: number[];
-	successCriteria: string[];
-	steps: Step[];
-}
-
-export interface Plan {
-	title: string;
-	overview?: string;
-	phases: Phase[];
-	technicalConsiderations?: string[];
-}
-
-export interface ValidationResult {
-	valid: boolean;
-	errors: string[];
-}
-
-const PHASE_RE = /^##\s*(?:Phase\s+)?(\d+)(?:\s*[:.]\s*(.+?))?\s*$/;
-const STEP_RE = /^\s*(\d+)\.\s+(.+?)\s*$/;
-const CHECKBOX_RE = /^\s*[-*]\s+\[[ xX]\]\s*(.+?)\s*$/;
-const FYI_DASH_RE = /^\s*[-*]\s+(.+?)\s*$/;
-const TITLE_RE = /^#\s+(?:Implementation\s+Plan:\s*)?(.+?)\s*$/;
-const OVERVIEW_HEADER_RE = /^##\s+Overview\s*$/i;
-const DEPS_RE = /^\*\*Dependencies:\*\*\s*(.+?)\s*$/i;
-const SUCCESS_HEADER_RE = /^\*\*Success\s+Criteria:\*\*\s*$/i;
-const STEPS_HEADER_RE = /^###\s+Steps:?\s*$/i;
-const TECH_HEADER_RE = /^##\s+Technical\s+Considerations\s*$/i;
-
-type PhaseLineResult = { consumed: true; next: ParseSection } | { consumed: false };
-
-/**
- * Try to consume a line as part of the current phase's body. Returns
- * `{ consumed: true, next }` if a pattern matched (the caller should
- * `continue` with `section = result.next`), or `{ consumed: false }` if the
- * line did not belong to any phase-body pattern (the caller then falls
- * through to the overview / technical / none handlers).
  *
- * `next` may equal the current section (e.g. a `- **` line still consumes
- * the line but does not flip section), preserving the original control flow.
+ * Implementation is split across:
+ * - `plan-types.ts` — shared types (Step, Phase, Plan, ValidationResult)
+ * - `plan-parser.ts` — parse() with forgiving markdown → AST
+ * - `plan-validator.ts` — validate() with semantic checks
+ * - `plan-grammar.ts` (this file) — serialize(), exampleOutput(), re-exports
  */
-function consumePhaseLine(line: string, phase: Phase, currentSection: ParseSection): PhaseLineResult {
-	const depsMatch = line.match(DEPS_RE);
-	if (
-		depsMatch &&
-		(currentSection === "phaseDeps" || currentSection === "phaseSuccess" || currentSection === "phaseSteps")
-	) {
-		const depText = (depsMatch[1] ?? "").trim();
-		if (depText && !/^none$/i.test(depText)) {
-			const numbers: number[] = [];
-			const re = /\b(?:Phase\s+)?(\d+)\b/g;
-			let m: RegExpExecArray | null;
-			while ((m = re.exec(depText)) !== null) {
-				const n = parseInt(m[1] ?? "0", 10);
-				if (!Number.isNaN(n) && n > 0 && !numbers.includes(n)) {
-					numbers.push(n);
-				}
-			}
-			phase.dependencies = numbers;
-		}
-		return { consumed: true, next: "phaseSuccess" };
-	}
 
-	if (SUCCESS_HEADER_RE.test(line) && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
-		return { consumed: true, next: "phaseSuccess" };
-	}
+// Re-export parse from plan-parser
+export { parse } from "./plan-parser.js";
+// Re-export types from plan-types
+export type { Phase, Plan, Step, ValidationResult } from "./plan-types.js";
 
-	const checkboxMatch = line.match(CHECKBOX_RE);
-	if (checkboxMatch && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
-		phase.successCriteria.push((checkboxMatch[1] ?? "").trim());
-		return { consumed: true, next: "phaseSuccess" };
-	}
+// Re-export validate from plan-validator
+export { validate } from "./plan-validator.js";
 
-	const stepsHeader = line.match(STEPS_HEADER_RE);
-	if (stepsHeader && (currentSection === "phaseSuccess" || currentSection === "phaseDeps")) {
-		return { consumed: true, next: "phaseSteps" };
-	}
+// ---------------------------------------------------------------------------
+// Serialize
+// ---------------------------------------------------------------------------
 
-	const stepMatch = line.match(STEP_RE);
-	if (
-		stepMatch &&
-		(currentSection === "phaseSteps" || currentSection === "phaseSuccess" || currentSection === "phaseDeps")
-	) {
-		phase.steps.push({
-			number: parseInt(stepMatch[1] ?? "0", 10),
-			text: (stepMatch[2] ?? "").trim(),
-		});
-		return { consumed: true, next: "phaseSteps" };
-	}
-
-	// Bold-style `- text` lines (success criteria without checkbox) within Success-Criteria section.
-	// A `- **` (or empty) line still consumes the line, but does NOT flip section,
-	// matching the original control flow where `mode = "phaseSuccess"` only ran
-	// when text was non-empty and did not start with `**`.
-	const dashMatch = line.match(FYI_DASH_RE);
-	if (dashMatch && (currentSection === "phaseDeps" || currentSection === "phaseSuccess")) {
-		const text = (dashMatch[1] ?? "").trim();
-		if (text && !text.startsWith("**")) {
-			phase.successCriteria.push(text);
-			return { consumed: true, next: "phaseSuccess" };
-		}
-		// Line consumed (matched dashMatch), but section stays put because the
-		// content was empty or bold-only — would have been a no-op push in the
-		// original control flow.
-		return { consumed: true, next: currentSection };
-	}
-
-	return { consumed: false };
-}
+import type { Plan } from "./plan-types.js";
 
 /**
  * Serialize a Plan into canonical markdown.
@@ -187,218 +89,9 @@ export function serialize(plan: Plan): string {
 	return lines.join("\n");
 }
 
-type ParseSection = "none" | "overview" | "phaseDeps" | "phaseSuccess" | "phaseSteps" | "technical";
-
-/**
- * Parse markdown into a Plan. Forgiving by design: LLM output is messy.
- *
- * Supported forms:
- * - Phase-form: `## Phase N: Title` headers with subsequent step lists,
- *   `**Dependencies:**`, `**Success Criteria:**`, `### Steps:`. Title after
- *   the colon is optional (e.g., `## Phase 1` alone is accepted).
- * - Flat-form (fallback): numbered lines at top level (`1. step\n2. step`)
- *   are wrapped into a single synthetic Phase so the AST stays uniform.
- *
- * Captures (when present): title, overview, phase title/deps/criteria/steps,
- * technical considerations. Falls back to `title: "Untitled"` if no `#` header
- * is found.
- */
-export function parse(text: string): Plan {
-	const lines = text.split("\n");
-	let title = "";
-	let overview: string | undefined;
-	const phases: Phase[] = [];
-	const technicalConsiderations: string[] = [];
-
-	let currentPhase: Phase | null = null;
-	let section: ParseSection = "none";
-	let overviewBuffer: string[] = [];
-
-	const finalizeCurrentPhase = (): void => {
-		if (currentPhase) {
-			phases.push(currentPhase);
-			currentPhase = null;
-		}
-	};
-
-	const finalizeOverview = (): void => {
-		if (overviewBuffer.length > 0) {
-			// Filter out trailing empty strings (paragraph separators at end of section).
-			while (overviewBuffer.length > 0 && overviewBuffer[overviewBuffer.length - 1] === "") {
-				overviewBuffer.pop();
-			}
-			if (overviewBuffer.length > 0) {
-				overview = overviewBuffer.join("\n");
-			}
-			overviewBuffer = [];
-		}
-	};
-
-	for (const raw of lines) {
-		const line = raw.replace(/\s+$/, "");
-
-		// Pre-check: if we're in overview mode and this line is a `##` header,
-		// finalize the overview buffer before any section header handler runs.
-		if (section === "overview" && /^##\s/.test(line.trim())) {
-			finalizeOverview();
-			section = "none";
-		}
-
-		const titleMatch = line.match(TITLE_RE);
-		if (titleMatch && title === "") {
-			title = (titleMatch[1] ?? "").trim();
-			section = "overview";
-			continue;
-		}
-
-		const phaseHeader = line.match(PHASE_RE);
-		if (phaseHeader) {
-			finalizeCurrentPhase();
-			currentPhase = {
-				number: parseInt(phaseHeader[1] ?? "0", 10),
-				title: (phaseHeader[2] ?? "").trim(),
-				dependencies: [],
-				successCriteria: [],
-				steps: [],
-			};
-			section = "phaseDeps";
-			continue;
-		}
-
-		if (OVERVIEW_HEADER_RE.test(line)) {
-			finalizeCurrentPhase();
-			finalizeOverview();
-			section = "overview";
-			continue;
-		}
-
-		if (TECH_HEADER_RE.test(line)) {
-			finalizeCurrentPhase();
-			finalizeOverview();
-			section = "technical";
-			continue;
-		}
-
-		if (currentPhase) {
-			const result = consumePhaseLine(line, currentPhase, section);
-			if (result.consumed) {
-				section = result.next;
-				continue;
-			}
-		}
-
-		if (section === "overview") {
-			const trimmed = line.trim();
-			if (trimmed === "") {
-				// Paragraph separator: push empty marker so join yields "\n\n" between paragraphs.
-				if (overviewBuffer.length > 0 && overviewBuffer[overviewBuffer.length - 1] !== "") {
-					overviewBuffer.push("");
-				}
-				continue;
-			}
-			overviewBuffer.push(trimmed);
-			continue;
-		}
-
-		if (section === "technical") {
-			const dashMatch = line.match(FYI_DASH_RE);
-			if (dashMatch) {
-				const text = (dashMatch[1] ?? "").trim();
-				if (text && !text.startsWith("**")) {
-					technicalConsiderations.push(text);
-				}
-			}
-		}
-		// section === "none": ignore stray content.
-	}
-
-	finalizeCurrentPhase();
-	if (overview === undefined && overviewBuffer.length > 0) {
-		finalizeOverview();
-	}
-
-	// Flat-form fallback: numeric-only plans at top level.
-	if (phases.length === 0) {
-		const flatSteps: Step[] = [];
-		for (const raw of lines) {
-			const m = raw.match(STEP_RE);
-			if (m) {
-				flatSteps.push({
-					number: parseInt(m[1] ?? "0", 10),
-					text: (m[2] ?? "").trim(),
-				});
-			}
-		}
-		if (flatSteps.length > 0) {
-			phases.push({
-				number: 1,
-				title: title || "Steps",
-				dependencies: [],
-				successCriteria: [],
-				steps: flatSteps,
-			});
-		}
-	}
-
-	return {
-		title: title || "Untitled",
-		overview,
-		phases,
-		technicalConsiderations: technicalConsiderations.length > 0 ? technicalConsiderations : undefined,
-	};
-}
-
-/**
- * Validate a Plan's semantic structure.
- *
- * Checks:
- * - Title is non-empty.
- * - Phase numbers are sequential starting at 1.
- * - All phase dependencies refer to earlier phases:
- *   self-dependency and forward-dependency are reported distinctly so a single
- *   bad dependency produces one clear error, not two.
- * - All phase dependencies target a phase that exists within the plan.
- */
-export function validate(plan: Plan): ValidationResult {
-	const errors: string[] = [];
-
-	if (!plan.title || !plan.title.trim()) {
-		errors.push("plan title is empty");
-	}
-	if (plan.phases.length === 0) {
-		errors.push("plan has zero phases");
-	}
-	for (let i = 0; i < plan.phases.length; i++) {
-		const phase = plan.phases[i];
-		if (!phase) continue;
-		const expected = i + 1;
-		if (phase.number !== expected) {
-			errors.push(`phase ${phase.number ?? "?"} is out of order; expected ${expected}`);
-		}
-		if (!phase.title || !phase.title.trim()) {
-			errors.push(`phase ${phase.number} has empty title`);
-		}
-		for (const dep of phase.dependencies) {
-			if (dep < 1) {
-				errors.push(`phase ${phase.number} depends on non-positive phase ${dep}`);
-				continue;
-			}
-			if (dep > plan.phases.length) {
-				errors.push(`phase ${phase.number} depends on missing phase ${dep}`);
-				continue;
-			}
-			if (dep === phase.number) {
-				errors.push(`phase ${phase.number} has self-dependency`);
-				continue;
-			}
-			if (dep > phase.number) {
-				errors.push(`phase ${phase.number} has forward dependency on phase ${dep}`);
-			}
-		}
-	}
-
-	return { valid: errors.length === 0, errors };
-}
+// ---------------------------------------------------------------------------
+// Example output
+// ---------------------------------------------------------------------------
 
 /**
  * Canonical example plan, used as prompt-grounding by plan-agent.
