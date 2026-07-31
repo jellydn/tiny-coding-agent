@@ -39,6 +39,7 @@ src/
 │   ├── agent.ts               # Agent class — runStream, run, health, tool categorization
 │   ├── agent-observability.ts # Telemetry wrapper
 │   ├── runner-observability.ts # Thin wrapper for runStream() observability
+│   ├── tool-executor.ts       # Tool execution loop (extracted from agent.ts)
 │   ├── agent-utils.ts         # Loop detection, stream helpers
 │   ├── context-budget.ts      # Context window management
 │   ├── conversation.ts        # Conversation persistence
@@ -97,8 +98,12 @@ src/
 │   ├── contexts/     # React contexts
 │   │   ├── ChatContext.tsx, StatusLineContext.tsx
 │   │   └── ToastContext.tsx
-│   └── hooks/        # Custom hooks
-│       └── useCommandHandler.ts
+│   ├── hooks/        # Custom hooks
+│   │   └── useCommandHandler.ts
+│   └── handlers/     # Command handlers (extracted from useCommandHandler)
+│       ├── skill-handler.ts   # /skill command logic
+│       ├── plan-handler.ts    # /plan command logic
+│       └── review-handler.ts  # /review command logic
 │
 └── utils/            # Shared utilities
     ├── xml.ts, command.ts, retry.ts, version.ts
