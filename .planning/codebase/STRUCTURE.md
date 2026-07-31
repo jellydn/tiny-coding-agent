@@ -20,6 +20,7 @@ src/
 │   ├── command-dispatch.ts    # Central command routing
 │   ├── help-text.ts           # Help text content
 │   ├── prompt.ts              # User prompt DI singleton
+│   ├── mcp-setup.ts           # MCP server initialization (extracted from shared.ts)
 │   ├── shared.ts              # Shared CLI utilities
 │   ├── status-line.ts         # Status line display
 │   ├── tool-display.tsx       # Tool execution display
@@ -30,12 +31,14 @@ src/
 │       └── upgrade.ts
 │
 ├── config/           # Configuration loading
+│   ├── config-template.ts    # Default YAML template (extracted from loader.ts)
 │   ├── loader.ts             # YAML config loader
 │   └── schema.ts             # Zod schema
 │
 ├── core/              # Agent loop, memory, tools, providers
 │   ├── agent.ts               # Agent class — runStream, run, health, tool categorization
 │   ├── agent-observability.ts # Telemetry wrapper
+│   ├── runner-observability.ts # Thin wrapper for runStream() observability
 │   ├── agent-utils.ts         # Loop detection, stream helpers
 │   ├── context-budget.ts      # Context window management
 │   ├── conversation.ts        # Conversation persistence
@@ -62,6 +65,7 @@ src/
 │   ├── types.ts, factory.ts, index.ts
 │   ├── anthropic.ts, openai.ts, ollama.ts
 │   ├── clinepass.ts, zai.ts, openrouter.ts
+│   ├── provider-utils.ts     # Shared provider helpers (num, buildTokenUsage, catalog fallback)
 │   └── model-registry.ts, capabilities.ts
 │
 ├── skills/           # Skill system
@@ -73,7 +77,8 @@ src/
 │   ├── registry.ts, types.ts, bash-tool.ts
 │   ├── file-tools.ts   (validation → file-utils.ts)
 │   ├── file-utils.ts        # Path validation helpers extracted from file-tools
-│   ├── search-tools.ts
+│   ├── search-tools.ts (→ search-utils.ts)
+│   ├── search-utils.ts       # Glob matching, result formatting (extracted from search-tools)
 │   ├── web-search-tool.ts, confirmation.ts
 │   └── plugin-loader.ts
 │
