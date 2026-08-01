@@ -48,7 +48,15 @@ export function formatPermissionDenied(path?: string): string {
 export function matchesGlob(filename: string, pattern: string): boolean {
 	const normalizedPath = filename.split(path.sep).join("/");
 
-	const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*").replace(/\?/g, ".");
+	// Replace "**" via a plain-text placeholder first so the "*" it expands
+	// to is not re-processed by the single-wildcard replacement below (which
+	// would turn "**/*.ts" into ".[^/]*/[^/]*\.ts" and break nested matches).
+	const regexPattern = pattern
+		.replace(/\*\*/g, "__GLOBSTAR__")
+		.replace(/\./g, "\\.")
+		.replace(/\*/g, "[^/]*")
+		.replace(/__GLOBSTAR__/g, ".*")
+		.replace(/\?/g, ".");
 
 	const regex = new RegExp(`^${regexPattern}$`, "i");
 	return regex.test(normalizedPath);
