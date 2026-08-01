@@ -1,0 +1,338 @@
+name: SWE-bench
+
+# SWE-bench CI defaults to OpenRouter free models:
+#   poolside/laguna-s-2.1:free@openrouter
+# Requires secret: OPENROUTER_API_KEY (environment or repo)
+# Free model catalogue: https://openrouter.ai/collections/free-models
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_instances:
+        description: "Max SWE-bench instances to process (hosted cap 50)"
+        required: true
+        default: "5"
+        type: string
+      model:
+        description: "OpenRouter free model (default: poolside/laguna-s-2.1:free@openrouter). Empty uses same default."
+        required: false
+        default: "poolside/laguna-s-2.1:free@openrouter"
+        type: string
+      parallel:
+        description: "Parallel workers"
+        required: true
+        default: "1"
+        type: string
+      timeout_minutes:
+        description: "Per-instance timeout (minutes)"
+        required: true
+        default: "30"
+        type: string
+      dry_run:
+        description: "Dry-run only (no tiny-agent / no API calls)"
+        required: true
+        default: false
+        type: boolean
+      evaluate_hint:
+        description: "Print harness evaluate command after run"
+        required: true
+        default: true
+        type: boolean
+  pull_request:
+    types: [labeled]
+  release:
+    types: [published]
+
+concurrency:
+  group: swe-bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'benchmark')
+    outputs:
+      max_instances: ${{ steps.params.outputs.max_instances }}
+      model: ${{ steps.params.outputs.model }}
+      parallel: ${{ steps.params.outputs.parallel }}
+      timeout_minutes: ${{ steps.params.outputs.timeout_minutes }}
+      dry_run: ${{ steps.params.outputs.dry_run }}
+      evaluate_hint: ${{ steps.params.outputs.evaluate_hint }}
+      run_reason: ${{ steps.params.outputs.run_reason }}
+    steps:
+      - id: params
+        name: Resolve run parameters
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "max_instances=${{ inputs.max_instances }}" >> "$GITHUB_OUTPUT"
+            MODEL_INPUT="${{ inputs.model }}"
+            if [[ -z "$MODEL_INPUT" ]]; then
+              MODEL_INPUT="poolside/laguna-s-2.1:free@openrouter"
+            fi
+            echo "model=$MODEL_INPUT" >> "$GITHUB_OUTPUT"
+            echo "parallel=${{ inputs.parallel }}" >> "$GITHUB_OUTPUT"
+            echo "timeout_minutes=${{ inputs.timeout_minutes }}" >> "$GITHUB_OUTPUT"
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            fi
+            if [[ "${{ inputs.evaluate_hint }}" == "true" ]]; then
+              echo "evaluate_hint=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "evaluate_hint=false" >> "$GITHUB_OUTPUT"
+            fi
+            echo "run_reason=workflow_dispatch" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "max_instances=5" >> "$GITHUB_OUTPUT"
+            echo "model=poolside/laguna-s-2.1:free@openrouter" >> "$GITHUB_OUTPUT"
+            echo "parallel=1" >> "$GITHUB_OUTPUT"
+            echo "timeout_minutes=30" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "evaluate_hint=true" >> "$GITHUB_OUTPUT"
+            echo "run_reason=pr_label_benchmark" >> "$GITHUB_OUTPUT"
+          else
+            echo "max_instances=10" >> "$GITHUB_OUTPUT"
+            echo "model=poolside/laguna-s-2.1:free@openrouter" >> "$GITHUB_OUTPUT"
+            echo "parallel=1" >> "$GITHUB_OUTPUT"
+            echo "timeout_minutes=30" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "evaluate_hint=true" >> "$GITHUB_OUTPUT"
+            echo "run_reason=release" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reject fork PRs
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::SWE-bench cannot run on fork PRs (secrets isolation). Use a branch in this repo or workflow_dispatch."
+          exit 1
+
+  unit-test:
+    name: Runner unit tests
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run swe_bench_runner unit tests
+        run: python3 -m unittest scripts/test_swe_bench_runner.py -v
+
+  benchmark:
+    name: Run SWE-bench
+    needs: [prepare, unit-test]
+    runs-on: ubuntu-latest
+    environment: swe-bench
+    timeout-minutes: 360
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      TINY_AGENT_MODEL: ${{ needs.prepare.outputs.model }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enforce hosted safety cap
+        run: |
+          set -euo pipefail
+          MAX="${{ needs.prepare.outputs.max_instances }}"
+          if ! [[ "$MAX" =~ ^[0-9]+$ ]]; then
+            echo "::error::max_instances must be a positive integer, got: $MAX"
+            exit 1
+          fi
+          if [[ "$MAX" -lt 1 ]]; then
+            echo "::error::max_instances must be >= 1"
+            exit 1
+          fi
+          if [[ "$MAX" -gt 50 ]]; then
+            echo "::error::max_instances=$MAX exceeds hosted-runner safety cap (50). Run larger batches on a self-hosted/cloud VM."
+            exit 1
+          fi
+
+      - name: Setup Bun
+        if: needs.prepare.outputs.dry_run != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS deps
+        if: needs.prepare.outputs.dry_run != 'true'
+        run: bun install
+
+      - name: Build tiny-agent binary
+        if: needs.prepare.outputs.dry_run != 'true'
+        run: bun run build
+
+      - name: Install tiny-agent on PATH
+        if: needs.prepare.outputs.dry_run != 'true'
+        run: |
+          sudo cp tiny-agent /usr/local/bin/tiny-agent
+          command -v tiny-agent
+          tiny-agent --help | head -20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install "datasets>=2.14"
+
+      - name: Write temporary tiny-agent config
+        if: needs.prepare.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.tiny-agent"
+          CONFIG="$HOME/.tiny-agent/config.yaml"
+
+          if [[ -n "${TINY_AGENT_MODEL:-}" ]]; then
+            DEFAULT_MODEL="$TINY_AGENT_MODEL"
+          elif [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+            DEFAULT_MODEL="poolside/laguna-s-2.1:free@openrouter"
+          elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+            DEFAULT_MODEL="claude-sonnet-4@anthropic"
+          elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+            DEFAULT_MODEL="gpt-4o@openai"
+          elif [[ -n "${OPENCODE_API_KEY:-}" ]]; then
+            DEFAULT_MODEL="claude-sonnet-4@opencode"
+          elif [[ -n "${ZAI_API_KEY:-}" ]]; then
+            DEFAULT_MODEL="glm-4.7@zai"
+          else
+            DEFAULT_MODEL="claude-sonnet-4@anthropic"
+          fi
+
+          {
+            echo "# CI config for SWE-bench — generated, do not commit"
+            echo "defaultModel: ${DEFAULT_MODEL}"
+            echo "mcpServers: {}"
+            echo "providers:"
+            if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+              echo "  openrouter:"
+              echo "    apiKey: \${OPENROUTER_API_KEY}"
+            fi
+            if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+              echo "  anthropic:"
+              echo "    apiKey: \${ANTHROPIC_API_KEY}"
+            fi
+            if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+              echo "  openai:"
+              echo "    apiKey: \${OPENAI_API_KEY}"
+            fi
+            if [[ -n "${OPENCODE_API_KEY:-}" ]]; then
+              echo "  opencode:"
+              echo "    apiKey: \${OPENCODE_API_KEY}"
+            fi
+            if [[ -n "${ZAI_API_KEY:-}" ]]; then
+              echo "  zai:"
+              echo "    apiKey: \${ZAI_API_KEY}"
+            fi
+          } > "$CONFIG"
+
+          echo "Wrote config (keys redacted):"
+          sed -E 's/(apiKey: ).*/\1***/' "$CONFIG"
+
+      - name: Verify provider API key present
+        if: needs.prepare.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          if [[ -z "${OPENROUTER_API_KEY:-}${ANTHROPIC_API_KEY:-}${OPENAI_API_KEY:-}${OPENCODE_API_KEY:-}${ZAI_API_KEY:-}" ]]; then
+            echo "::error::No provider API key secret found. Configure at least one of OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENCODE_API_KEY, ZAI_API_KEY as a repository or swe-bench environment secret."
+            exit 1
+          fi
+          echo "At least one provider key is configured."
+
+      - name: Run SWE-bench runner
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --max-instances "${{ needs.prepare.outputs.max_instances }}"
+            --parallel "${{ needs.prepare.outputs.parallel }}"
+            --timeout "${{ needs.prepare.outputs.timeout_minutes }}"
+            --output "${{ github.workspace }}/predictions.jsonl"
+            --work-dir "${{ runner.temp }}/swe-bench-work"
+          )
+          MODEL="${{ needs.prepare.outputs.model }}"
+          if [[ -n "$MODEL" ]]; then
+            ARGS+=(--model "$MODEL")
+          fi
+          if [[ "${{ needs.prepare.outputs.dry_run }}" == "true" ]]; then
+            ARGS+=(--dry-run)
+          fi
+          if [[ "${{ needs.prepare.outputs.evaluate_hint }}" == "true" ]]; then
+            ARGS+=(--evaluate)
+          fi
+          echo "Running: python3 scripts/swe_bench_runner.py ${ARGS[*]}"
+          python3 scripts/swe_bench_runner.py "${ARGS[@]}"
+
+      - name: Upload predictions artifact
+        if: always() && needs.prepare.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: swe-bench-predictions-${{ github.run_id }}
+          path: predictions.jsonl
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## SWE-bench run"
+            echo ""
+            echo "- Reason: \`${{ needs.prepare.outputs.run_reason }}\`"
+            echo "- Max instances: \`${{ needs.prepare.outputs.max_instances }}\`"
+            echo "- Parallel: \`${{ needs.prepare.outputs.parallel }}\`"
+            echo "- Dry run: \`${{ needs.prepare.outputs.dry_run }}\`"
+            echo "- Model: \`${{ needs.prepare.outputs.model || '(default)' }}\`"
+            echo "- OpenRouter free default: \`poolside/laguna-s-2.1:free@openrouter\`"
+            if [[ -f predictions.jsonl ]]; then
+              echo "- Predictions lines: \`$(wc -l < predictions.jsonl | tr -d ' ')\`"
+              echo ""
+              echo "### Predictions preview (truncated)"
+              echo '```'
+              head -c 4000 predictions.jsonl || true
+              echo
+              echo '```'
+            else
+              echo "- No predictions.jsonl produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let extra = '';
+            if (fs.existsSync('predictions.jsonl')) {
+              const lines = fs.readFileSync('predictions.jsonl', 'utf8').trim().split('\n').filter(Boolean);
+              extra = `\n- Predictions written: **${lines.length}**\n- Artifact: \`swe-bench-predictions-${context.runId}\``;
+            }
+            const body = [
+              '## SWE-bench benchmark',
+              '',
+              'Triggered by label `benchmark`.',
+              `- Run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              `- Max instances: \`${{ needs.prepare.outputs.max_instances }}\``,
+              `- Dry run: \`${{ needs.prepare.outputs.dry_run }}\``,
+              extra,
+              '',
+              '_This job requires approval via the `swe-bench` GitHub Environment before it spends API credits._',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
