@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as fs from "node:fs/promises";
+import * as configIo from "../../../src/config/config-io.js";
 import { handleReviewCommand } from "../../../src/ui/handlers/review-handler.js";
 import { MessageRole } from "../../../src/ui/types/enums.js";
 
 describe("handleReviewCommand", () => {
-	const readFileSpy = vi.spyOn(fs, "readFile");
+	const readConfigFileSpy = vi.spyOn(configIo, "readConfigFile");
 
 	afterEach(() => {
-		readFileSpy.mockRestore();
+		readConfigFileSpy.mockRestore();
 	});
 
 	it("should show error when config file cannot be read", async () => {
-		readFileSpy.mockRejectedValue(new Error("ENOENT: no such file or directory"));
+		readConfigFileSpy.mockRejectedValue(new Error("ENOENT: no such file or directory"));
 
 		const onAddMessage = vi.fn();
 		await handleReviewCommand({ onAddMessage });
