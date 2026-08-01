@@ -62,6 +62,21 @@ export function truncateOutput(output: string | undefined): string | undefined {
 	return output;
 }
 
+export function checkAborted(signal?: AbortSignal): void {
+	if (signal?.aborted) {
+		throw new DOMException("Aborted", "AbortError");
+	}
+}
+
+export function isValidToolCall(text: string): boolean {
+	try {
+		const parsed = JSON.parse(text);
+		return typeof parsed?.name === "string";
+	} catch {
+		return false;
+	}
+}
+
 // ─── streamLlmResponse ───────────────────────────────────────────────
 
 /** Options for streamLlmResponse — mirrors the subset of ChatOptions needed

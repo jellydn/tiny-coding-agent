@@ -7,12 +7,7 @@ import type { LLMClient, Message, TokenUsage } from "../providers/types.js";
 import { getBuiltinSkillsDir, type SkillMetadata } from "../skills/index.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import { AgentObservability } from "./agent-observability.js";
-import {
-	type StreamFinalAnswerResult,
-	type StreamLlmResult,
-	streamFinalAnswer,
-	streamLlmResponse,
-} from "./agent-utils.js";
+
 import { buildContextStats, type PrepareContextResult, prepareContext } from "./context-budget.js";
 import { ConversationManager } from "./conversation.js";
 import { DebugLogger } from "./debug-logger.js";
@@ -21,7 +16,7 @@ import { MemoryStore } from "./memory.js";
 import { ProviderCache, type ProviderConfigs } from "./provider-cache.js";
 import { RunnerObservability } from "./runner-observability.js";
 import { SkillManager } from "./skill-manager.js";
-import { executeToolCalls } from "./tool-executor.js";
+import { StreamProcessor } from "./stream-processor.js";
 import { TurnExecutor } from "./turn-executor.js";
 
 // Tool categorization: core tools always included, others filtered by relevance heuristic
@@ -53,17 +48,16 @@ function inferRelevantCategories(prompt: string): Set<string> {
 // turn-executor.ts cycle and to eliminate the duplicate stream pattern).
 export { isLooping, streamLlmResponse, truncateOutput } from "./agent-utils.js";
 
-export function checkAborted(signal?: AbortSignal): void {
-	if (signal?.aborted) {
-		throw new DOMException("Aborted", "AbortError");
-	}
-}
-
 export function redactApiKey(key?: string): string {
 	if (!key) return "(not set)";
 	if (key.length <= 8) return "****";
 	return `${key.slice(0, 4)}...REDACTED`;
 }
+
+// Re-export for backward compatibility — other modules and tests import
+// checkAborted, isValidToolCall, and isLooping from agent.ts. The canonical
+// homes are agent-utils.ts and stream-processor.ts.
+export { checkAborted, isValidToolCall } from "./agent-utils.js";
 
 // Re-export ProviderConfigs for backward compatibility — tests and other
 // modules import it from agent.ts. The canonical home is now provider-cache.ts.
@@ -140,15 +134,6 @@ export interface HealthStatus {
 
 export interface ShutdownOptions {
 	signal?: boolean;
-}
-
-export function isValidToolCall(text: string): boolean {
-	try {
-		const parsed = JSON.parse(text);
-		return typeof parsed?.name === "string";
-	} catch {
-		return false;
-	}
 }
 
 export class Agent {
@@ -267,7 +252,6 @@ export class Agent {
 			},
 		});
 		messages = ctxResult.messages;
-		let contextStats: ContextStats = ctxResult.stats;
 		const memoryTokensUsed = ctxResult.memoryTokensUsed;
 		const truncationApplied = ctxResult.truncationApplied;
 		const systemTokens = ctxResult.systemTokens;
@@ -302,9 +286,6 @@ export class Agent {
 			memoryCount: this._memoryStore?.count(),
 		});
 
-		let iteration = 0;
-		let loopDetected = false;
-
 		this._turnExecutor.reset();
 
 		const updateStats = (): ContextStats =>
@@ -316,235 +297,27 @@ export class Agent {
 				maxContextTokens,
 			});
 
-		try {
-			for (iteration = 0; iteration < this._maxIterations; iteration++) {
-				checkAborted(options?.signal);
+		// Delegate to StreamProcessor for the main iteration loop
+		const processor = new StreamProcessor({
+			llmClient,
+			model: modelName,
+			systemPrompt: this._systemPrompt,
+			messages,
+			tools,
+			thinking: effectiveThinking,
+			signal: options?.signal,
+			maxIterations: this._maxIterations,
+			trackContextUsage: this._trackContextUsage,
+			turnExecutor: this._turnExecutor,
+			runnerObs,
+			debug: this._debug,
+			updateStats,
+			onSaveHistory: (msgs) => this._updateConversationHistory(msgs),
+			userPrompt,
+		});
 
-				this._debug.logIteration(iteration, contextStats, this._trackContextUsage);
-
-				const { span: llmSpan, timer: llmTimer } = runnerObs.beginLlmCall();
-				let llmUsage: TokenUsage | undefined;
-				let llmTimeToFirstToken: number | undefined;
-
-				let fullContent = "";
-				let responseToolCalls: string[] = [];
-				const assistantToolCalls: { id: string; name: string; arguments: Record<string, unknown> }[] = [];
-
-				try {
-					const streamGen = streamLlmResponse({
-						llmClient,
-						model: modelName,
-						systemPrompt: this._systemPrompt,
-						messages,
-						tools: tools.length > 0 ? tools : undefined,
-						thinking: effectiveThinking,
-						signal: options?.signal,
-					});
-
-					// while(true) + gen.next() is required (not for-await) because we
-					// need the generator's return value (StreamLlmResult) which
-					// for-await does not expose.
-					while (true) {
-						const { value, done } = await streamGen.next();
-						if (done) {
-							const result = value as StreamLlmResult;
-							assistantToolCalls.push(...result.toolCalls);
-							responseToolCalls = result.toolCalls.map((tc) => tc.name);
-							llmUsage = result.usage;
-							llmTimeToFirstToken = result.timeToFirstTokenMs;
-							break;
-						}
-						// value is a content string — filter tool-call JSON from display
-						if (!isValidToolCall(value)) {
-							fullContent += value;
-							yield {
-								content: value,
-								iterations: iteration + 1,
-								done: false,
-								contextStats,
-							};
-						}
-					}
-				} catch (err) {
-					runnerObs.recordLlmCallError(llmSpan, err);
-					const streamError = err as Error | DOMException;
-					if (streamError instanceof DOMException && streamError.name === "AbortError") {
-						throw streamError;
-					}
-					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
-					runnerObs.markFailed();
-					yield {
-						content: `\n\nError during LLM stream: ${errorMessage}`,
-						iterations: iteration + 1,
-						done: true,
-						contextStats,
-						observability: runnerObs.buildMeta(),
-					};
-					return;
-				}
-
-				const llmLatencyMs = Math.round(llmTimer.ms);
-
-				runnerObs.recordLlmCall(
-					llmSpan,
-					llmTimer,
-					{
-						usage: llmUsage,
-						content: fullContent,
-						latencyMs: llmLatencyMs,
-						timeToFirstTokenMs: llmTimeToFirstToken,
-					},
-					userPrompt
-				);
-
-				this._debug.logLlmResponse(fullContent, responseToolCalls);
-
-				const assistantMessage: Message = {
-					role: "assistant",
-					content: fullContent,
-				};
-
-				messages.push(assistantMessage);
-
-				if (assistantToolCalls.length > 0) {
-					assistantMessage.toolCalls = assistantToolCalls;
-				}
-
-				if (assistantToolCalls.length === 0) {
-					this._debug.logAgentFinished(iteration + 1);
-
-					await this._updateConversationHistory(messages);
-
-					yield {
-						content: "",
-						iterations: iteration + 1,
-						done: true,
-						contextStats,
-						observability: runnerObs.buildMeta(),
-					};
-					return;
-				}
-
-				checkAborted(options?.signal);
-
-				// --- Tool execution via tool-executor --------------------------------
-				yield {
-					content: "",
-					iterations: iteration + 1,
-					done: false,
-					toolExecutions: TurnExecutor.runningDisplay(assistantToolCalls),
-					contextStats,
-				};
-
-				const toolResult = await executeToolCalls(
-					assistantToolCalls,
-					this._turnExecutor,
-					runnerObs,
-				);
-
-				yield {
-					content: "",
-					iterations: iteration + 1,
-					done: false,
-					toolExecutions: toolResult.toolExecutions,
-					contextStats,
-				};
-
-				checkAborted(options?.signal);
-
-				// Append tool result messages to the conversation
-				for (const msg of toolResult.toolResultMessages) {
-					messages.push(msg);
-				}
-
-				// Append system messages (error recovery instructions)
-				for (const msg of toolResult.systemMessages) {
-					messages.push(msg);
-				}
-
-				// Handle loop break reasons
-				if (toolResult.loopBreakReason) {
-					loopDetected = true;
-					break;
-				}
-
-				contextStats = updateStats();
-			}
-
-			if (loopDetected) {
-				this._debug.logLoopDetected();
-
-				// Use streamFinalAnswer to eliminate the duplicate stream-creation +
-				// iteration + catch pattern. The helper yields content strings and
-				// returns a StreamFinalAnswerResult with the full content or error.
-				const finalGen = streamFinalAnswer({
-					llmClient,
-					model: modelName,
-					systemPrompt: this._systemPrompt,
-					messages,
-					thinking: effectiveThinking,
-					signal: options?.signal,
-				});
-
-				let finalResult: StreamFinalAnswerResult;
-				while (true) {
-					const { value, done } = await finalGen.next();
-					if (done) {
-						finalResult = value;
-						break;
-					}
-					yield {
-						content: value,
-						iterations: iteration + 1,
-						done: false,
-						contextStats: updateStats(),
-					};
-				}
-
-				if (finalResult.aborted) {
-					throw new DOMException("Aborted", "AbortError");
-				}
-
-				if (finalResult.error) {
-					runnerObs.markFailed();
-					yield {
-						content: `\n\nError during LLM stream: ${finalResult.error}`,
-						iterations: iteration + 1,
-						done: true,
-						contextStats: updateStats(),
-						observability: runnerObs.buildMeta(),
-					};
-					return;
-				}
-
-				await this._updateConversationHistory(messages);
-				yield {
-					content: "",
-					iterations: iteration + 1,
-					done: true,
-					contextStats: updateStats(),
-					observability: runnerObs.buildMeta(),
-				};
-				return;
-			}
-
-			this._debug.logMaxIterations(this._maxIterations);
-
-			await this._updateConversationHistory(messages);
-
-			yield {
-				content: "",
-				iterations: iteration,
-				done: true,
-				maxIterationsReached: true,
-				contextStats: updateStats(),
-				observability: runnerObs.buildMeta(),
-			};
-		} catch (err) {
-			runnerObs.requestError(err);
-			throw err;
-		} finally {
-			runnerObs.finalize();
+		for await (const chunk of processor.process()) {
+			yield chunk;
 		}
 	}
 
