@@ -155,6 +155,11 @@ export async function walkFiles(options: WalkFilesOptions): Promise<void> {
 	}
 }
 
+/** True once a walk has collected the soft result cap (2x the display limit). */
+function hasReachedResultCap(results: string[]): boolean {
+	return results.length >= MAX_RESULTS * 2;
+}
+
 /**
  * Search file contents under a path for lines matching a regex, appending
  * "path:line: content" entries to results. Honors an optional glob
@@ -170,7 +175,7 @@ export async function searchFiles(
 	await walkFiles({
 		basePath: searchPath,
 		maxDepth,
-		shouldStop: () => results.length >= MAX_RESULTS * 2,
+		shouldStop: () => hasReachedResultCap(results),
 		onFile: async (entry) => {
 			if (!includePattern || matchesGlob(entry.name, includePattern)) {
 				await searchInFile(entry.path, regex, results);
@@ -220,7 +225,7 @@ export async function searchInFile(filePath: string, regex: RegExp, results: str
 export async function globFiles(basePath: string, pattern: string, results: string[]): Promise<void> {
 	await walkFiles({
 		basePath,
-		shouldStop: () => results.length >= MAX_RESULTS * 2,
+		shouldStop: () => hasReachedResultCap(results),
 		relativeIgnorePaths: true,
 		resolveGitignore: () => findGitignorePatterns(basePath),
 		shouldDescend: (entry) => pattern.includes("**") || shouldDescendIntoDir(pattern, entry.relativePath),

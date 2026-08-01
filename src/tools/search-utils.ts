@@ -14,6 +14,9 @@ export const MAX_RESULTS = 100;
 /** Maximum line length before truncating output lines. */
 export const MAX_LINE_LENGTH = 200;
 
+/** Compiled-glob cache keyed by pattern so repeated matches skip regex rebuilds. */
+const globRegexCache = new Map<string, RegExp>();
+
 /**
  * Format search results with truncation when they exceed the limit.
  */
@@ -31,15 +34,36 @@ export function formatResults(results: string[], maxResults: number = MAX_RESULT
 /**
  * Build a standard not-found error result for search tools.
  */
-export function formatNotFound(path?: string): string {
+function formatNotFound(path?: string): string {
 	return `Path not found: ${path ?? "(unknown)"}`;
 }
 
 /**
  * Build a standard permission-denied error result for search tools.
  */
-export function formatPermissionDenied(path?: string): string {
+function formatPermissionDenied(path?: string): string {
 	return `Permission denied: ${path ?? "(unknown)"}`;
+}
+
+/**
+ * Build a standard error result for a failed search tool execution, mapping
+ * ENOENT/EACCES to their friendly messages and falling back to the generic
+ * operation message. Shared by grep and glob so both tools report errors
+ * consistently.
+ */
+export function formatSearchError(
+	err: unknown,
+	searchPath: string | undefined,
+	operation: string
+): { success: false; error: string } {
+	const error = err as NodeJS.ErrnoException;
+	if (error.code === "ENOENT") {
+		return { success: false, error: formatNotFound(searchPath) };
+	}
+	if (error.code === "EACCES") {
+		return { success: false, error: formatPermissionDenied(searchPath) };
+	}
+	return { success: false, error: `${operation} failed: ${error.message}` };
 }
 
 /**
@@ -48,17 +72,23 @@ export function formatPermissionDenied(path?: string): string {
 export function matchesGlob(filename: string, pattern: string): boolean {
 	const normalizedPath = filename.split(path.sep).join("/");
 
-	// Replace "**" via a plain-text placeholder first so the "*" it expands
-	// to is not re-processed by the single-wildcard replacement below (which
-	// would turn "**/*.ts" into ".[^/]*/[^/]*\.ts" and break nested matches).
-	const regexPattern = pattern
-		.replace(/\*\*/g, "__GLOBSTAR__")
-		.replace(/\./g, "\\.")
-		.replace(/\*/g, "[^/]*")
-		.replace(/__GLOBSTAR__/g, ".*")
-		.replace(/\?/g, ".");
+	let regex = globRegexCache.get(pattern);
+	if (!regex) {
+		// Replace "**" via a plain-text placeholder first so the "*" it
+		// expands to is not re-processed by the single-wildcard replacement
+		// below (which would turn "**/*.ts" into ".[^/]*/[^/]*\.ts" and
+		// break nested matches).
+		const regexPattern = pattern
+			.replace(/\*\*/g, "__GLOBSTAR__")
+			.replace(/\./g, "\\.")
+			.replace(/\*/g, "[^/]*")
+			.replace(/__GLOBSTAR__/g, ".*")
+			.replace(/\?/g, ".");
 
-	const regex = new RegExp(`^${regexPattern}$`, "i");
+		regex = new RegExp(`^${regexPattern}$`, "i");
+		globRegexCache.set(pattern, regex);
+	}
+
 	return regex.test(normalizedPath);
 }
 

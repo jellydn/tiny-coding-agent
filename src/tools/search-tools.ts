@@ -1,5 +1,5 @@
 import { globFiles, searchFiles } from "./file-traversal.js";
-import { formatNotFound, formatPermissionDenied, formatResults } from "./search-utils.js";
+import { formatResults, formatSearchError } from "./search-utils.js";
 import type { Tool, ToolResult } from "./types.js";
 
 export const grepTool: Tool = {
@@ -59,14 +59,7 @@ export const grepTool: Tool = {
 			if (err instanceof SyntaxError) {
 				return { success: false, error: `Invalid regex pattern: ${pattern}` };
 			}
-			const error = err as NodeJS.ErrnoException;
-			if (error.code === "ENOENT") {
-				return { success: false, error: formatNotFound(searchPath) };
-			}
-			if (error.code === "EACCES") {
-				return { success: false, error: formatPermissionDenied(searchPath) };
-			}
-			return { success: false, error: `Search failed: ${error.message}` };
+			return formatSearchError(err, searchPath, "Search");
 		}
 	},
 };
@@ -107,14 +100,7 @@ export const globTool: Tool = {
 				output: formatResults(results),
 			};
 		} catch (err) {
-			const error = err as NodeJS.ErrnoException;
-			if (error.code === "ENOENT") {
-				return { success: false, error: formatNotFound(searchPath) };
-			}
-			if (error.code === "EACCES") {
-				return { success: false, error: formatPermissionDenied(searchPath) };
-			}
-			return { success: false, error: `Glob search failed: ${error.message}` };
+			return formatSearchError(err, searchPath, "Glob search");
 		}
 	},
 };
