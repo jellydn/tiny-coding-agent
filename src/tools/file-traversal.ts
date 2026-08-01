@@ -14,14 +14,12 @@ import type { GitignorePattern } from "./gitignore.js";
 import { findGitignorePatterns, isIgnored } from "./gitignore.js";
 import { MAX_LINE_LENGTH, MAX_RESULTS, matchesGlob, shouldDescendIntoDir } from "./search-utils.js";
 
-/** A file or directory discovered during a walk. */
+/** A file discovered during a walk (directories are only descended into, never surfaced). */
 export interface WalkedEntry {
 	/** Full path of the entry. */
 	path: string;
 	/** Entry name (basename). */
 	name: string;
-	/** True when the entry is a directory. */
-	isDirectory: boolean;
 	/** Path relative to the walk's base path ("" for the base itself). */
 	relativePath: string;
 }
@@ -51,8 +49,14 @@ export interface WalkFilesOptions {
 
 /**
  * Walk a file tree iteratively (explicit stack — no recursion-depth risk),
- * guarding against symlink cycles with a visited set, skipping hidden
- * entries and node_modules, and honoring .gitignore rules.
+ * guarding against symlink cycles with a visited set and honoring
+ * .gitignore rules.
+ *
+ * The hidden-entry and node_modules skips are intentional search-tool
+ * policy (grep/glob never surface those), baked in for the current
+ * consumers; a future general-purpose caller that needs them would add
+ * options here. Only files reach onFile — directories are descended
+ * into, not surfaced.
  *
  * Throws an ENOENT-tagged error when the base path does not exist.
  */
@@ -109,7 +113,6 @@ export async function walkFiles(options: WalkFilesOptions): Promise<void> {
 			await onFile({
 				path: currentPath,
 				name: path.basename(currentPath),
-				isDirectory: false,
 				relativePath: taskRelativePath,
 			});
 			continue;
@@ -138,7 +141,6 @@ export async function walkFiles(options: WalkFilesOptions): Promise<void> {
 			const walked: WalkedEntry = {
 				path: entryPath,
 				name: entry.name,
-				isDirectory: isDir,
 				relativePath: entryRelativePath,
 			};
 
