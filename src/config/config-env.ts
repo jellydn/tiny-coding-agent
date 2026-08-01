@@ -72,12 +72,14 @@ function interpolateEnvVars(value: string, keyPath: string = ""): string {
  * Recursively walk an object and interpolate env-vars in all string values.
  */
 export function interpolateObject(obj: unknown, keyPath: string = ""): unknown {
-	if (obj === null || typeof obj !== "object") return obj;
 	if (typeof obj === "string") return interpolateEnvVars(obj, keyPath);
-	if (Array.isArray(obj)) return obj.map((item, index) => interpolateObject(item, `${keyPath}[${index}]`));
+	if (obj === null || typeof obj !== "object") return obj;
+	if (Array.isArray(obj)) {
+		return obj.map((item, index) => interpolateObject(item, `${keyPath}[${index}]`));
+	}
 
 	const result: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(obj)) {
+	for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
 		const newKeyPath = keyPath ? `${keyPath}.${key}` : key;
 		result[key] = interpolateObject(value, newKeyPath);
 	}

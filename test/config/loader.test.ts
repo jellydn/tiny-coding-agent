@@ -13,6 +13,7 @@ const tempConfigFile = `${tempConfigDir}/config.yaml`;
 // Save original values
 const originalYamlPath = process.env.TINY_AGENT_CONFIG_YAML;
 const originalJsonPath = process.env.TINY_AGENT_CONFIG_JSON;
+const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 
 beforeEach(() => {
 	fs.mkdirSync(tempConfigDir, { recursive: true });
@@ -35,6 +36,7 @@ maxMemoryTokens: 10000
 	delete process.env.TINY_AGENT_MEMORY_FILE;
 	delete process.env.TINY_AGENT_MAX_CONTEXT_TOKENS;
 	delete process.env.TINY_AGENT_MAX_MEMORY_TOKENS;
+	delete process.env.OPENAI_API_KEY;
 });
 
 afterEach(() => {
@@ -58,6 +60,11 @@ afterEach(() => {
 	delete process.env.TINY_AGENT_MEMORY_FILE;
 	delete process.env.TINY_AGENT_MAX_CONTEXT_TOKENS;
 	delete process.env.TINY_AGENT_MAX_MEMORY_TOKENS;
+	if (originalOpenAiApiKey !== undefined) {
+		process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+	} else {
+		delete process.env.OPENAI_API_KEY;
+	}
 });
 
 describe("Config Loader - Config Merging", () => {
@@ -139,6 +146,23 @@ providers:
 });
 
 describe("Config Loader - Env Var Override Loop", () => {
+	it("should interpolate provider API keys from environment variables", async () => {
+		process.env.OPENAI_API_KEY = "test-openai-key";
+		fs.writeFileSync(
+			tempConfigFile,
+			`defaultModel: gpt-4o@openai
+providers:
+  openai:
+    apiKey: \${OPENAI_API_KEY}
+`,
+			"utf-8"
+		);
+
+		const { loadConfig } = await import(CONFIG_INDEX_PATH);
+		const config = loadConfig();
+		expect(config.providers.openai?.apiKey).toBe("test-openai-key");
+	});
+
 	it("should override model from TINY_AGENT_MODEL env var", async () => {
 		process.env.TINY_AGENT_MODEL = "claude-3-5-sonnet";
 		const { loadConfig } = await import(CONFIG_INDEX_PATH);
