@@ -7,8 +7,8 @@
  */
 
 import type { Message } from "../providers/types.js";
-import { RunnerObservability } from "./runner-observability.js";
-import { TurnExecutor, type TurnResult } from "./turn-executor.js";
+import type { RunnerObservability } from "./runner-observability.js";
+import type { TurnExecutor, TurnResult } from "./turn-executor.js";
 
 export interface ToolCallInfo {
 	id: string;
@@ -45,7 +45,7 @@ export interface ExecuteToolCallsResult {
 export async function executeToolCalls(
 	assistantToolCalls: ToolCallInfo[],
 	turnExecutor: TurnExecutor,
-	runnerObs: RunnerObservability,
+	runnerObs: RunnerObservability
 ): Promise<ExecuteToolCallsResult> {
 	const { span: toolSpan, timer: toolTimer } = runnerObs.beginToolExecution();
 

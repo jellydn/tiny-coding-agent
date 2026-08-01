@@ -1,13 +1,12 @@
 import { useCallback } from "react";
-import { DEFAULT_STATE_FILE, StateManager } from "../../agents/state-manager.js";
 import { formatProviderStatus } from "../../cli/handlers/login.js";
 import type { Agent } from "../../core/agent.js";
 import type { McpManager } from "../../mcp/manager.js";
 import { generateHelpText, resolveCommandAlias } from "../chat-command-registry.js";
 import type { Command } from "../components/CommandMenu.js";
-import { handleSkillCommand } from "../handlers/skill-handler.js";
 import { handlePlanCommand } from "../handlers/plan-handler.js";
 import { handleReviewCommand } from "../handlers/review-handler.js";
+import { handleSkillCommand } from "../handlers/skill-handler.js";
 import { MessageRole } from "../types/enums.js";
 
 interface UseCommandHandlerProps {
@@ -60,10 +59,7 @@ export function useCommandHandler({
 		onAddMessage(MessageRole.ASSISTANT, `MCP Servers:\n\n${lines}\n\nUse a tool from an MCP server to connect it.`);
 	}, [mcpManager, onAddMessage]);
 
-	const handlePlan = useCallback(
-		async (args: string) => handlePlanCommand(args, { onAddMessage }),
-		[onAddMessage]
-	);
+	const handlePlan = useCallback(async (args: string) => handlePlanCommand(args, { onAddMessage }), [onAddMessage]);
 
 	const handleLoginCommand = useCallback(() => {
 		if (!agent) {
@@ -131,10 +127,7 @@ export function useCommandHandler({
 		}
 	}, [agent, onAddMessage]);
 
-	const handleReview = useCallback(
-		async () => handleReviewCommand({ onAddMessage }),
-		[onAddMessage]
-	);
+	const handleReview = useCallback(async () => handleReviewCommand({ onAddMessage }), [onAddMessage]);
 
 	// Dispatch map — each command name maps to a handler function.
 	// Aliases (/tasks, /todo → /plan) are resolved via resolveCommandAlias()

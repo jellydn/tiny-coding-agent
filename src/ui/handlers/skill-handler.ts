@@ -16,10 +16,7 @@ interface SkillHandlerDeps {
 /**
  * Handle the /skill command — list available skills or load a specific skill.
  */
-export async function handleSkillCommand(
-	args: string,
-	deps: SkillHandlerDeps
-): Promise<void> {
+export async function handleSkillCommand(args: string, deps: SkillHandlerDeps): Promise<void> {
 	const { agent, onAddMessage } = deps;
 	const skillName = args.trim();
 
@@ -81,10 +78,7 @@ export async function handleSkillCommand(
 				`Loaded skill: **${skillName}**\nRestricted tools to: ${allowedTools.join(", ")}\n\n${wrappedContent}`
 			);
 		} else {
-			onAddMessage(
-				MessageRole.ASSISTANT,
-				`Loaded skill: **${skillName}**\nAll tools available.\n\n${wrappedContent}`
-			);
+			onAddMessage(MessageRole.ASSISTANT, `Loaded skill: **${skillName}**\nAll tools available.\n\n${wrappedContent}`);
 		}
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);

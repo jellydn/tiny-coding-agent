@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { applyConfigOverrides, applyObservabilityOverrides, expandSkillDirectories, interpolateObject } from "./config-env.js";
+import {
+	applyConfigOverrides,
+	applyObservabilityOverrides,
+	expandSkillDirectories,
+	interpolateObject,
+} from "./config-env.js";
 import { generateDefaultYaml } from "./config-template.js";
 import type { Config } from "./schema.js";
 import { validateConfig } from "./schema.js";
@@ -73,7 +78,6 @@ function createDefaultConfig(): void {
 	// correct from the moment the file is created.
 	writeFileSync(YAML_PATH, configTemplate, { mode: 0o600, encoding: "utf-8" });
 }
-
 
 export function loadConfig(): Config {
 	let rawConfig: unknown;

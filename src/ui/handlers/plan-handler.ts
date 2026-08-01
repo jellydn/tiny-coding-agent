@@ -15,10 +15,7 @@ interface PlanHandlerDeps {
 /**
  * Handle the /plan command — show plan, tasks, or todo list.
  */
-export async function handlePlanCommand(
-	args: string,
-	deps: PlanHandlerDeps
-): Promise<void> {
+export async function handlePlanCommand(args: string, deps: PlanHandlerDeps): Promise<void> {
 	const { onAddMessage } = deps;
 	const subcommand = args.trim().toLowerCase() || "show";
 	const stateFile = DEFAULT_STATE_FILE;
