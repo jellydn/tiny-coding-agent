@@ -1,153 +1,25 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+	buildThinkingConfig,
+	convertMessages,
+	convertTools,
+	extractAnthropicUsage,
+	mapStopReason,
+	parseContentBlocks,
+} from "./anthropic-converters.js";
 import type { ModelCapabilities } from "./capabilities.js";
 import { supportsThinking as modelRegistrySupportsThinking } from "./model-registry.js";
-import { buildTokenUsage, capabilitiesWithCatalogFallback, num } from "./provider-utils.js";
-import type {
-	ChatOptions,
-	ChatResponse,
-	LLMClient,
-	Message,
-	StreamChunk,
-	TokenUsage,
-	ToolCall,
-	ToolDefinition,
-} from "./types.js";
+import { capabilitiesWithCatalogFallback, num } from "./provider-utils.js";
+import type { ChatOptions, ChatResponse, LLMClient, StreamChunk, TokenUsage, ToolCall } from "./types.js";
 
 export interface AnthropicProviderConfig {
 	apiKey: string;
 }
 
-type AnthropicMessage = Anthropic.Messages.MessageParam;
-type AnthropicTool = Anthropic.Messages.Tool;
-type ContentBlock = Anthropic.Messages.ContentBlock;
 type ContentBlockDelta = Anthropic.Messages.ContentBlockDeltaEvent;
 
-function convertMessages(messages: Message[]): { system?: string; messages: AnthropicMessage[] } {
-	const systemMessages: string[] = [];
-	const converted: AnthropicMessage[] = [];
-
-	for (const msg of messages) {
-		if (msg.role === "system") {
-			systemMessages.push(msg.content);
-			continue;
-		}
-
-		if (msg.role === "user") {
-			converted.push({
-				role: "user",
-				content: msg.content,
-			});
-		} else if (msg.role === "assistant") {
-			if (msg.toolCalls?.length) {
-				const content: Anthropic.Messages.ContentBlockParam[] = [];
-				if (msg.content) {
-					content.push({ type: "text", text: msg.content });
-				}
-				for (const tc of msg.toolCalls) {
-					content.push({
-						type: "tool_use",
-						id: tc.id,
-						name: tc.name,
-						input: tc.arguments,
-					});
-				}
-				converted.push({ role: "assistant", content });
-			} else {
-				converted.push({
-					role: "assistant",
-					content: msg.content,
-				});
-			}
-		} else if (msg.role === "tool") {
-			const lastMsg = converted[converted.length - 1];
-			if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
-				lastMsg.content.push({
-					type: "tool_result",
-					tool_use_id: msg.toolCallId ?? "",
-					content: msg.content,
-				});
-			} else {
-				converted.push({
-					role: "user",
-					content: [
-						{
-							type: "tool_result",
-							tool_use_id: msg.toolCallId ?? "",
-							content: msg.content,
-						},
-					],
-				});
-			}
-		}
-	}
-
-	const combinedSystem = systemMessages.length > 0 ? systemMessages.join("\n\n---\n\n") : undefined;
-	return { system: combinedSystem, messages: converted };
-}
-
-function convertTools(tools: ToolDefinition[]): AnthropicTool[] {
-	return tools.map((tool) => ({
-		name: tool.name,
-		description: tool.description,
-		input_schema: tool.parameters as Anthropic.Messages.Tool.InputSchema,
-	}));
-}
-
-function parseContentBlocks(content: ContentBlock[]): { text: string; toolCalls?: ToolCall[] } {
-	let text = "";
-	const toolCalls: ToolCall[] = [];
-
-	for (const block of content) {
-		if (block.type === "text") {
-			text += block.text;
-		} else if (block.type === "tool_use") {
-			toolCalls.push({
-				id: block.id,
-				name: block.name,
-				arguments: block.input as Record<string, unknown>,
-			});
-		}
-	}
-
-	return {
-		text,
-		toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-	};
-}
-
-function mapStopReason(reason: string | null): ChatResponse["finishReason"] {
-	switch (reason) {
-		case "end_turn":
-			return "stop";
-		case "tool_use":
-			return "tool_calls";
-		case "max_tokens":
-			return "length";
-		default:
-			return "stop";
-	}
-}
-
-/** Map an Anthropic usage object into the normalized TokenUsage shape. */
-function extractAnthropicUsage(raw: unknown): TokenUsage | undefined {
-	if (!raw || typeof raw !== "object") return undefined;
-	const u = raw as Record<string, unknown>;
-	const input = num(u.input_tokens);
-	const output = num(u.output_tokens);
-	const cachedRead = num(u.cache_read_input_tokens) ?? 0;
-	const cachedCreate = num(u.cache_creation_input_tokens) ?? 0;
-	const cached = cachedRead + cachedCreate;
-	return buildTokenUsage({ input, output, cached, reasoning: num(u.reasoning_tokens) });
-}
-
-export function buildThinkingConfig(enabled: boolean, budgetTokens?: number) {
-	return enabled
-		? {
-				type: "enabled" as const,
-				budget_tokens: budgetTokens ?? 2000,
-			}
-		: undefined;
-}
+// Re-export for backward compatibility
+export { buildThinkingConfig, convertMessages, convertTools } from "./anthropic-converters.js";
 
 export class AnthropicProvider implements LLMClient {
 	private _client: Anthropic;
