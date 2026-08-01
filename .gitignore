@@ -42,6 +42,10 @@ tiny-agent-dev
 tiny-dev-agent
 .tiny-state.json
 
+# python caches
+__pycache__/
+*.pyc
+
 # auto-generated files
 src/utils/version-constant.ts
 src/skills/embedded-content.ts
