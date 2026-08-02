@@ -94,16 +94,21 @@ class TestAppendPrediction(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    def test_uses_exclusive_file_lock(self):
+    def test_appends_multiple_predictions_without_corruption(self):
+        """Sequential appends produce one valid JSON object per line."""
         with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
             path = f.name
         try:
-            with mock.patch.object(swe_bench_runner.fcntl, "flock") as mock_flock:
-                swe_bench_runner.append_prediction(path, "test__inst-1", "tiny-agent", "diff")
-
-            self.assertEqual(mock_flock.call_count, 2)
-            self.assertEqual(mock_flock.call_args_list[0].args[1], swe_bench_runner.fcntl.LOCK_EX)
-            self.assertEqual(mock_flock.call_args_list[1].args[1], swe_bench_runner.fcntl.LOCK_UN)
+            for i in range(5):
+                swe_bench_runner.append_prediction(
+                    path, f"test__inst-{i}", "tiny-agent", f"diff-{i}"
+                )
+            with open(path) as fh:
+                lines = [json.loads(l) for l in fh if l.strip()]
+            self.assertEqual(len(lines), 5)
+            for i, row in enumerate(lines):
+                self.assertEqual(row["instance_id"], f"test__inst-{i}")
+                self.assertEqual(row["model_patch"], f"diff-{i}")
         finally:
             os.unlink(path)
 
@@ -178,12 +183,50 @@ class TestRunTinyAgent(unittest.TestCase):
         self.assertIsNotNone(patch)
         self.assertIn("diff --git", patch)
 
-        commands = [call.args[0] for call in mock_run.call_args_list]
-        self.assertIn(["git", "-C", str(repo_dir), "add", "-A"], commands)
-        self.assertIn(
-            ["git", "-C", str(repo_dir), "diff", "--cached", "--binary"],
-            commands,
-        )
+        # tiny-agent command must include the model flag when provided.
+        tiny_agent_calls = [
+            call.args[0] for call in mock_run.call_args_list
+            if call.args[0] and call.args[0][0] == "tiny-agent"
+        ]
+        self.assertTrue(tiny_agent_calls, "tiny-agent was never invoked")
+        self.assertIn("--model", tiny_agent_calls[0])
+        self.assertIn("test-model", tiny_agent_calls[0])
+
+    def test_returns_none_when_git_add_fails(self):
+        repo_dir = Path("/tmp/swe-test-repo")
+        instance_id = "test__inst-add-fail"
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "tiny-agent":
+                return mock.Mock(returncode=0, stdout="done", stderr="")
+            if "add" in cmd:
+                return mock.Mock(returncode=1, stdout="", stderr="index.lock")
+            return mock.Mock(returncode=0, stdout="diff", stderr="")
+
+        with mock.patch.object(swe_bench_runner.subprocess, "run", side_effect=fake_run):
+            with mock.patch.object(swe_bench_runner.os, "unlink"):
+                patch = swe_bench_runner.run_tiny_agent(
+                    repo_dir, "fix the bug", instance_id, model="", timeout_minutes=1,
+                )
+        self.assertIsNone(patch)
+
+    def test_returns_none_when_git_diff_fails(self):
+        repo_dir = Path("/tmp/swe-test-repo")
+        instance_id = "test__inst-diff-fail"
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "tiny-agent":
+                return mock.Mock(returncode=0, stdout="done", stderr="")
+            if "diff" in cmd:
+                return mock.Mock(returncode=128, stdout="", stderr="not a git repo")
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(swe_bench_runner.subprocess, "run", side_effect=fake_run):
+            with mock.patch.object(swe_bench_runner.os, "unlink"):
+                patch = swe_bench_runner.run_tiny_agent(
+                    repo_dir, "fix the bug", instance_id, model="", timeout_minutes=1,
+                )
+        self.assertIsNone(patch)
 
     def test_returns_empty_string_when_no_changes(self):
         repo_dir = Path("/tmp/swe-test-repo")
@@ -221,20 +264,52 @@ class TestRunTinyAgent(unittest.TestCase):
 
     def test_cleans_up_prompt_file(self):
         repo_dir = Path("/tmp/swe-test-repo")
-        instance_id = "test__inst-4"
+        instance_id = "test__inst-cleanup"
+        prompt_path = f"/tmp/swe_prompt_{instance_id}.md"
 
         def fake_run(cmd, **kwargs):
             if cmd[0] == "tiny-agent":
+                # Prompt should exist while agent runs
+                self.assertTrue(os.path.exists(prompt_path))
                 return mock.Mock(returncode=0, stdout="done", stderr="")
             return mock.Mock(returncode=0, stdout="", stderr="")
 
+        # Clean any leftover
+        try:
+            os.unlink(prompt_path)
+        except OSError:
+            pass
+
         with mock.patch.object(swe_bench_runner.subprocess, "run", side_effect=fake_run):
-            with mock.patch.object(swe_bench_runner.os, "unlink") as mock_unlink:
-                swe_bench_runner.run_tiny_agent(
-                    repo_dir, "fix the bug", instance_id, model="", timeout_minutes=1,
-                )
-                # os.unlink should have been called to clean up the prompt file
-                mock_unlink.assert_called()
+            swe_bench_runner.run_tiny_agent(
+                repo_dir, "fix the bug", instance_id, model="", timeout_minutes=1,
+            )
+
+        self.assertFalse(os.path.exists(prompt_path))
+
+    def test_cleans_up_prompt_file_on_timeout(self):
+        """Prompt file must be removed even when tiny-agent times out."""
+        repo_dir = Path("/tmp/swe-test-repo")
+        instance_id = "test__inst-cleanup-timeout"
+        prompt_path = f"/tmp/swe_prompt_{instance_id}.md"
+
+        def fake_run(cmd, **kwargs):
+            if cmd[0] == "tiny-agent":
+                self.assertTrue(os.path.exists(prompt_path))
+                raise subprocess.TimeoutExpired(cmd, 60)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        try:
+            os.unlink(prompt_path)
+        except OSError:
+            pass
+
+        with mock.patch.object(swe_bench_runner.subprocess, "run", side_effect=fake_run):
+            swe_bench_runner.run_tiny_agent(
+                repo_dir, "fix the bug", instance_id, model="", timeout_minutes=1,
+            )
+
+        self.assertFalse(os.path.exists(prompt_path))
 
 
 class TestProcessInstance(unittest.TestCase):

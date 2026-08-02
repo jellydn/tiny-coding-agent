@@ -189,19 +189,37 @@ def run_tiny_agent(
             return None
 
         # Stage all changes (including untracked new files) then produce a
-        # cached diff so new files appear in the patch.
-        subprocess.run(
+        # cached diff so new files appear in the patch. Fail the instance if
+        # staging or diff capture fails — do not treat errors as empty patches.
+        add_result = subprocess.run(
             ["git", "-C", str(repo_dir), "add", "-A"],
             capture_output=True,
+            text=True,
             check=False,
         )
+        if add_result.returncode != 0:
+            log.warning(
+                "  git add -A failed (exit %d): %s",
+                add_result.returncode,
+                (add_result.stderr or add_result.stdout or "")[-500:],
+            )
+            return None
+
         diff_result = subprocess.run(
             ["git", "-C", str(repo_dir), "diff", "--cached", "--binary"],
             capture_output=True,
             text=True,
             check=False,
         )
-        patch = diff_result.stdout
+        if diff_result.returncode != 0:
+            log.warning(
+                "  git diff --cached failed (exit %d): %s",
+                diff_result.returncode,
+                (diff_result.stderr or diff_result.stdout or "")[-500:],
+            )
+            return None
+
+        patch = diff_result.stdout or ""
 
         if not patch:
             log.info("  No changes produced by agent")

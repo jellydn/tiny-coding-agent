@@ -109,6 +109,13 @@ untracked new files) with `git add -A` and then produces the patch via
 `git diff --cached`.  This ensures that new files created by the agent are
 included in the patch, which is the standard SWE-bench pattern.
 
+Both `git add -A` and `git diff --cached` are checked for non-zero exit codes.
+If either command fails (e.g. permissions, disk exhaustion, index errors), the
+instance is recorded as an error (the runner returns `None` and appends an empty
+patch), rather than silently emitting an empty patch as if the agent made no
+changes. A truly empty working tree still yields an empty-string patch, which is
+reported separately as a "no changes" outcome.
+
 ## Concurrency Safety
 
 In `--parallel` mode, each worker:
@@ -125,9 +132,10 @@ practical limitation.
 
 A gated workflow at [`.github/workflows/swe-bench.yml`](../.github/workflows/swe-bench.yml)
 runs the SWE-bench runner in CI. It is **never** triggered by an ordinary push
-to `main` or a plain PR open — it only runs under the conditions below, and the
-expensive benchmark job always requires manual approval via a GitHub
-Environment.
+to `main` or a plain PR open — it only runs under the conditions below. The
+expensive benchmark job uses the GitHub Environment `swe-bench`; with
+**Required reviewers** configured on that environment (see setup below), runs
+pause for approval before spending API credits.
 
 ### When it runs
 
@@ -145,7 +153,8 @@ The workflow has three jobs:
 2. **Runner unit tests** — runs `python3 -m unittest scripts/test_swe_bench_runner.py`.
    Cheap; no approval needed.
 3. **Run SWE-bench** — the real benchmark. Has `environment: swe-bench`, so it
-   **pauses for a required reviewer** before spending any API credits. Builds
+   targets environment `swe-bench` (configure **Required reviewers** on that
+   environment so runs pause for approval before spending API credits). Builds
    `tiny-agent`, installs Python deps, runs the runner, and uploads
    `predictions.jsonl` as an artifact (`swe-bench-predictions-<run_id>`,
    30-day retention).
