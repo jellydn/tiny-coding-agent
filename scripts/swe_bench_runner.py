@@ -10,20 +10,25 @@ Usage:
     python3 scripts/swe_bench_runner.py [--max-instances N] [--model MODEL]
                                         [--dataset DATASET] [--output FILE]
                                         [--work-dir DIR] [--start-idx N]
-                                        [--resume]
+                                        [--resume] [--parallel N] [--timeout N]
+                                        [--dry-run] [--evaluate]
 
 Requirements:
     pip install datasets
     docker  # for the official SWE-bench evaluation harness (after predictions)
+
+Note: Concurrent prediction writes use fcntl file locking (Unix-only).
+      SWE-bench evaluation is Linux-centric, so this is not a limitation in
+      practice.
 """
 
 import argparse
+import fcntl
 import json
 import logging
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -93,9 +98,15 @@ def load_existing_predictions(output_path: str) -> dict[str, dict]:
     return predictions
 
 
-def clone_or_update_repo(workspace: Path, repo: str) -> Path:
-    """Clone the repository if it doesn't exist, or fetch latest."""
-    repo_dir = workspace / repo.replace("/", "__")
+def clone_or_update_repo(workspace: Path, repo: str, instance_id: str) -> Path:
+    """
+    Clone the repository into a per-instance isolated directory.
+
+    Each instance gets its own checkout at ``workspace/<instance_id>/repo`` so
+    that parallel workers never share a git working tree.
+    """
+    instance_dir = workspace / instance_id
+    repo_dir = instance_dir / "repo"
     if repo_dir.exists():
         log.info("  Repo exists, fetching...")
         subprocess.run(
@@ -104,6 +115,7 @@ def clone_or_update_repo(workspace: Path, repo: str) -> Path:
             check=False,
         )
     else:
+        instance_dir.mkdir(parents=True, exist_ok=True)
         log.info("  Cloning %s...", repo)
         url = f"https://github.com/{repo}.git"
         subprocess.run(
@@ -140,65 +152,110 @@ def run_tiny_agent(
     Run tiny-agent against a SWE-bench instance.
 
     Returns the git diff (patch) produced by the agent, or None on failure.
+    The patch includes staged, unstaged, *and* untracked new files by staging
+    everything with ``git add -A`` before producing ``git diff --cached``.
     """
     # Write the problem statement to a temp file (absolute path for safety)
     prompt_path = f"/tmp/swe_prompt_{instance_id}.md"
-    with open(prompt_path, "w") as f:
-        f.write(problem_statement)
-
-    cmd = ["tiny-agent", "--allow-all", "run"]
-    if model:
-        cmd.extend(["--model", model])
-    cmd.append(f"Solve the issue described in {prompt_path}")
-
-    log.info("  Running tiny-agent (timeout=%dmin)...", timeout_minutes)
-
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(repo_dir),
+        with open(prompt_path, "w") as f:
+            f.write(problem_statement)
+
+        cmd = ["tiny-agent", "--allow-all", "run"]
+        if model:
+            cmd.extend(["--model", model])
+        cmd.append(f"Solve the issue described in {prompt_path}")
+
+        log.info("  Running tiny-agent (timeout=%dmin)...", timeout_minutes)
+
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(repo_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout_minutes * 60,
+            )
+        except subprocess.TimeoutExpired:
+            log.warning("  Timed out after %d minutes", timeout_minutes)
+            return None
+
+        if result.returncode != 0:
+            log.warning(
+                "  tiny-agent exited with code %d. stderr: %s",
+                result.returncode,
+                result.stderr[-500:],
+            )
+            return None
+
+        # Stage all changes (including untracked new files) then produce a
+        # cached diff so new files appear in the patch. Fail the instance if
+        # staging or diff capture fails — do not treat errors as empty patches.
+        add_result = subprocess.run(
+            ["git", "-C", str(repo_dir), "add", "-A"],
             capture_output=True,
             text=True,
-            timeout=timeout_minutes * 60,
+            check=False,
         )
-    except subprocess.TimeoutExpired:
-        log.warning("  Timed out after %d minutes", timeout_minutes)
-        return None
+        if add_result.returncode != 0:
+            log.warning(
+                "  git add -A failed (exit %d): %s",
+                add_result.returncode,
+                (add_result.stderr or add_result.stdout or "")[-500:],
+            )
+            return None
 
-    if result.returncode != 0:
-        log.warning(
-            "  tiny-agent exited with code %d. stderr: %s",
-            result.returncode,
-            result.stderr[-500:],
+        diff_result = subprocess.run(
+            ["git", "-C", str(repo_dir), "diff", "--cached", "--binary"],
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        return None
+        if diff_result.returncode != 0:
+            log.warning(
+                "  git diff --cached failed (exit %d): %s",
+                diff_result.returncode,
+                (diff_result.stderr or diff_result.stdout or "")[-500:],
+            )
+            return None
 
-    # Get the diff from the agent's changes
-    diff_result = subprocess.run(
-        ["git", "-C", str(repo_dir), "diff"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    patch = diff_result.stdout.strip()
+        patch = diff_result.stdout or ""
 
-    if not patch:
-        log.info("  No changes produced by agent")
-        return ""
+        if not patch:
+            log.info("  No changes produced by agent")
+            return ""
 
-    log.info("  Patch produced: %d lines", len(patch.splitlines()))
-    return patch
+        log.info("  Patch produced: %d lines", len(patch.splitlines()))
+        return patch
+    finally:
+        # Clean up the prompt file regardless of success or failure
+        try:
+            os.unlink(prompt_path)
+        except OSError:
+            pass
 
 
 def append_prediction(output_path: str, instance_id: str, model_name: str, patch: str | None):
-    """Append a prediction to the JSONL output file."""
+    """
+    Append a prediction to the JSONL output file.
+
+    Uses an fcntl exclusive lock so concurrent workers (in ``--parallel`` mode)
+    never interleave writes.  fcntl is Unix-only; SWE-bench runs on Linux so
+    this is acceptable.
+    """
     pred = {
         "instance_id": instance_id,
         "model_name_or_path": model_name,
         "model_patch": patch or "",
     }
+    line = json.dumps(pred) + "\n"
     with open(output_path, "a") as f:
-        f.write(json.dumps(pred) + "\n")
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(line)
+            f.flush()
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def process_instance(
@@ -227,8 +284,8 @@ def process_instance(
     )
 
     try:
-        # Clone/update repo and checkout base commit
-        repo_dir = clone_or_update_repo(workspace, repo)
+        # Clone/update repo and checkout base commit (per-instance isolated dir)
+        repo_dir = clone_or_update_repo(workspace, repo, instance_id)
         checkout_commit(repo_dir, base_commit)
 
         # Run tiny-agent
@@ -240,7 +297,7 @@ def process_instance(
             timeout_minutes=timeout_minutes,
         )
 
-        # Append to predictions file immediately
+        # Append to predictions file immediately (lock-protected)
         append_prediction(output_path, instance_id, model_name, patch)
         log.info("  ✅ [%d/%d] %s saved", instance_num, total, instance_id)
 
@@ -258,7 +315,7 @@ def process_instance(
 
 
 def print_summary(
-    results: dict[str, str],
+    results: dict[str, str | None],
     total: int,
     duration_seconds: float,
     output_path: str,
@@ -283,6 +340,20 @@ def print_summary(
         log.info("  Parallel workers:          %d", parallel)
     log.info("  Predictions file:          %s", output_path)
     log.info("=" * 50)
+
+
+def print_evaluate_command(dataset: str, output_path: str):
+    """Print the official SWE-bench harness evaluation command."""
+    print()
+    print("To evaluate predictions with the official SWE-bench harness:")
+    print("  git clone https://github.com/swe-bench/SWE-bench.git")
+    print("  cd SWE-bench && pip install -e .")
+    print()
+    print("  python -m swebench.harness.run_evaluation \\")
+    print(f"    --dataset_name {dataset} \\")
+    print(f"    --predictions_path {output_path} \\")
+    print("    --max_workers 8 \\")
+    print("    --run_id tiny-agent-verified")
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────
@@ -312,7 +383,8 @@ def check_tiny_agent() -> None:
         log.warning("tiny-agent --help timed out — proceeding anyway")
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser (extracted for testability)."""
     parser = argparse.ArgumentParser(
         description="Run tiny-coding-agent against SWE-bench Verified.",
     )
@@ -373,10 +445,29 @@ def main():
         type=int,
         default=1,
         help="Number of parallel workers (default: 1, sequential). "
-        "Set higher to process multiple instances concurrently.",
+        "Set higher to process multiple instances concurrently. "
+        "Each worker uses an isolated per-instance checkout.",
     )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Print the official SWE-bench harness evaluation command after the run",
+    )
+    return parser
 
-    args = parser.parse_args()
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse and validate command-line arguments (extracted for testability)."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.parallel < 1:
+        log.error("--parallel must be a positive integer (>= 1)")
+        sys.exit(1)
+    return args
+
+
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
 
     # ── Load dataset ────────────────────────────────────────────────────
     instances = load_instances(args.dataset, args.max_instances, args.start_idx)
@@ -400,6 +491,9 @@ def main():
         log.info("DRY RUN — would process %d instances:", len(instances))
         for inst in instances:
             print(f"  {inst['instance_id']}: {inst['repo']} @ {inst['base_commit']}")
+        if args.evaluate:
+            output_path = os.path.abspath(args.output)
+            print_evaluate_command(args.dataset, output_path)
         return
 
     check_tiny_agent()
@@ -411,7 +505,7 @@ def main():
     log.info("Workspace: %s", workspace)
     log.info("Output:    %s", output_path)
     if args.parallel > 1:
-        log.info("Parallel:  %d workers", args.parallel)
+        log.info("Parallel:  %d workers (isolated checkouts)", args.parallel)
 
     # Determine model name for predictions file
     model_name = args.model or "tiny-agent"
@@ -431,7 +525,7 @@ def main():
     start_time = time.time()
 
     if args.parallel <= 1:
-        # Sequential mode (original behavior)
+        # Sequential mode
         for instance_num, instance in to_process:
             instance_id = instance["instance_id"]
             results[instance_id] = process_instance(
@@ -439,10 +533,11 @@ def main():
                 model_name, args.timeout, instance_num, len(instances),
             )[1]
     else:
-        # Parallel mode
+        # Parallel mode — each worker runs in a separate process with its own
+        # isolated per-instance checkout directory.  Prediction writes are
+        # serialised via fcntl file locking in append_prediction().
         log.info("Processing %d instances with %d workers...", len(to_process), args.parallel)
 
-        # We need to use threading for subprocess calls (subprocess manages its own GIL release)
         with ProcessPoolExecutor(max_workers=args.parallel) as executor:
             future_to_id = {}
             for instance_num, instance in to_process:
@@ -470,6 +565,9 @@ def main():
     # ── Summary ─────────────────────────────────────────────────────────
     duration = time.time() - start_time
     print_summary(results, len(instances), duration, output_path, args.parallel)
+
+    if args.evaluate:
+        print_evaluate_command(args.dataset, output_path)
 
 
 if __name__ == "__main__":
