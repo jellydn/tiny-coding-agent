@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { setConfirmationHandler } from "../../src/tools/confirmation.js";
 import { ToolRegistry } from "../../src/tools/registry.js";
 import type { Tool, ToolResult } from "../../src/tools/types.js";
@@ -22,6 +22,10 @@ describe("ToolRegistry", () => {
 
 	beforeEach(() => {
 		registry = new ToolRegistry();
+		setConfirmationHandler(undefined);
+	});
+
+	afterEach(() => {
 		setConfirmationHandler(undefined);
 	});
 
