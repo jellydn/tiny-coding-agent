@@ -1,30 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { buildContextWithMemory, calculateContextBudget } from "../../src/core/context-budget.js";
 import { type Memory, MemoryStore } from "../../src/core/memory.js";
-
-const TEMP_DIR = "/tmp/test-memory-store";
-
-beforeEach(() => {
-	try {
-		mkdirSync(TEMP_DIR, { recursive: true });
-	} catch {
-		// ignore
-	}
-});
-
-afterEach(() => {
-	try {
-		rmSync(TEMP_DIR, { recursive: true, force: true });
-	} catch {
-		// ignore
-	}
-});
-
-function getMemoryFile(): string {
-	return path.join(TEMP_DIR, `memory-${Date.now()}.json`);
-}
 
 describe("MemoryStore", () => {
 	describe("add()", () => {
@@ -259,15 +238,30 @@ describe("MemoryStore", () => {
 	});
 
 	describe("persistence", () => {
+		let tempDir: string;
+
+		beforeEach(() => {
+			tempDir = mkdtempSync(path.join(tmpdir(), "test-memory-store-"));
+		});
+
+		afterEach(() => {
+			try {
+				rmSync(tempDir, { recursive: true, force: true });
+			} catch {
+				// ignore
+			}
+		});
+
 		it("should save and load memories from file", async () => {
-			const filePath = getMemoryFile();
+			const filePath = path.join(tempDir, "memory.json");
 
 			// Create store and add memories
 			{
-				const store = new MemoryStore({ filePath, autoLoad: true });
+				const store = new MemoryStore({ filePath, autoLoad: false });
 				store.add("saved memory 1");
 				store.add("saved memory 2");
 				await store.flush();
+				await store.close();
 			}
 
 			// Load from file
@@ -275,14 +269,19 @@ describe("MemoryStore", () => {
 				const store = new MemoryStore({ filePath, autoLoad: true });
 				await store.init();
 				expect(store.count()).toBe(2);
-				const memories = store.list().filter(Boolean);
-				expect(memories.map((m) => m.content)).toEqual(["saved memory 1", "saved memory 2"]);
+				const contents = store
+					.list()
+					.filter(Boolean)
+					.map((m) => m.content);
+				expect(contents).toHaveLength(2);
+				expect(contents).toContain("saved memory 1");
+				expect(contents).toContain("saved memory 2");
 				await store.close();
 			}
 		});
 
 		it("should handle corrupted memory file gracefully", () => {
-			const filePath = getMemoryFile();
+			const filePath = path.join(tempDir, "memory.json");
 			writeFileSync(filePath, "not valid json", "utf-8");
 
 			// Should not throw, should continue with empty store

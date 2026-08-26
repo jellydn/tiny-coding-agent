@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	type ConfirmationRequest,
 	type ConfirmationResult,
@@ -9,6 +9,10 @@ import {
 describe("confirmation", () => {
 	beforeEach(() => {
 		// Reset handler before each test
+		setConfirmationHandler(undefined);
+	});
+
+	afterEach(() => {
 		setConfirmationHandler(undefined);
 	});
 
@@ -49,8 +53,6 @@ describe("confirmation", () => {
 				return true;
 			};
 
-			setConfirmationHandler(mockHandler);
-
 			const request: ConfirmationRequest = {
 				actions: [
 					{
@@ -70,8 +72,6 @@ describe("confirmation", () => {
 				return false;
 			};
 
-			setConfirmationHandler(mockHandler);
-
 			const result = await mockHandler({
 				actions: [
 					{
@@ -89,8 +89,6 @@ describe("confirmation", () => {
 			const mockHandler = async (_request: ConfirmationRequest): Promise<ConfirmationResult> => {
 				return { type: "partial", selectedIndex: 0 };
 			};
-
-			setConfirmationHandler(mockHandler);
 
 			const result = await mockHandler({
 				actions: [
@@ -118,8 +116,6 @@ describe("confirmation", () => {
 				expect(request.actions[2]?.tool).toBe("bash");
 				return true;
 			};
-
-			setConfirmationHandler(mockHandler);
 
 			const request: ConfirmationRequest = {
 				actions: [

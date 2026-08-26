@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, unlinkSync } from "node:fs";
 import { Agent } from "../../src/core/agent.js";
 import type { ChatOptions, ChatResponse, LLMClient, StreamChunk } from "../../src/providers/types.js";
+import { setConfirmationHandler } from "../../src/tools/confirmation.js";
 import { bashTool, fileTools } from "../../src/tools/index.js";
 import { ToolRegistry } from "../../src/tools/registry.js";
 
@@ -12,6 +13,7 @@ const tempTestDir = "/tmp/e2e-test-workspace";
 
 // Clean up test files
 beforeEach(() => {
+	setConfirmationHandler(undefined);
 	try {
 		unlinkSync(tempConversationFile);
 	} catch {}
@@ -27,6 +29,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	setConfirmationHandler(undefined);
 	try {
 		unlinkSync(tempConversationFile);
 	} catch {}
